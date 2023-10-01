@@ -258,7 +258,8 @@ impl MergeProposal {
 
     pub fn supports_auto_merge(&self) -> bool {
         Python::with_gil(|py| {
-            self.0.getattr(py, "supports_auto_merge")
+            self.0
+                .getattr(py, "supports_auto_merge")
                 .unwrap()
                 .extract(py)
                 .unwrap()
@@ -355,6 +356,17 @@ impl Forge {
     }
 
     pub fn forge_kind(&self) -> String {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .as_ref(py)
+                .get_type()
+                .name()
+                .unwrap()
+                .to_string()
+        })
+    }
+
+    pub fn forge_name(&self) -> String {
         Python::with_gil(|py| {
             self.to_object(py)
                 .as_ref(py)
