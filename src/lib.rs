@@ -21,6 +21,7 @@ pub mod delta;
 pub mod diff;
 pub mod dirty_tracker;
 pub mod forge;
+pub mod gpg;
 pub mod graph;
 pub mod hooks;
 pub mod location;

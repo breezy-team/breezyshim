@@ -76,11 +76,16 @@ impl Graph {
     pub fn iter_lefthand_ancestry(
         &self,
         revid: &RevisionId,
+        stop_revisions: Option<&[RevisionId]>,
     ) -> impl Iterator<Item = Result<RevisionId, Error>> {
         Python::with_gil(|py| {
             let iter = self
                 .0
-                .call_method1(py, "iter_lefthand_ancestry", (revid.as_bytes(),))
+                .call_method1(
+                    py,
+                    "iter_lefthand_ancestry",
+                    (revid.as_bytes(), stop_revisions.map(|x| x.to_vec())),
+                )
                 .unwrap();
             RevIter(iter)
         })
