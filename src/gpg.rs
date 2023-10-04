@@ -9,6 +9,22 @@ pub enum Error {
     GPGNotInstalled,
 }
 
+#[derive(Debug)]
+pub enum Mode {
+    Normal,
+    Detach,
+    Clear,
+}
+
+#[derive(Debug)]
+pub enum Status {
+    Valid,
+    KeyMissing(String),
+    NotValid(String),
+    NotSigned,
+    Expired(String),
+}
+
 import_exception!(breezy.gpg, GPGNotInstalled);
 
 impl From<PyErr> for Error {
