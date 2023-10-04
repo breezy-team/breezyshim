@@ -434,17 +434,18 @@ impl Forge {
     ) -> PyResult<Box<dyn Branch>> {
         Python::with_gil(|py| {
             let kwargs = PyDict::new(py);
-            kwargs.set_item("main_branch", main_branch.to_object(py))?;
-            kwargs.set_item("name", name)?;
             if let Some(owner) = owner {
                 kwargs.set_item("owner", owner)?;
             }
             if let Some(preferred_schemes) = preferred_schemes {
                 kwargs.set_item("preferred_schemes", preferred_schemes)?;
             }
-            let branch =
-                self.to_object(py)
-                    .call_method(py, "get_derived_branch", (), Some(kwargs))?;
+            let branch = self.to_object(py).call_method(
+                py,
+                "get_derived_branch",
+                (main_branch.to_object(py), name),
+                Some(kwargs),
+            )?;
             Ok(Box::new(RegularBranch::new(branch)) as Box<dyn Branch>)
         })
     }
