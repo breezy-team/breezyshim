@@ -20,6 +20,7 @@ pub mod controldir;
 pub mod delta;
 pub mod diff;
 pub mod dirty_tracker;
+pub mod export;
 pub mod forge;
 pub mod gpg;
 pub mod graph;
