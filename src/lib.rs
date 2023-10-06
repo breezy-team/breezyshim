@@ -28,6 +28,7 @@ pub mod location;
 pub mod lock;
 pub mod merge;
 pub mod plugin;
+pub mod rename_map;
 pub mod repository;
 pub mod revisionid;
 pub mod status;
@@ -45,6 +46,7 @@ pub use controldir::{ControlDir, Prober};
 pub use dirty_tracker::DirtyTracker;
 pub use forge::{get_forge, Forge, MergeProposal, MergeProposalStatus};
 pub use lock::Lock;
+use pyo3::exceptions::PyImportError;
 pub use revisionid::RevisionId;
 pub use transport::{get_transport, Transport};
 pub use tree::{RevisionTree, Tree, WorkingTree};
@@ -63,7 +65,32 @@ pub fn init_bzr() {
     })
 }
 
-pub fn init() {
+#[derive(Debug)]
+pub struct BreezyNotInstalled {
+    pub message: String,
+}
+
+impl std::fmt::Display for BreezyNotInstalled {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "Breezy is not installed: {}", self.message)
+    }
+}
+
+pub fn init() -> Result<(), BreezyNotInstalled> {
+    pyo3::Python::with_gil(|py| match py.import("breezy") {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            if e.is_instance_of::<PyImportError>(py) {
+                Err(BreezyNotInstalled {
+                    message: e.to_string(),
+                })
+            } else {
+                Err::<(), pyo3::PyErr>(e).unwrap();
+                unreachable!()
+            }
+        }
+    })?;
+
     init_git();
     init_bzr();
 
@@ -72,7 +99,8 @@ pub fn init() {
         let m = py.import("breezy.controldir").unwrap();
         let f = m.getattr("ControlDirFormat").unwrap();
         f.call_method0("known_formats").unwrap();
-    })
+    });
+    Ok(())
 }
 
 pub fn load_plugins() {
