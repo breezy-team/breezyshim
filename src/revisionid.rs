@@ -1,7 +1,7 @@
 use pyo3::prelude::*;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-#[derive(Clone, PartialEq, Eq, Ord, PartialOrd)]
+#[derive(Clone, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub struct RevisionId(Vec<u8>);
 
 impl std::fmt::Debug for RevisionId {

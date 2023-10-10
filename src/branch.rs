@@ -108,6 +108,14 @@ pub trait Branch: ToPyObject + Send {
         })
     }
 
+    fn tags(&self) -> PyResult<crate::tags::Tags> {
+        Python::with_gil(|py| {
+            Ok(crate::tags::Tags::from(
+                self.to_object(py).getattr(py, "tags")?,
+            ))
+        })
+    }
+
     fn repository(&self) -> Repository {
         Python::with_gil(|py| {
             Repository::new(self.to_object(py).getattr(py, "repository").unwrap())
