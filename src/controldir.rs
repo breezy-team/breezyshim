@@ -67,12 +67,14 @@ impl ControlDir {
     }
 
     pub fn open_tree_or_branch(
-        &self,
         branch_name: Option<&str>,
     ) -> Result<(Option<WorkingTree>, Box<dyn Branch>), BranchOpenError> {
         Python::with_gil(|py| {
+            let m = py.import("breezy.controldir")?;
+            let cd = m.getattr("ControlDir")?;
+
             let ret =
-                self.to_object(py)
+                cd.to_object(py)
                     .call_method(py, "open_tree_or_branch", (branch_name,), None)?;
 
             let (tree, branch) = ret.extract::<(Option<PyObject>, PyObject)>(py)?;
