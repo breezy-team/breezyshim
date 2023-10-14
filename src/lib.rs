@@ -22,6 +22,7 @@ pub mod diff;
 pub mod dirty_tracker;
 pub mod export;
 pub mod forge;
+pub mod github;
 pub mod gpg;
 pub mod graph;
 pub mod hooks;
