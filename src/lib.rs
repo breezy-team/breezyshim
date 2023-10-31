@@ -52,6 +52,7 @@ pub use forge::{get_forge, Forge, MergeProposal, MergeProposalStatus};
 pub use lock::Lock;
 use pyo3::exceptions::PyImportError;
 pub use revisionid::RevisionId;
+use std::sync::Once;
 pub use transport::{get_transport, Transport};
 pub use tree::{RevisionTree, Tree, WorkingTree};
 pub use urlutils::{join_segment_parameters, split_segment_parameters};
@@ -80,29 +81,34 @@ impl std::fmt::Display for BreezyNotInstalled {
     }
 }
 
+static INIT_BREEZY: Once = Once::new();
+
 pub fn init() -> Result<(), BreezyNotInstalled> {
-    pyo3::Python::with_gil(|py| match py.import("breezy") {
-        Ok(_) => Ok(()),
-        Err(e) => {
-            if e.is_instance_of::<PyImportError>(py) {
-                Err(BreezyNotInstalled {
-                    message: e.to_string(),
-                })
-            } else {
-                Err::<(), pyo3::PyErr>(e).unwrap();
-                unreachable!()
+    INIT_BREEZY.call_once(|| {
+        pyo3::Python::with_gil(|py| match py.import("breezy") {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                if e.is_instance_of::<PyImportError>(py) {
+                    Err(BreezyNotInstalled {
+                        message: e.to_string(),
+                    })
+                } else {
+                    Err::<(), pyo3::PyErr>(e).unwrap();
+                    unreachable!()
+                }
             }
-        }
-    })?;
+        })
+        .expect("Breezy is not installed");
 
-    init_git();
-    init_bzr();
+        init_git();
+        init_bzr();
 
-    // Work around a breezy bug
-    pyo3::Python::with_gil(|py| {
-        let m = py.import("breezy.controldir").unwrap();
-        let f = m.getattr("ControlDirFormat").unwrap();
-        f.call_method0("known_formats").unwrap();
+        // Work around a breezy bug
+        pyo3::Python::with_gil(|py| {
+            let m = py.import("breezy.controldir").unwrap();
+            let f = m.getattr("ControlDirFormat").unwrap();
+            f.call_method0("known_formats").unwrap();
+        });
     });
     Ok(())
 }
