@@ -154,7 +154,7 @@ pub trait Branch: ToPyObject + Send {
         Python::with_gil(|py| {
             let url = self
                 .to_object(py)
-                .getattr(py, "get_user_url")
+                .getattr(py, "user_url")
                 .unwrap()
                 .extract::<String>(py)
                 .unwrap();
