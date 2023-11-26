@@ -545,3 +545,28 @@ impl FromPyObject<'_> for TreeChange {
         })
     }
 }
+
+pub struct MemoryTree(pub PyObject);
+
+impl ToPyObject for MemoryTree {
+    fn to_object(&self, _py: Python) -> PyObject {
+        self.0.clone()
+    }
+}
+
+
+impl From<&dyn Branch> for MemoryTree {
+    fn from(branch: &dyn Branch) -> Self {
+        Python::with_gil(|py| {
+            MemoryTree(
+                branch.to_object(py).call_method0(py, "create_memorytree")
+                    .unwrap()
+                    .extract(py)
+                    .unwrap())
+        })
+    }
+}
+
+impl Tree for MemoryTree {}
+
+impl MutableTree for MemoryTree {}
