@@ -486,6 +486,12 @@ impl WorkingTree {
     }
 }
 
+impl From<PyObject> for WorkingTree {
+    fn from(obj: PyObject) -> Self {
+        WorkingTree(obj)
+    }
+}
+
 impl Tree for WorkingTree {}
 
 impl MutableTree for WorkingTree {}
