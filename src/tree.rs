@@ -61,7 +61,7 @@ pub trait Tree: ToPyObject {
         Python::with_gil(|py| {
             let f = self.to_object(py).call_method1(py, "get_file", (path,))?;
 
-            let f = pyo3_file::PyFileLikeObject::with_requirements(f, true, false, false)?;
+            let f = pyo3_filelike::PyBinaryFile::from(f);
 
             Ok(Box::new(f) as Box<dyn std::io::Read>)
         })
@@ -324,10 +324,18 @@ impl std::fmt::Display for WorkingTreeOpenError {
 impl std::error::Error for WorkingTreeOpenError {}
 
 impl WorkingTree {
-    pub fn new(obj: PyObject) -> Result<WorkingTree, PyErr> {
-        Ok(WorkingTree(obj))
+    /// Return the base path for this working tree.
+    fn base(&self) -> std::path::PathBuf {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .getattr(py, "base")
+                .unwrap()
+                .extract(py)
+                .unwrap()
+        })
     }
 
+    /// Return the branch for this working tree.
     pub fn branch(&self) -> Box<dyn Branch> {
         Python::with_gil(|py| {
             let branch = self.to_object(py).getattr(py, "branch").unwrap();
@@ -335,6 +343,7 @@ impl WorkingTree {
         })
     }
 
+    /// Return the control directory for this working tree.
     pub fn controldir(&self) -> ControlDir {
         Python::with_gil(|py| {
             let controldir = self.to_object(py).getattr(py, "controldir").unwrap();
