@@ -1,4 +1,5 @@
 use pyo3::prelude::*;
+use crate::tree::Tree;
 
 pub struct TreeTransform(PyObject);
 
@@ -19,6 +20,22 @@ impl FromPyObject<'_> for TreeChange {
 
 #[derive(Clone)]
 pub struct Conflict(PyObject);
+
+pub struct PreviewTree(PyObject);
+
+impl ToPyObject for PreviewTree {
+    fn to_object(&self, py: Python) -> PyObject {
+        self.0.to_object(py)
+    }
+}
+
+impl From<PyObject> for PreviewTree {
+    fn from(ob: PyObject) -> Self {
+        PreviewTree(ob)
+    }
+}
+
+impl Tree for PreviewTree {}
 
 impl TreeTransform {
     pub fn iter_changes(&self) -> PyResult<Box<dyn Iterator<Item = TreeChange>>> {
@@ -46,6 +63,13 @@ impl TreeTransform {
             }
 
             Ok(v)
+        })
+    }
+
+    pub fn get_preview_tree(&self) -> PyResult<PreviewTree> {
+        Python::with_gil(|py| {
+            let ret = self.to_object(py).getattr(py, "preview_tree")?;
+            Ok(PreviewTree(ret))
         })
     }
 }

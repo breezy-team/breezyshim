@@ -195,6 +195,15 @@ pub trait Tree: ToPyObject {
                 .unwrap()
         })
     }
+
+    fn preview_transform(&self) -> Result<crate::transform::TreeTransform, Error> {
+        Python::with_gil(|py| {
+            let transform = self
+                .to_object(py)
+                .call_method0(py, "preview_transform")?;
+            Ok(crate::transform::TreeTransform::from(transform))
+        })
+    }
 }
 
 pub trait MutableTree: Tree {
