@@ -230,4 +230,14 @@ impl ControlDir {
             Ok(WorkingTree(wt))
         })
     }
+
+    pub fn branch_names(&self) -> PyResult<Vec<String>> {
+        Python::with_gil(|py| {
+            let names = self
+                .0
+                .call_method0(py, "branch_names")?
+                .extract::<Vec<String>>(py)?;
+            Ok(names)
+        })
+    }
 }
