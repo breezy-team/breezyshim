@@ -221,6 +221,14 @@ pub trait MutableTree: Tree {
                 .map_err(|e| e.into())
         })
     }
+
+    fn mkdir(&self, path: &std::path::Path) -> Result<(), Error> {
+        Python::with_gil(|py| -> Result<(), PyErr> {
+            self.to_object(py)
+                .call_method1(py, "mkdir", (path,))?;
+            Ok(())
+        }).map_err(|e| e.into())
+    }
 }
 
 pub struct RevisionTree(pub PyObject);
