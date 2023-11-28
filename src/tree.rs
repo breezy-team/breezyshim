@@ -10,6 +10,116 @@ import_exception!(breezy.errors, NotBranchError);
 import_exception!(breezy.errors, DependencyNotPresent);
 import_exception!(breezy.transport, NoSuchFile);
 
+
+#[derive(Debug, PartialEq)]
+pub enum Kind {
+    File,
+    Directory,
+    Symlink,
+    TreeReference,
+}
+
+impl Kind {
+    pub fn marker(&self) -> &'static str {
+        match self {
+            Kind::File => "",
+            Kind::Directory => "/",
+            Kind::Symlink => "@",
+            Kind::TreeReference => "+",
+        }
+    }
+
+    pub fn to_string(&self) -> &'static str {
+        match self {
+            Kind::File => "file",
+            Kind::Directory => "directory",
+            Kind::Symlink => "symlink",
+            Kind::TreeReference => "tree-reference",
+        }
+    }
+}
+
+impl pyo3::ToPyObject for Kind {
+    fn to_object(&self, py: pyo3::Python) -> pyo3::PyObject {
+        match self {
+            Kind::File => "file".to_object(py),
+            Kind::Directory => "directory".to_object(py),
+            Kind::Symlink => "symlink".to_object(py),
+            Kind::TreeReference => "tree-reference".to_object(py),
+        }
+    }
+}
+
+impl pyo3::FromPyObject<'_> for Kind {
+    fn extract(ob: &pyo3::PyAny) -> pyo3::PyResult<Self> {
+        let s: String = ob.extract()?;
+        match s.as_str() {
+            "file" => Ok(Kind::File),
+            "directory" => Ok(Kind::Directory),
+            "symlink" => Ok(Kind::Symlink),
+            "tree-reference" => Ok(Kind::TreeReference),
+            _ => Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "Invalid kind: {}",
+                s
+            ))),
+        }
+    }
+}
+
+pub enum TreeEntry {
+    File {
+        executable: bool,
+        kind: Kind,
+        revision: Option<RevisionId>,
+        size: u64,
+    },
+    Directory {
+        revision: Option<RevisionId>,
+    },
+    Symlink {
+        revision: Option<RevisionId>,
+        symlink_target: String,
+    },
+    TreeReference {
+        revision: Option<RevisionId>,
+        reference_revision: RevisionId,
+    },
+}
+
+impl FromPyObject<'_> for TreeEntry {
+    fn extract(ob: &PyAny) -> PyResult<Self> {
+        match ob.getattr("kind")?.extract()? {
+            "file" => {
+                let executable: bool = ob.getattr("executable")?.extract()?;
+                let kind: Kind = ob.getattr("kind")?.extract()?;
+                let size: u64 = ob.getattr("size")?.extract()?;
+                let revision: Option<RevisionId> = ob.getattr("revision")?.extract()?;
+                Ok(TreeEntry::File {
+                    executable,
+                    kind,
+                    size,
+                    revision
+                })
+            }
+            "directory" => {
+                let revision: Option<RevisionId> = ob.getattr("revision")?.extract()?;
+                Ok(TreeEntry::Directory { revision })
+            }
+            "symlink" => {
+                let revision: Option<RevisionId> = ob.getattr("revision")?.extract()?;
+                let symlink_target: String = ob.getattr("symlink_target")?.extract()?;
+                Ok(TreeEntry::Symlink { revision, symlink_target })
+            }
+            "tree-reference" => {
+                let revision: Option<RevisionId> = ob.getattr("revision")?.extract()?;
+                let reference_revision: RevisionId = ob.getattr("reference_revision")?.extract()?;
+                Ok(TreeEntry::TreeReference { revision, reference_revision })
+            }
+            kind => panic!("Invalid kind: {}", kind),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum Error {
     NoSuchFile(std::path::PathBuf),
@@ -202,6 +312,94 @@ pub trait Tree: ToPyObject {
                 .to_object(py)
                 .call_method0(py, "preview_transform")?;
             Ok(crate::transform::TreeTransform::from(transform))
+        })
+    }
+
+    fn list_files(&self, include_root: Option<bool>, from_dir: Option<&std::path::Path>, recursive: Option<bool>, recurse_nested: Option<bool>) -> Result<Box<dyn Iterator<Item = Result<(std::path::PathBuf, bool, Kind, TreeEntry), Error>>>, Error> {
+        Python::with_gil(|py| {
+            let kwargs = pyo3::types::PyDict::new(py);
+            if let Some(include_root) = include_root {
+                kwargs.set_item("include_root", include_root)?;
+            }
+            if let Some(from_dir) = from_dir {
+                kwargs.set_item("from_dir", from_dir)?;
+            }
+            if let Some(recursive) = recursive {
+                kwargs.set_item("recursive", recursive)?;
+            }
+            if let Some(recurse_nested) = recurse_nested {
+                kwargs.set_item("recurse_nested", recurse_nested)?;
+            }
+            struct ListFilesIter(pyo3::PyObject);
+
+            impl Iterator for ListFilesIter {
+                type Item = Result<(std::path::PathBuf, bool, Kind, TreeEntry), Error>;
+
+                fn next(&mut self) -> Option<Self::Item> {
+                    Python::with_gil(|py| {
+                        let next = match self.0.call_method0(py, "__next__") {
+                            Ok(v) => v,
+                            Err(e) => {
+                                if e.is_instance_of::<pyo3::exceptions::PyStopIteration>(py) {
+                                    return None;
+                                }
+                                return Some(Err(e.into()));
+                            }
+                        };
+
+                        if next.is_none(py) {
+                            None
+                        } else {
+                            Some(next.extract(py).map_err(|e| e.into()))
+                        }
+                    })
+                }
+            }
+
+            Ok(Box::new(ListFilesIter(self.to_object(py).call_method(
+                py,
+                "list_files",
+                (),
+                Some(kwargs),
+            )?))
+                as Box<dyn Iterator<Item = Result<(std::path::PathBuf, bool, Kind, TreeEntry), Error>>>)
+        }).map_err(|e: PyErr| -> Error {  e.into() })
+    }
+
+    fn iter_child_entries(&self, path: &std::path::Path) -> Result<Box<dyn Iterator<Item = Result<(std::path::PathBuf, Kind, TreeEntry), Error>>>, Error> {
+        Python::with_gil(|py| {
+            struct IterChildEntriesIter(pyo3::PyObject);
+
+            impl Iterator for IterChildEntriesIter {
+                type Item = Result<(std::path::PathBuf, Kind, TreeEntry), Error>;
+
+                fn next(&mut self) -> Option<Self::Item> {
+                    Python::with_gil(|py| {
+                        let next = match self.0.call_method0(py, "__next__") {
+                            Ok(v) => v,
+                            Err(e) => {
+                                if e.is_instance_of::<pyo3::exceptions::PyStopIteration>(py) {
+                                    return None;
+                                }
+                                return Some(Err(e.into()));
+                            }
+                        };
+
+                        if next.is_none(py) {
+                            None
+                        } else {
+                            Some(next.extract(py).map_err(|e| e.into()))
+                        }
+                    })
+                }
+            }
+
+            Ok(Box::new(IterChildEntriesIter(self.to_object(py).call_method1(
+                py,
+                "iter_child_entries",
+                (path,),
+            )?))
+                as Box<dyn Iterator<Item = Result<(std::path::PathBuf, Kind, TreeEntry), Error>>>)
         })
     }
 }
