@@ -13,10 +13,19 @@ impl From<PyObject> for Tags {
 impl Tags {
     pub fn get_reverse_tag_dict(&self) -> PyResult<HashMap<RevisionId, HashSet<String>>> {
         Python::with_gil(|py| {
-            Ok(self
+            self
                 .0
                 .call_method0(py, "get_reverse_tag_dict")?
-                .extract(py)?)
+                .extract(py)
+        })
+    }
+
+    pub fn get_tag_dict(&self) -> PyResult<HashMap<String, HashSet<RevisionId>>> {
+        Python::with_gil(|py| {
+            self
+                .0
+                .call_method0(py, "get_tag_dict")?
+                .extract(py)
         })
     }
 }
