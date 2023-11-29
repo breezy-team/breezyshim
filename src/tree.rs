@@ -540,7 +540,7 @@ impl std::error::Error for WorkingTreeOpenError {}
 
 impl WorkingTree {
     /// Return the base path for this working tree.
-    fn base(&self) -> std::path::PathBuf {
+    pub fn base(&self) -> std::path::PathBuf {
         Python::with_gil(|py| {
             self.to_object(py)
                 .getattr(py, "base")
