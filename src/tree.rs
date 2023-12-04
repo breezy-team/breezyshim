@@ -636,18 +636,14 @@ impl WorkingTree {
         Python::with_gil(|py| {
             self.to_object(py)
                 .call_method1(py, "add", (paths.to_vec(),))
-                .unwrap();
-        });
-        Ok(())
+        }).map_err(|e| e.into()).map(|_| ())
     }
 
     pub fn smart_add(&self, paths: &[&std::path::Path]) -> Result<(), Error> {
         Python::with_gil(|py| {
             self.to_object(py)
                 .call_method1(py, "smart_add", (paths.to_vec(),))
-                .unwrap();
-        });
-        Ok(())
+        }).map_err(|e| e.into()).map(|_| ())
     }
 
     pub fn commit(
