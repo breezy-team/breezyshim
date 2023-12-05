@@ -704,6 +704,13 @@ impl WorkingTree {
             Ok(RevisionId::from(last_revision.extract::<Vec<u8>>(py)?))
         })
     }
+
+    pub fn pull(&self, source: &dyn crate::branch::Branch) -> Result<(), Error> {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method1(py, "pull", (source.to_object(py),))
+        }).map_err(|e| e.into()).map(|_| ())
+    }
 }
 
 impl From<PyObject> for WorkingTree {

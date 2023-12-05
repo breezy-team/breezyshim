@@ -194,6 +194,14 @@ pub trait Branch: ToPyObject + Send {
         })
     }
 
+    fn pull(&self, source_branch: &dyn Branch) -> PyResult<()> {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method(py, "pull", (&source_branch.to_object(py),), None)?;
+            Ok(())
+        })
+    }
+
     fn get_public_branch(&self) -> Option<String> {
         Python::with_gil(|py| {
             self.to_object(py)
