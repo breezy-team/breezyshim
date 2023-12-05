@@ -69,4 +69,12 @@ impl Tags {
                 .extract(py)
         })?)
     }
+
+    pub fn has_tag(&self, tag: &str) -> bool {
+        Python::with_gil(|py| {
+            self.0
+                .call_method1(py, "has_tag", (tag,)).unwrap()
+                .extract(py).unwrap()
+        })
+    }
 }
