@@ -6,7 +6,8 @@ use crate::tree::RevisionTree;
 use pyo3::exceptions::PyStopIteration;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
-use chrono::NaiveDateTime;
+use chrono::DateTime;
+use chrono::TimeZone;
 
 #[derive(Clone)]
 pub struct RepositoryFormat(PyObject);
@@ -37,8 +38,9 @@ pub struct Revision {
 }
 
 impl Revision {
-    pub fn datetime(&self) -> NaiveDateTime {
-        NaiveDateTime::from_timestamp(self.timestamp as i64, 0)
+    pub fn datetime(&self) -> DateTime<chrono::FixedOffset> {
+        let tz = chrono::FixedOffset::east(self.timezone);
+        tz.timestamp_opt(self.timestamp as i64, 0).unwrap()
     }
 }
 
