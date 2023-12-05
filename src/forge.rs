@@ -142,11 +142,13 @@ impl FromPyObject<'_> for MergeProposalStatus {
 #[derive(Clone)]
 pub struct MergeProposal(PyObject);
 
-impl MergeProposal {
-    pub fn new(obj: PyObject) -> Self {
+impl From<PyObject> for MergeProposal {
+    fn from(obj: PyObject) -> Self {
         MergeProposal(obj)
     }
+}
 
+impl MergeProposal {
     pub fn reopen(&self) -> PyResult<()> {
         Python::with_gil(|py| {
             self.0.call_method0(py, "reopen")?;
@@ -321,7 +323,7 @@ impl ProposalBuilder {
         Python::with_gil(|py| {
             let kwargs = self.1;
             let proposal = self.0.call_method1(py, "create_proposal", (kwargs,))?;
-            Ok(MergeProposal::new(proposal))
+            Ok(MergeProposal::from(proposal))
         })
     }
 }
@@ -332,7 +334,7 @@ impl Forge {
             let proposal =
                 self.to_object(py)
                     .call_method1(py, "get_proposal_by_url", (url.as_str(),))?;
-            Ok(MergeProposal::new(proposal))
+            Ok(MergeProposal::from(proposal))
         })
     }
 
@@ -419,7 +421,7 @@ impl Forge {
                     .as_ref(py)
                     .iter()
                     .unwrap()
-                    .map(|proposal| MergeProposal::new(proposal.unwrap().to_object(py)))
+                    .map(|proposal| MergeProposal::from(proposal.unwrap().to_object(py)))
                     .collect())
             })?;
         Ok(ret.into_iter())
@@ -468,7 +470,7 @@ impl Forge {
                     Some(kwargs),
                 )?
                 .extract(py)?;
-            Ok(proposals.into_iter().map(MergeProposal::new))
+            Ok(proposals.into_iter().map(MergeProposal::from))
         })
     }
 
@@ -584,6 +586,6 @@ pub fn get_proposal_by_url(url: &url::Url) -> Result<MergeProposal, Error> {
     Python::with_gil(|py| {
         let m = py.import("breezy.forge").unwrap();
         let proposal = m.call_method1("get_proposal_by_url", (url.to_string(),))?;
-        Ok(MergeProposal::new(proposal.to_object(py)))
+        Ok(MergeProposal::from(proposal.to_object(py)))
     })
 }
