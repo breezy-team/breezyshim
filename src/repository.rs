@@ -6,6 +6,7 @@ use crate::tree::RevisionTree;
 use pyo3::exceptions::PyStopIteration;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
+use chrono::NaiveDateTime;
 
 #[derive(Clone)]
 pub struct RepositoryFormat(PyObject);
@@ -33,6 +34,12 @@ pub struct Revision {
     pub committer: String,
     pub timestamp: f64,
     pub timezone: i32,
+}
+
+impl Revision {
+    pub fn datetime(&self) -> NaiveDateTime {
+        NaiveDateTime::from_timestamp(self.timestamp as i64, 0)
+    }
 }
 
 impl ToPyObject for Revision {

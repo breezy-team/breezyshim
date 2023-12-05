@@ -13,6 +13,7 @@ authors = [ "Martin Packman <gzlist@googlemail.com>", "Jelmer Vernooij <jelmer@j
 pyo3-filelike = ">=0.1"
 tempfile = "3.6.0"
 lazy_static = "1.4.0"
+chrono = "0.4"
 
 [features]
 default = [ "debian",]
