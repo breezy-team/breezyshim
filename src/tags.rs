@@ -10,6 +10,39 @@ impl From<PyObject> for Tags {
     }
 }
 
+#[derive(Debug)]
+pub enum Error {
+    NoSuchTag(String),
+    TagAlreadyExists(String),
+    Other(PyErr),
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Error::NoSuchTag(tag) => write!(f, "No such tag: {}", tag),
+            Error::TagAlreadyExists(tag) => write!(f, "Tag already exists: {}", tag),
+            Error::Other(err) => write!(f, "{}", err),
+        }
+    }
+}
+
+impl std::error::Error for Error {}
+
+pyo3::import_exception!(breezy.errors, NoSuchTag);
+
+impl From<PyErr> for Error {
+    fn from(err: PyErr) -> Self {
+        Python::with_gil(|py| {
+            if err.is_instance_of::<NoSuchTag>(py) {
+                Error::NoSuchTag(err.value(py).getattr("value").unwrap().extract().unwrap())
+            } else {
+                Error::Other(err)
+            }
+        })
+    }
+}
+
 impl Tags {
     pub fn get_reverse_tag_dict(&self) -> PyResult<HashMap<RevisionId, HashSet<String>>> {
         Python::with_gil(|py| {
@@ -27,5 +60,13 @@ impl Tags {
                 .call_method0(py, "get_tag_dict")?
                 .extract(py)
         })
+    }
+
+    pub fn lookup_tag(&self, tag: &str) -> Result<RevisionId, Error> {
+        Ok(Python::with_gil(|py| {
+            self.0
+                .call_method1(py, "lookup_tag", (tag,))?
+                .extract(py)
+        })?)
     }
 }
