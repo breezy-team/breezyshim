@@ -622,6 +622,15 @@ impl WorkingTree {
         })
     }
 
+    pub fn relpath(&self, path: &std::path::Path) -> Result<std::path::PathBuf, Error> {
+        Python::with_gil(|py| {
+            Ok(self
+                .to_object(py)
+                .call_method1(py, "relpath", (path,))?
+                .extract(py)?)
+        })
+    }
+
     pub fn supports_setting_file_ids(&self) -> bool {
         Python::with_gil(|py| {
             self.to_object(py)
