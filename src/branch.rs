@@ -193,6 +193,36 @@ pub trait Branch: ToPyObject + Send {
             Ok(())
         })
     }
+
+    fn get_public_branch(&self) -> Option<String> {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method0(py, "get_public_branch")
+                .unwrap()
+                .extract(py)
+                .unwrap()
+        })
+    }
+
+    fn get_push_location(&self) -> Option<String> {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method0(py, "get_push_location")
+                .unwrap()
+                .extract(py)
+                .unwrap()
+        })
+    }
+
+    fn get_submit_branch(&self) -> Option<String> {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method0(py, "get_submit_branch")
+                .unwrap()
+                .extract(py)
+                .unwrap()
+        })
+    }
 }
 
 #[derive(Clone)]
