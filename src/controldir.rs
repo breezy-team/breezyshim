@@ -66,77 +66,33 @@ impl ControlDir {
         })
     }
 
+    #[deprecated]
     pub fn open_tree_or_branch(
         location: &url::Url,
         name: Option<&str>,
     ) -> Result<(Option<WorkingTree>, Box<dyn Branch>), BranchOpenError> {
-        Python::with_gil(|py| {
-            let m = py.import("breezy.controldir")?;
-            let cd = m.getattr("ControlDir")?;
-
-            let ret = cd.to_object(py).call_method(
-                py,
-                "open_tree_or_branch",
-                (location.to_string(), name),
-                None,
-            )?;
-
-            let (tree, branch) = ret.extract::<(Option<PyObject>, PyObject)>(py)?;
-            let branch = Box::new(RegularBranch::new(branch)) as Box<dyn Branch>;
-            let tree = tree.map(WorkingTree);
-            Ok((tree, branch))
-        })
+        open_tree_or_branch(location, name)
     }
 
+    #[deprecated]
     pub fn open(url: &url::Url) -> PyResult<ControlDir> {
-        Python::with_gil(|py| {
-            let m = py.import("breezy.controldir")?;
-            let cd = m.getattr("ControlDir")?;
-            let controldir = cd.call_method("open", (url.to_string(),), None)?;
-            Ok(ControlDir(controldir.to_object(py)))
-        })
+        open(url)
     }
 
+    #[deprecated]
     pub fn open_containing_from_transport(
         transport: &Transport,
         probers: Option<&[Prober]>,
     ) -> PyResult<(ControlDir, String)> {
-        Python::with_gil(|py| {
-            let m = py.import("breezy.controldir")?;
-            let cd = m.getattr("ControlDir")?;
-            let kwargs = PyDict::new(py);
-            if let Some(probers) = probers {
-                kwargs.set_item("probers", probers.iter().map(|p| &p.0).collect::<Vec<_>>())?;
-            }
-            let (controldir, subpath): (PyObject, String) = cd
-                .call_method(
-                    "open_containing_from_transport",
-                    (&transport.to_object(py),),
-                    Some(kwargs),
-                )?
-                .extract()?;
-            Ok((ControlDir(controldir.to_object(py)), subpath))
-        })
+        open_containing_from_transport(transport, probers)
     }
 
+    #[deprecated]
     pub fn open_from_transport(
         transport: &Transport,
         probers: Option<&[Prober]>,
     ) -> PyResult<ControlDir> {
-        Python::with_gil(|py| {
-            let m = py.import("breezy.controldir")?;
-            let cd = m.getattr("ControlDir")?;
-            let kwargs = PyDict::new(py);
-            if let Some(probers) = probers {
-                kwargs.set_item("probers", probers.iter().map(|p| &p.0).collect::<Vec<_>>())?;
-            }
-            let controldir = cd.call_method(
-                "open_from_transport",
-                (&transport.to_object(py),),
-                Some(kwargs),
-            )?;
-            Ok(ControlDir(controldir.to_object(py)))
-        })
+        open_from_transport(transport, probers)
     }
 
     pub fn create_branch(&self, name: Option<&str>) -> PyResult<Box<dyn Branch>> {
@@ -241,3 +197,79 @@ impl ControlDir {
         })
     }
 }
+
+pub fn open_tree_or_branch(
+    location: &url::Url,
+    name: Option<&str>,
+) -> Result<(Option<WorkingTree>, Box<dyn Branch>), BranchOpenError> {
+    Python::with_gil(|py| {
+        let m = py.import("breezy.controldir")?;
+        let cd = m.getattr("ControlDir")?;
+
+        let ret = cd.to_object(py).call_method(
+            py,
+            "open_tree_or_branch",
+            (location.to_string(), name),
+            None,
+        )?;
+
+        let (tree, branch) = ret.extract::<(Option<PyObject>, PyObject)>(py)?;
+        let branch = Box::new(RegularBranch::new(branch)) as Box<dyn Branch>;
+        let tree = tree.map(WorkingTree);
+        Ok((tree, branch))
+    })
+}
+
+
+pub fn open(url: &url::Url) -> PyResult<ControlDir> {
+    Python::with_gil(|py| {
+        let m = py.import("breezy.controldir")?;
+        let cd = m.getattr("ControlDir")?;
+        let controldir = cd.call_method("open", (url.to_string(),), None)?;
+        Ok(ControlDir(controldir.to_object(py)))
+    })
+}
+
+pub fn open_containing_from_transport(
+    transport: &Transport,
+    probers: Option<&[Prober]>,
+) -> PyResult<(ControlDir, String)> {
+    Python::with_gil(|py| {
+        let m = py.import("breezy.controldir")?;
+        let cd = m.getattr("ControlDir")?;
+        let kwargs = PyDict::new(py);
+        if let Some(probers) = probers {
+            kwargs.set_item("probers", probers.iter().map(|p| &p.0).collect::<Vec<_>>())?;
+        }
+        let (controldir, subpath): (PyObject, String) = cd
+            .call_method(
+                "open_containing_from_transport",
+                (&transport.to_object(py),),
+                Some(kwargs),
+            )?
+            .extract()?;
+        Ok((ControlDir(controldir.to_object(py)), subpath))
+    })
+}
+
+pub fn open_from_transport(
+    transport: &Transport,
+    probers: Option<&[Prober]>,
+) -> PyResult<ControlDir> {
+    Python::with_gil(|py| {
+        let m = py.import("breezy.controldir")?;
+        let cd = m.getattr("ControlDir")?;
+        let kwargs = PyDict::new(py);
+        if let Some(probers) = probers {
+            kwargs.set_item("probers", probers.iter().map(|p| &p.0).collect::<Vec<_>>())?;
+        }
+        let controldir = cd.call_method(
+            "open_from_transport",
+            (&transport.to_object(py),),
+            Some(kwargs),
+        )?;
+        Ok(ControlDir(controldir.to_object(py)))
+    })
+}
+
+
