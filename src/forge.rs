@@ -256,7 +256,16 @@ impl MergeProposal {
         })
     }
 
-    pub fn merge(&self, auto: bool) -> PyResult<()> {
+    pub fn supports_auto_merge(&self) -> bool {
+        Python::with_gil(|py| {
+            self.0.getattr(py, "supports_auto_merge")
+                .unwrap()
+                .extract(py)
+                .unwrap()
+        })
+    }
+
+    pub fn merge(&self, auto: bool) -> Result<(), Error> {
         Python::with_gil(|py| {
             self.0.call_method1(py, "merge", (auto,))?;
             Ok(())
