@@ -2,6 +2,8 @@ use crate::branch::{py_tag_selector, Branch, BranchOpenError, RegularBranch};
 use crate::transport::Transport;
 use crate::tree::WorkingTree;
 
+use crate::location::AsLocation;
+
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
@@ -199,7 +201,7 @@ impl ControlDir {
 }
 
 pub fn open_tree_or_branch(
-    location: &url::Url,
+    location: impl AsLocation,
     name: Option<&str>,
 ) -> Result<(Option<WorkingTree>, Box<dyn Branch>), BranchOpenError> {
     Python::with_gil(|py| {
@@ -209,7 +211,7 @@ pub fn open_tree_or_branch(
         let ret = cd.to_object(py).call_method(
             py,
             "open_tree_or_branch",
-            (location.to_string(), name),
+            (location.as_location(), name),
             None,
         )?;
 
@@ -221,11 +223,11 @@ pub fn open_tree_or_branch(
 }
 
 
-pub fn open(url: &url::Url) -> PyResult<ControlDir> {
+pub fn open(url: impl AsLocation) -> PyResult<ControlDir> {
     Python::with_gil(|py| {
         let m = py.import("breezy.controldir")?;
         let cd = m.getattr("ControlDir")?;
-        let controldir = cd.call_method("open", (url.to_string(),), None)?;
+        let controldir = cd.call_method("open", (url.as_location(),), None)?;
         Ok(ControlDir(controldir.to_object(py)))
     })
 }
