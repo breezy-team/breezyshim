@@ -7,6 +7,22 @@ impl Transport {
     pub fn new(obj: PyObject) -> Self {
         Transport(obj)
     }
+
+    pub fn is_local(&self) -> bool {
+        pyo3::import_exception!(breezy.errors, NotLocalUrl);
+        pyo3::Python::with_gil(|py| {
+            self.0.call_method1(py, "local_abspath", (".", ))
+                .map(|_| true)
+                .or_else(|e| {
+                    if e.is_instance_of::<NotLocalUrl>(py) {
+                        Ok::<_, PyErr>(false)
+                    } else {
+                        panic!("Unexpected error: {:?}", e)
+                    }
+                })
+                .unwrap()
+        })
+    }
 }
 
 impl FromPyObject<'_> for Transport {
