@@ -86,7 +86,7 @@ impl Tags {
         Ok(())
     }
 
-    fn delete_tag(&self, tag: &str) -> Result<(), Error> {
+    pub fn delete_tag(&self, tag: &str) -> Result<(), Error> {
         Python::with_gil(|py| {
             self.0
                 .call_method1(py, "delete_tag", (tag,))
