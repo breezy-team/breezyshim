@@ -35,7 +35,7 @@ impl From<PyErr> for Error {
     fn from(err: PyErr) -> Self {
         Python::with_gil(|py| {
             if err.is_instance_of::<NoSuchTag>(py) {
-                Error::NoSuchTag(err.value(py).getattr("value").unwrap().extract().unwrap())
+                Error::NoSuchTag(err.value(py).getattr("tag_name").unwrap().extract().unwrap())
             } else {
                 Error::Other(err)
             }
