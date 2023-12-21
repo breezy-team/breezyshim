@@ -8,6 +8,12 @@ impl Transport {
         Transport(obj)
     }
 
+    pub fn base(&self) -> url::Url {
+        pyo3::Python::with_gil(|py| {
+            self.to_object(py).getattr(py, "base").unwrap().extract::<String>(py).unwrap().parse().unwrap()
+        })
+    }
+
     pub fn is_local(&self) -> bool {
         pyo3::import_exception!(breezy.errors, NotLocalUrl);
         pyo3::Python::with_gil(|py| {
