@@ -10,7 +10,6 @@ import_exception!(breezy.errors, NotBranchError);
 import_exception!(breezy.errors, DependencyNotPresent);
 import_exception!(breezy.transport, NoSuchFile);
 
-
 #[derive(Debug, PartialEq)]
 pub enum Kind {
     File,
@@ -98,7 +97,7 @@ impl FromPyObject<'_> for TreeEntry {
                     executable,
                     kind,
                     size,
-                    revision
+                    revision,
                 })
             }
             "directory" => {
@@ -108,12 +107,18 @@ impl FromPyObject<'_> for TreeEntry {
             "symlink" => {
                 let revision: Option<RevisionId> = ob.getattr("revision")?.extract()?;
                 let symlink_target: String = ob.getattr("symlink_target")?.extract()?;
-                Ok(TreeEntry::Symlink { revision, symlink_target })
+                Ok(TreeEntry::Symlink {
+                    revision,
+                    symlink_target,
+                })
             }
             "tree-reference" => {
                 let revision: Option<RevisionId> = ob.getattr("revision")?.extract()?;
                 let reference_revision: RevisionId = ob.getattr("reference_revision")?.extract()?;
-                Ok(TreeEntry::TreeReference { revision, reference_revision })
+                Ok(TreeEntry::TreeReference {
+                    revision,
+                    reference_revision,
+                })
             }
             kind => panic!("Invalid kind: {}", kind),
         }
@@ -308,14 +313,21 @@ pub trait Tree: ToPyObject {
 
     fn preview_transform(&self) -> Result<crate::transform::TreeTransform, Error> {
         Python::with_gil(|py| {
-            let transform = self
-                .to_object(py)
-                .call_method0(py, "preview_transform")?;
+            let transform = self.to_object(py).call_method0(py, "preview_transform")?;
             Ok(crate::transform::TreeTransform::from(transform))
         })
     }
 
-    fn list_files(&self, include_root: Option<bool>, from_dir: Option<&std::path::Path>, recursive: Option<bool>, recurse_nested: Option<bool>) -> Result<Box<dyn Iterator<Item = Result<(std::path::PathBuf, bool, Kind, TreeEntry), Error>>>, Error> {
+    fn list_files(
+        &self,
+        include_root: Option<bool>,
+        from_dir: Option<&std::path::Path>,
+        recursive: Option<bool>,
+        recurse_nested: Option<bool>,
+    ) -> Result<
+        Box<dyn Iterator<Item = Result<(std::path::PathBuf, bool, Kind, TreeEntry), Error>>>,
+        Error,
+    > {
         Python::with_gil(|py| {
             let kwargs = pyo3::types::PyDict::new(py);
             if let Some(include_root) = include_root {
@@ -362,11 +374,18 @@ pub trait Tree: ToPyObject {
                 (),
                 Some(kwargs),
             )?))
-                as Box<dyn Iterator<Item = Result<(std::path::PathBuf, bool, Kind, TreeEntry), Error>>>)
-        }).map_err(|e: PyErr| -> Error {  e.into() })
+                as Box<
+                    dyn Iterator<Item = Result<(std::path::PathBuf, bool, Kind, TreeEntry), Error>>,
+                >)
+        })
+        .map_err(|e: PyErr| -> Error { e.into() })
     }
 
-    fn iter_child_entries(&self, path: &std::path::Path) -> Result<Box<dyn Iterator<Item = Result<(std::path::PathBuf, Kind, TreeEntry), Error>>>, Error> {
+    fn iter_child_entries(
+        &self,
+        path: &std::path::Path,
+    ) -> Result<Box<dyn Iterator<Item = Result<(std::path::PathBuf, Kind, TreeEntry), Error>>>, Error>
+    {
         Python::with_gil(|py| {
             struct IterChildEntriesIter(pyo3::PyObject);
 
@@ -394,12 +413,16 @@ pub trait Tree: ToPyObject {
                 }
             }
 
-            Ok(Box::new(IterChildEntriesIter(self.to_object(py).call_method1(
-                py,
-                "iter_child_entries",
-                (path,),
-            )?))
-                as Box<dyn Iterator<Item = Result<(std::path::PathBuf, Kind, TreeEntry), Error>>>)
+            Ok(
+                Box::new(IterChildEntriesIter(self.to_object(py).call_method1(
+                    py,
+                    "iter_child_entries",
+                    (path,),
+                )?))
+                    as Box<
+                        dyn Iterator<Item = Result<(std::path::PathBuf, Kind, TreeEntry), Error>>,
+                    >,
+            )
         })
     }
 }
@@ -431,10 +454,10 @@ pub trait MutableTree: Tree {
 
     fn mkdir(&self, path: &std::path::Path) -> Result<(), Error> {
         Python::with_gil(|py| -> Result<(), PyErr> {
-            self.to_object(py)
-                .call_method1(py, "mkdir", (path,))?;
+            self.to_object(py).call_method1(py, "mkdir", (path,))?;
             Ok(())
-        }).map_err(|e| e.into())
+        })
+        .map_err(|e| e.into())
     }
 }
 
@@ -540,10 +563,10 @@ impl std::error::Error for WorkingTreeOpenError {}
 
 impl WorkingTree {
     /// Return the base path for this working tree.
-    pub fn base(&self) -> std::path::PathBuf {
+    pub fn basedir(&self) -> std::path::PathBuf {
         Python::with_gil(|py| {
             self.to_object(py)
-                .getattr(py, "base")
+                .getattr(py, "basedir")
                 .unwrap()
                 .extract(py)
                 .unwrap()
@@ -645,14 +668,18 @@ impl WorkingTree {
         Python::with_gil(|py| {
             self.to_object(py)
                 .call_method1(py, "add", (paths.to_vec(),))
-        }).map_err(|e| e.into()).map(|_| ())
+        })
+        .map_err(|e| e.into())
+        .map(|_| ())
     }
 
     pub fn smart_add(&self, paths: &[&std::path::Path]) -> Result<(), Error> {
         Python::with_gil(|py| {
             self.to_object(py)
                 .call_method1(py, "smart_add", (paths.to_vec(),))
-        }).map_err(|e| e.into()).map(|_| ())
+        })
+        .map_err(|e| e.into())
+        .map(|_| ())
     }
 
     pub fn commit(
@@ -709,7 +736,9 @@ impl WorkingTree {
         Python::with_gil(|py| {
             self.to_object(py)
                 .call_method1(py, "pull", (source.to_object(py),))
-        }).map_err(|e| e.into()).map(|_| ())
+        })
+        .map_err(|e| e.into())
+        .map(|_| ())
     }
 }
 
@@ -796,15 +825,17 @@ impl ToPyObject for MemoryTree {
     }
 }
 
-
 impl From<&dyn Branch> for MemoryTree {
     fn from(branch: &dyn Branch) -> Self {
         Python::with_gil(|py| {
             MemoryTree(
-                branch.to_object(py).call_method0(py, "create_memorytree")
+                branch
+                    .to_object(py)
+                    .call_method0(py, "create_memorytree")
                     .unwrap()
                     .extract(py)
-                    .unwrap())
+                    .unwrap(),
+            )
         })
     }
 }
