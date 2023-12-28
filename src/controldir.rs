@@ -57,12 +57,13 @@ impl ControlDir {
 
     pub fn create_standalone_workingtree(
         base: &std::path::Path,
-        format: Option<&str>,
+        format: Option<impl AsFormat>,
     ) -> PyResult<WorkingTree> {
         let base = base.to_str().unwrap();
         Python::with_gil(|py| {
             let m = py.import("breezy.controldir")?;
             let cd = m.getattr("ControlDir")?;
+            let format = format.map(|format| format.as_format().to_string());
             let wt = cd.call_method("create_standalone_workingtree", (base, format), None)?;
             Ok(WorkingTree(wt.to_object(py)))
         })
@@ -222,12 +223,31 @@ pub fn open_tree_or_branch(
     })
 }
 
-
 pub fn open(url: impl AsLocation) -> PyResult<ControlDir> {
     Python::with_gil(|py| {
         let m = py.import("breezy.controldir")?;
         let cd = m.getattr("ControlDir")?;
         let controldir = cd.call_method("open", (url.as_location(),), None)?;
+        Ok(ControlDir(controldir.to_object(py)))
+    })
+}
+
+pub fn create(
+    url: impl AsLocation,
+    format: Option<impl AsFormat>,
+    possible_transports: Option<&mut Transport>,
+) -> PyResult<ControlDir> {
+    Python::with_gil(|py| {
+        let m = py.import("breezy.controldir")?;
+        let cd = m.getattr("ControlDir")?;
+        let kwargs = PyDict::new(py);
+        if let Some(format) = format {
+            kwargs.set_item("format", format.as_format())?;
+        }
+        if let Some(possible_transports) = possible_transports {
+            kwargs.set_item("possible_transports", possible_transports.to_object(py))?;
+        }
+        let controldir = cd.call_method("create", (url.as_location(),), Some(kwargs))?;
         Ok(ControlDir(controldir.to_object(py)))
     })
 }
@@ -274,4 +294,12 @@ pub fn open_from_transport(
     })
 }
 
+pub trait AsFormat {
+    fn as_format(&self) -> &str;
+}
 
+impl AsFormat for str {
+    fn as_format(&self) -> &str {
+        self
+    }
+}
