@@ -69,6 +69,14 @@ impl ControlDir {
         })
     }
 
+    pub fn cloning_metadir(&self) -> ControlDirFormat {
+        Python::with_gil(|py| {
+            let result = self.to_object(py).call_method0(py, "cloning_metadir")?;
+            Ok::<_, PyErr>(ControlDirFormat(result))
+        })
+        .unwrap()
+    }
+
     #[deprecated]
     pub fn open_tree_or_branch(
         location: &url::Url,
@@ -125,6 +133,7 @@ impl ControlDir {
         &self,
         source_branch: &dyn Branch,
         to_branch_name: Option<&str>,
+        stop_revision: Option<&crate::RevisionId>,
         overwrite: Option<bool>,
         tag_selector: Option<Box<dyn Fn(String) -> bool>>,
     ) -> PyResult<Box<dyn Branch>> {
@@ -138,6 +147,9 @@ impl ControlDir {
             }
             if let Some(overwrite) = overwrite {
                 kwargs.set_item("overwrite", overwrite)?;
+            }
+            if let Some(stop_revision) = stop_revision {
+                kwargs.set_item("stop_revision", stop_revision.to_object(py))?;
             }
             let result = self.to_object(py).call_method(
                 py,
@@ -198,6 +210,14 @@ impl ControlDir {
                 .extract::<Vec<String>>(py)?;
             Ok(names)
         })
+    }
+}
+
+pub struct ControlDirFormat(PyObject);
+
+impl From<PyObject> for ControlDirFormat {
+    fn from(obj: PyObject) -> Self {
+        ControlDirFormat(obj)
     }
 }
 
