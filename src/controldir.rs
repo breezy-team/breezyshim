@@ -46,7 +46,7 @@ impl ControlDir {
         Self(obj)
     }
 
-    pub fn create_branch_convenience(base: &url::Url) -> PyResult<Box<dyn Branch>> {
+    pub fn create_branch_convenience(base: &url::Url) -> Result<Box<dyn Branch>, CreateError> {
         Python::with_gil(|py| {
             let m = py.import("breezy.controldir")?;
             let cd = m.getattr("ControlDir")?;
@@ -58,7 +58,7 @@ impl ControlDir {
     pub fn create_standalone_workingtree(
         base: &std::path::Path,
         format: Option<impl AsFormat>,
-    ) -> PyResult<WorkingTree> {
+    ) -> Result<WorkingTree, CreateError> {
         let base = base.to_str().unwrap();
         Python::with_gil(|py| {
             let m = py.import("breezy.controldir")?;
@@ -86,7 +86,7 @@ impl ControlDir {
     }
 
     #[deprecated]
-    pub fn open(url: &url::Url) -> PyResult<ControlDir> {
+    pub fn open(url: &url::Url) -> Result<ControlDir, OpenError> {
         open(url, None)
     }
 
@@ -94,7 +94,7 @@ impl ControlDir {
     pub fn open_containing_from_transport(
         transport: &Transport,
         probers: Option<&[Prober]>,
-    ) -> PyResult<(ControlDir, String)> {
+    ) -> Result<(ControlDir, String), OpenError> {
         open_containing_from_transport(transport, probers)
     }
 
@@ -102,11 +102,11 @@ impl ControlDir {
     pub fn open_from_transport(
         transport: &Transport,
         probers: Option<&[Prober]>,
-    ) -> PyResult<ControlDir> {
+    ) -> Result<ControlDir, OpenError> {
         open_from_transport(transport, probers)
     }
 
-    pub fn create_branch(&self, name: Option<&str>) -> PyResult<Box<dyn Branch>> {
+    pub fn create_branch(&self, name: Option<&str>) -> Result<Box<dyn Branch>, CreateError> {
         Python::with_gil(|py| {
             let branch = self
                 .to_object(py)
@@ -221,6 +221,78 @@ impl From<PyObject> for ControlDirFormat {
     }
 }
 
+#[derive(Debug)]
+pub enum OpenError {
+    Python(PyErr),
+    NotFound(String),
+    UnknownFormat,
+}
+
+impl From<PyErr> for OpenError {
+    fn from(err: PyErr) -> Self {
+        pyo3::import_exception!(breezy.errors, NotBranchError);
+        pyo3::import_exception!(breezy.errors, UnknownFormatError);
+
+        pyo3::Python::with_gil(|py| {
+            if err.is_instance_of::<NotBranchError>(py) {
+                OpenError::NotFound(err.value(py).getattr("value").unwrap().extract().unwrap())
+            } else if err.is_instance_of::<UnknownFormatError>(py) {
+                OpenError::UnknownFormat
+            } else {
+                OpenError::Python(err)
+            }
+        })
+    }
+}
+
+impl std::fmt::Display for OpenError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            OpenError::Python(err) => err.fmt(f),
+            OpenError::NotFound(name) => write!(f, "Not found: {}", name),
+            OpenError::UnknownFormat => write!(f, "Unknown format"),
+        }
+    }
+}
+
+impl std::error::Error for OpenError {}
+
+#[derive(Debug)]
+pub enum CreateError {
+    Python(PyErr),
+    AlreadyExists,
+    UnknownFormat,
+}
+
+impl From<PyErr> for CreateError {
+    fn from(err: PyErr) -> Self {
+        pyo3::import_exception!(breezy.errors, AlreadyControlDirError);
+        pyo3::import_exception!(breezy.errors, UnknownFormatError);
+
+        pyo3::Python::with_gil(|py| {
+            if err.is_instance_of::<AlreadyControlDirError>(py) {
+                CreateError::AlreadyExists
+            } else if err.is_instance_of::<UnknownFormatError>(py) {
+                CreateError::UnknownFormat
+            } else {
+                CreateError::Python(err)
+            }
+        })
+    }
+}
+
+impl std::fmt::Display for CreateError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            CreateError::Python(err) => err.fmt(f),
+            CreateError::AlreadyExists => write!(f, "Already exists"),
+            CreateError::UnknownFormat => write!(f, "Unknown format"),
+        }
+    }
+}
+
+impl std::error::Error for CreateError {}
+
 pub fn open_tree_or_branch(
     location: impl AsLocation,
     name: Option<&str>,
@@ -252,7 +324,7 @@ pub fn open_tree_or_branch(
 pub fn open(
     url: impl AsLocation,
     possible_transports: Option<&mut Vec<Transport>>,
-) -> PyResult<ControlDir> {
+) -> Result<ControlDir, OpenError> {
     Python::with_gil(|py| {
         let m = py.import("breezy.controldir")?;
         let cd = m.getattr("ControlDir")?;
@@ -269,7 +341,7 @@ pub fn create(
     url: impl AsLocation,
     format: Option<impl AsFormat>,
     possible_transports: Option<&mut Vec<Transport>>,
-) -> PyResult<ControlDir> {
+) -> Result<ControlDir, CreateError> {
     Python::with_gil(|py| {
         let m = py.import("breezy.controldir")?;
         let cd = m.getattr("ControlDir")?;
@@ -288,7 +360,7 @@ pub fn create(
 pub fn open_containing_from_transport(
     transport: &Transport,
     probers: Option<&[Prober]>,
-) -> PyResult<(ControlDir, String)> {
+) -> Result<(ControlDir, String), OpenError> {
     Python::with_gil(|py| {
         let m = py.import("breezy.controldir")?;
         let cd = m.getattr("ControlDir")?;
@@ -311,7 +383,7 @@ pub fn open_containing_from_transport(
 pub fn open_from_transport(
     transport: &Transport,
     probers: Option<&[Prober]>,
-) -> PyResult<ControlDir> {
+) -> Result<ControlDir, OpenError> {
     Python::with_gil(|py| {
         let m = py.import("breezy.controldir")?;
         let cd = m.getattr("ControlDir")?;
@@ -330,7 +402,7 @@ pub fn open_from_transport(
 
 pub trait AsFormat: ToPyObject {}
 
-impl AsFormat for str {}
+impl AsFormat for &str {}
 
 impl ToPyObject for ControlDirFormat {
     fn to_object(&self, py: Python) -> PyObject {
