@@ -469,14 +469,14 @@ impl AsFormat for &str {
     }
 }
 
-impl ToPyObject for ControlDirFormat {
+impl ToPyObject for &ControlDirFormat {
     fn to_object(&self, py: Python) -> PyObject {
         self.0.to_object(py)
     }
 }
 
-impl AsFormat for ControlDirFormat {
+impl AsFormat for &ControlDirFormat {
     fn as_format(&self) -> Option<ControlDirFormat> {
-        Some(self.clone())
+        Some(ControlDirFormat(self.0.clone()))
     }
 }
