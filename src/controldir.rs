@@ -63,7 +63,7 @@ impl ControlDir {
         Python::with_gil(|py| {
             let m = py.import("breezy.controldir")?;
             let cd = m.getattr("ControlDir")?;
-            let format = format.map(|format| format.as_format().to_string());
+            let format = format.map(|f| f.to_object(py));
             let wt = cd.call_method("create_standalone_workingtree", (base, format), None)?;
             Ok(WorkingTree(wt.to_object(py)))
         })
@@ -262,7 +262,7 @@ pub fn create(
         let cd = m.getattr("ControlDir")?;
         let kwargs = PyDict::new(py);
         if let Some(format) = format {
-            kwargs.set_item("format", format.as_format())?;
+            kwargs.set_item("format", format.to_object(py))?;
         }
         if let Some(possible_transports) = possible_transports {
             kwargs.set_item("possible_transports", possible_transports.to_object(py))?;
@@ -314,12 +314,14 @@ pub fn open_from_transport(
     })
 }
 
-pub trait AsFormat {
-    fn as_format(&self) -> &str;
-}
+pub trait AsFormat: ToPyObject {}
 
-impl AsFormat for str {
-    fn as_format(&self) -> &str {
-        self
+impl AsFormat for str {}
+
+impl ToPyObject for ControlDirFormat {
+    fn to_object(&self, py: Python) -> PyObject {
+        self.0.to_object(py)
     }
 }
+
+impl AsFormat for ControlDirFormat {}
