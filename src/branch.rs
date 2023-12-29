@@ -235,9 +235,7 @@ pub trait Branch: ToPyObject + Send {
     fn user_transport(&self) -> crate::transport::Transport {
         Python::with_gil(|py| {
             crate::transport::Transport::new(
-                self.to_object(py)
-                    .getattr(py, "user_transport")
-                    .unwrap(),
+                self.to_object(py).getattr(py, "user_transport").unwrap(),
             )
         })
     }

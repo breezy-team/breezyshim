@@ -215,9 +215,45 @@ impl ControlDir {
 
 pub struct ControlDirFormat(PyObject);
 
+impl Clone for ControlDirFormat {
+    fn clone(&self) -> Self {
+        Python::with_gil(|py| ControlDirFormat(self.0.clone_ref(py)))
+    }
+}
+
 impl From<PyObject> for ControlDirFormat {
     fn from(obj: PyObject) -> Self {
         ControlDirFormat(obj)
+    }
+}
+
+impl ControlDirFormat {
+    pub fn get_default() -> Self {
+        Python::with_gil(|py| {
+            let breezy = PyModule::import(py, "breezy.controldir").unwrap();
+            let cd_format = breezy.getattr("ControlDirFormat").unwrap();
+            ControlDirFormat(cd_format.call_method0("get_default_format").unwrap().into())
+        })
+    }
+
+    pub fn get_format_string(&self) -> String {
+        Python::with_gil(|py| {
+            self.0
+                .call_method0(py, "get_format_string")
+                .unwrap()
+                .extract(py)
+                .unwrap()
+        })
+    }
+
+    pub fn get_format_description(&self) -> String {
+        Python::with_gil(|py| {
+            self.0
+                .call_method0(py, "get_format_description")
+                .unwrap()
+                .extract(py)
+                .unwrap()
+        })
     }
 }
 
@@ -357,6 +393,24 @@ pub fn create(
     })
 }
 
+pub fn create_on_transport(
+    transport: &Transport,
+    format: Option<impl AsFormat>,
+) -> Result<ControlDir, CreateError> {
+    Python::with_gil(|py| {
+        let format = format
+            .map(|f| f.as_format().unwrap())
+            .unwrap_or_else(ControlDirFormat::get_default)
+            .0;
+        Ok(ControlDir(format.call_method(
+            py,
+            "initialize_on_transport",
+            (&transport.to_object(py),),
+            None,
+        )?))
+    })
+}
+
 pub fn open_containing_from_transport(
     transport: &Transport,
     probers: Option<&[Prober]>,
@@ -400,9 +454,20 @@ pub fn open_from_transport(
     })
 }
 
-pub trait AsFormat: ToPyObject {}
+pub trait AsFormat: ToPyObject {
+    fn as_format(&self) -> Option<ControlDirFormat>;
+}
 
-impl AsFormat for &str {}
+impl AsFormat for &str {
+    fn as_format(&self) -> Option<ControlDirFormat> {
+        Python::with_gil(|py| {
+            let m = py.import("breezy.controldir").ok()?;
+            let cd = m.getattr("ControlDirFormat").ok()?;
+            let format = cd.call_method1("get", (self.to_object(py),)).ok()?;
+            Some(ControlDirFormat(format.to_object(py)))
+        })
+    }
+}
 
 impl ToPyObject for ControlDirFormat {
     fn to_object(&self, py: Python) -> PyObject {
@@ -410,4 +475,8 @@ impl ToPyObject for ControlDirFormat {
     }
 }
 
-impl AsFormat for ControlDirFormat {}
+impl AsFormat for ControlDirFormat {
+    fn as_format(&self) -> Option<ControlDirFormat> {
+        Some(self.clone())
+    }
+}
