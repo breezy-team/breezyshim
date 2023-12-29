@@ -95,7 +95,7 @@ impl ControlDir {
         transport: &Transport,
         probers: Option<&[Prober]>,
     ) -> PyResult<(ControlDir, String)> {
-        open_containing_from_transport(transport, probers, None)
+        open_containing_from_transport(transport, probers)
     }
 
     #[deprecated]
@@ -288,7 +288,6 @@ pub fn create(
 pub fn open_containing_from_transport(
     transport: &Transport,
     probers: Option<&[Prober]>,
-    possible_transports: Option<&mut Vec<Transport>>,
 ) -> PyResult<(ControlDir, String)> {
     Python::with_gil(|py| {
         let m = py.import("breezy.controldir")?;
@@ -296,9 +295,6 @@ pub fn open_containing_from_transport(
         let kwargs = PyDict::new(py);
         if let Some(probers) = probers {
             kwargs.set_item("probers", probers.iter().map(|p| &p.0).collect::<Vec<_>>())?;
-        }
-        if let Some(possible_transports) = possible_transports {
-            kwargs.set_item("possible_transports", possible_transports.to_object(py))?;
         }
 
         let (controldir, subpath): (PyObject, String) = cd
