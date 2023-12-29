@@ -82,12 +82,12 @@ impl ControlDir {
         location: &url::Url,
         name: Option<&str>,
     ) -> Result<(Option<WorkingTree>, Box<dyn Branch>), BranchOpenError> {
-        open_tree_or_branch(location, name)
+        open_tree_or_branch(location, name, None)
     }
 
     #[deprecated]
     pub fn open(url: &url::Url) -> PyResult<ControlDir> {
-        open(url)
+        open(url, None)
     }
 
     #[deprecated]
@@ -95,7 +95,7 @@ impl ControlDir {
         transport: &Transport,
         probers: Option<&[Prober]>,
     ) -> PyResult<(ControlDir, String)> {
-        open_containing_from_transport(transport, probers)
+        open_containing_from_transport(transport, probers, None)
     }
 
     #[deprecated]
@@ -224,16 +224,22 @@ impl From<PyObject> for ControlDirFormat {
 pub fn open_tree_or_branch(
     location: impl AsLocation,
     name: Option<&str>,
+    possible_transports: Option<&mut Vec<Transport>>,
 ) -> Result<(Option<WorkingTree>, Box<dyn Branch>), BranchOpenError> {
     Python::with_gil(|py| {
         let m = py.import("breezy.controldir")?;
         let cd = m.getattr("ControlDir")?;
 
+        let kwargs = PyDict::new(py);
+        if let Some(possible_transports) = possible_transports {
+            kwargs.set_item("possible_transports", possible_transports.to_object(py))?;
+        }
+
         let ret = cd.to_object(py).call_method(
             py,
             "open_tree_or_branch",
             (location.as_location(), name),
-            None,
+            Some(kwargs),
         )?;
 
         let (tree, branch) = ret.extract::<(Option<PyObject>, PyObject)>(py)?;
@@ -243,11 +249,18 @@ pub fn open_tree_or_branch(
     })
 }
 
-pub fn open(url: impl AsLocation) -> PyResult<ControlDir> {
+pub fn open(
+    url: impl AsLocation,
+    possible_transports: Option<&mut Vec<Transport>>,
+) -> PyResult<ControlDir> {
     Python::with_gil(|py| {
         let m = py.import("breezy.controldir")?;
         let cd = m.getattr("ControlDir")?;
-        let controldir = cd.call_method("open", (url.as_location(),), None)?;
+        let kwargs = PyDict::new(py);
+        if let Some(possible_transports) = possible_transports {
+            kwargs.set_item("possible_transports", possible_transports.to_object(py))?;
+        }
+        let controldir = cd.call_method("open", (url.as_location(),), Some(kwargs))?;
         Ok(ControlDir(controldir.to_object(py)))
     })
 }
@@ -255,7 +268,7 @@ pub fn open(url: impl AsLocation) -> PyResult<ControlDir> {
 pub fn create(
     url: impl AsLocation,
     format: Option<impl AsFormat>,
-    possible_transports: Option<&mut Transport>,
+    possible_transports: Option<&mut Vec<Transport>>,
 ) -> PyResult<ControlDir> {
     Python::with_gil(|py| {
         let m = py.import("breezy.controldir")?;
@@ -275,6 +288,7 @@ pub fn create(
 pub fn open_containing_from_transport(
     transport: &Transport,
     probers: Option<&[Prober]>,
+    possible_transports: Option<&mut Vec<Transport>>,
 ) -> PyResult<(ControlDir, String)> {
     Python::with_gil(|py| {
         let m = py.import("breezy.controldir")?;
@@ -283,6 +297,10 @@ pub fn open_containing_from_transport(
         if let Some(probers) = probers {
             kwargs.set_item("probers", probers.iter().map(|p| &p.0).collect::<Vec<_>>())?;
         }
+        if let Some(possible_transports) = possible_transports {
+            kwargs.set_item("possible_transports", possible_transports.to_object(py))?;
+        }
+
         let (controldir, subpath): (PyObject, String) = cd
             .call_method(
                 "open_containing_from_transport",
