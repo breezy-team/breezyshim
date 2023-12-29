@@ -57,7 +57,7 @@ impl ControlDir {
 
     pub fn create_standalone_workingtree(
         base: &std::path::Path,
-        format: Option<impl AsFormat>,
+        format: Option<&impl AsFormat>,
     ) -> Result<WorkingTree, CreateError> {
         let base = base.to_str().unwrap();
         Python::with_gil(|py| {
@@ -375,7 +375,7 @@ pub fn open(
 
 pub fn create(
     url: impl AsLocation,
-    format: Option<impl AsFormat>,
+    format: Option<&impl AsFormat>,
     possible_transports: Option<&mut Vec<Transport>>,
 ) -> Result<ControlDir, CreateError> {
     Python::with_gil(|py| {
@@ -395,7 +395,7 @@ pub fn create(
 
 pub fn create_on_transport(
     transport: &Transport,
-    format: Option<impl AsFormat>,
+    format: Option<&impl AsFormat>,
 ) -> Result<ControlDir, CreateError> {
     Python::with_gil(|py| {
         let format = format
