@@ -227,15 +227,17 @@ impl From<PyObject> for ControlDirFormat {
     }
 }
 
-impl ControlDirFormat {
-    pub fn get_default() -> Self {
+impl Default for ControlDirFormat {
+    fn default() -> Self {
         Python::with_gil(|py| {
             let breezy = PyModule::import(py, "breezy.controldir").unwrap();
             let cd_format = breezy.getattr("ControlDirFormat").unwrap();
             ControlDirFormat(cd_format.call_method0("get_default_format").unwrap().into())
         })
     }
+}
 
+impl ControlDirFormat {
     pub fn get_format_string(&self) -> String {
         Python::with_gil(|py| {
             self.0
