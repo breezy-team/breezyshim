@@ -46,6 +46,14 @@ impl ControlDir {
         Self(obj)
     }
 
+    pub fn get_format(&self) -> ControlDirFormat {
+        Python::with_gil(|py| {
+            let result = self.to_object(py).getattr(py, "_format")?;
+            Ok::<_, PyErr>(ControlDirFormat(result))
+        })
+        .unwrap()
+    }
+
     pub fn create_branch_convenience(base: &url::Url) -> Result<Box<dyn Branch>, CreateError> {
         Python::with_gil(|py| {
             let m = py.import("breezy.controldir")?;
@@ -57,13 +65,13 @@ impl ControlDir {
 
     pub fn create_standalone_workingtree(
         base: &std::path::Path,
-        format: Option<&impl AsFormat>,
+        format: impl AsFormat,
     ) -> Result<WorkingTree, CreateError> {
         let base = base.to_str().unwrap();
         Python::with_gil(|py| {
             let m = py.import("breezy.controldir")?;
             let cd = m.getattr("ControlDir")?;
-            let format = format.map(|f| f.to_object(py));
+            let format = format.to_object(py);
             let wt = cd.call_method("create_standalone_workingtree", (base, format), None)?;
             Ok(WorkingTree(wt.to_object(py)))
         })
@@ -257,6 +265,16 @@ impl ControlDirFormat {
                 .unwrap()
         })
     }
+
+    pub fn is_control_filename(&self, filename: &str) -> bool {
+        Python::with_gil(|py| {
+            self.0
+                .call_method1(py, "is_control_filename", (filename,))
+                .unwrap()
+                .extract(py)
+                .unwrap()
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -377,16 +395,14 @@ pub fn open(
 
 pub fn create(
     url: impl AsLocation,
-    format: Option<&impl AsFormat>,
+    format: impl AsFormat,
     possible_transports: Option<&mut Vec<Transport>>,
 ) -> Result<ControlDir, CreateError> {
     Python::with_gil(|py| {
         let m = py.import("breezy.controldir")?;
         let cd = m.getattr("ControlDir")?;
         let kwargs = PyDict::new(py);
-        if let Some(format) = format {
-            kwargs.set_item("format", format.to_object(py))?;
-        }
+        kwargs.set_item("format", format.to_object(py))?;
         if let Some(possible_transports) = possible_transports {
             kwargs.set_item("possible_transports", possible_transports.to_object(py))?;
         }
@@ -397,13 +413,10 @@ pub fn create(
 
 pub fn create_on_transport(
     transport: &Transport,
-    format: Option<&impl AsFormat>,
+    format: impl AsFormat,
 ) -> Result<ControlDir, CreateError> {
     Python::with_gil(|py| {
-        let format = format
-            .map(|f| f.as_format().unwrap())
-            .unwrap_or_else(ControlDirFormat::default)
-            .0;
+        let format = format.as_format().unwrap().0;
         Ok(ControlDir(format.call_method(
             py,
             "initialize_on_transport",
@@ -481,4 +494,13 @@ impl AsFormat for &ControlDirFormat {
     fn as_format(&self) -> Option<ControlDirFormat> {
         Some(ControlDirFormat(self.0.clone()))
     }
+}
+
+#[test]
+fn test_create_on_transport() {
+    let td = tempfile::tempdir().unwrap();
+    let url = url::Url::from_directory_path(td.path()).unwrap();
+
+    let controldir = create(&url, &ControlDirFormat::default(), None).unwrap();
+    assert_eq!(controldir.get_format().get_format_string(), "2a");
 }
