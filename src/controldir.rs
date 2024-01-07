@@ -402,7 +402,7 @@ pub fn create_on_transport(
     Python::with_gil(|py| {
         let format = format
             .map(|f| f.as_format().unwrap())
-            .unwrap_or_else(ControlDirFormat::get_default)
+            .unwrap_or_else(ControlDirFormat::default)
             .0;
         Ok(ControlDir(format.call_method(
             py,

@@ -11,3 +11,5 @@ pub trait MutableInventoryTree: MutableTree {
         .map(|_| ())
     }
 }
+
+impl MutableInventoryTree for crate::tree::WorkingTree {}
