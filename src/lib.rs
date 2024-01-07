@@ -15,6 +15,7 @@
 //! println!("Last revision: {:?}", b.last_revision());
 //! ```
 
+pub mod bazaar;
 pub mod branch;
 pub mod controldir;
 pub mod delta;

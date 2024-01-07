@@ -10,6 +10,9 @@ import_exception!(breezy.errors, NotBranchError);
 import_exception!(breezy.errors, DependencyNotPresent);
 import_exception!(breezy.transport, NoSuchFile);
 
+pub type Path = std::path::Path;
+pub type PathBuf = std::path::PathBuf;
+
 #[derive(Debug, PartialEq)]
 pub enum Kind {
     File,
@@ -127,7 +130,7 @@ impl FromPyObject<'_> for TreeEntry {
 
 #[derive(Debug)]
 pub enum Error {
-    NoSuchFile(std::path::PathBuf),
+    NoSuchFile(PathBuf),
     Other(PyErr),
 }
 
@@ -172,7 +175,7 @@ pub trait Tree: ToPyObject {
         })
     }
 
-    fn get_file(&self, path: &std::path::Path) -> Result<Box<dyn std::io::Read>, Error> {
+    fn get_file(&self, path: &Path) -> Result<Box<dyn std::io::Read>, Error> {
         Python::with_gil(|py| {
             let f = self.to_object(py).call_method1(py, "get_file", (path,))?;
 
@@ -182,7 +185,7 @@ pub trait Tree: ToPyObject {
         })
     }
 
-    fn get_file_text(&self, path: &std::path::Path) -> Result<Vec<u8>, Error> {
+    fn get_file_text(&self, path: &Path) -> Result<Vec<u8>, Error> {
         Python::with_gil(|py| {
             let text = self
                 .to_object(py)
@@ -191,7 +194,7 @@ pub trait Tree: ToPyObject {
         })
     }
 
-    fn get_file_lines(&self, path: &std::path::Path) -> Result<Vec<Vec<u8>>, Error> {
+    fn get_file_lines(&self, path: &Path) -> Result<Vec<Vec<u8>>, Error> {
         Python::with_gil(|py| {
             let lines = self
                 .to_object(py)
@@ -207,7 +210,7 @@ pub trait Tree: ToPyObject {
         })
     }
 
-    fn has_filename(&self, path: &std::path::Path) -> bool {
+    fn has_filename(&self, path: &Path) -> bool {
         Python::with_gil(|py| {
             self.to_object(py)
                 .call_method1(py, "has_filename", (path,))
@@ -227,7 +230,7 @@ pub trait Tree: ToPyObject {
         })
     }
 
-    fn is_ignored(&self, path: &std::path::Path) -> Option<String> {
+    fn is_ignored(&self, path: &Path) -> Option<String> {
         Python::with_gil(|py| {
             self.to_object(py)
                 .call_method1(py, "is_ignored", (path,))
@@ -237,7 +240,7 @@ pub trait Tree: ToPyObject {
         })
     }
 
-    fn is_versioned(&self, path: &std::path::Path) -> bool {
+    fn is_versioned(&self, path: &Path) -> bool {
         Python::with_gil(|py| {
             self.to_object(py)
                 .call_method1(py, "is_versioned", (path,))
@@ -250,7 +253,7 @@ pub trait Tree: ToPyObject {
     fn iter_changes(
         &self,
         other: &dyn Tree,
-        specific_files: Option<&[&std::path::Path]>,
+        specific_files: Option<&[&Path]>,
         want_unversioned: Option<bool>,
         require_versioned: Option<bool>,
     ) -> Result<Box<dyn Iterator<Item = Result<TreeChange, Error>>>, Error> {
@@ -321,13 +324,11 @@ pub trait Tree: ToPyObject {
     fn list_files(
         &self,
         include_root: Option<bool>,
-        from_dir: Option<&std::path::Path>,
+        from_dir: Option<&Path>,
         recursive: Option<bool>,
         recurse_nested: Option<bool>,
-    ) -> Result<
-        Box<dyn Iterator<Item = Result<(std::path::PathBuf, bool, Kind, TreeEntry), Error>>>,
-        Error,
-    > {
+    ) -> Result<Box<dyn Iterator<Item = Result<(PathBuf, bool, Kind, TreeEntry), Error>>>, Error>
+    {
         Python::with_gil(|py| {
             let kwargs = pyo3::types::PyDict::new(py);
             if let Some(include_root) = include_root {
@@ -345,7 +346,7 @@ pub trait Tree: ToPyObject {
             struct ListFilesIter(pyo3::PyObject);
 
             impl Iterator for ListFilesIter {
-                type Item = Result<(std::path::PathBuf, bool, Kind, TreeEntry), Error>;
+                type Item = Result<(PathBuf, bool, Kind, TreeEntry), Error>;
 
                 fn next(&mut self) -> Option<Self::Item> {
                     Python::with_gil(|py| {
@@ -375,7 +376,7 @@ pub trait Tree: ToPyObject {
                 Some(kwargs),
             )?))
                 as Box<
-                    dyn Iterator<Item = Result<(std::path::PathBuf, bool, Kind, TreeEntry), Error>>,
+                    dyn Iterator<Item = Result<(PathBuf, bool, Kind, TreeEntry), Error>>,
                 >)
         })
         .map_err(|e: PyErr| -> Error { e.into() })
@@ -384,13 +385,12 @@ pub trait Tree: ToPyObject {
     fn iter_child_entries(
         &self,
         path: &std::path::Path,
-    ) -> Result<Box<dyn Iterator<Item = Result<(std::path::PathBuf, Kind, TreeEntry), Error>>>, Error>
-    {
+    ) -> Result<Box<dyn Iterator<Item = Result<(PathBuf, Kind, TreeEntry), Error>>>, Error> {
         Python::with_gil(|py| {
             struct IterChildEntriesIter(pyo3::PyObject);
 
             impl Iterator for IterChildEntriesIter {
-                type Item = Result<(std::path::PathBuf, Kind, TreeEntry), Error>;
+                type Item = Result<(PathBuf, Kind, TreeEntry), Error>;
 
                 fn next(&mut self) -> Option<Self::Item> {
                     Python::with_gil(|py| {
@@ -419,9 +419,7 @@ pub trait Tree: ToPyObject {
                     "iter_child_entries",
                     (path,),
                 )?))
-                    as Box<
-                        dyn Iterator<Item = Result<(std::path::PathBuf, Kind, TreeEntry), Error>>,
-                    >,
+                    as Box<dyn Iterator<Item = Result<(PathBuf, Kind, TreeEntry), Error>>>,
             )
         })
     }
@@ -435,7 +433,7 @@ pub trait MutableTree: Tree {
         })
     }
 
-    fn put_file_bytes_non_atomic(&self, path: &std::path::Path, data: &[u8]) -> Result<(), Error> {
+    fn put_file_bytes_non_atomic(&self, path: &Path, data: &[u8]) -> Result<(), Error> {
         Python::with_gil(|py| {
             self.to_object(py)
                 .call_method1(py, "put_file_bytes_non_atomic", (path, data))?;
@@ -452,7 +450,7 @@ pub trait MutableTree: Tree {
         })
     }
 
-    fn mkdir(&self, path: &std::path::Path) -> Result<(), Error> {
+    fn mkdir(&self, path: &Path) -> Result<(), Error> {
         Python::with_gil(|py| -> Result<(), PyErr> {
             self.to_object(py).call_method1(py, "mkdir", (path,))?;
             Ok(())
@@ -563,7 +561,7 @@ impl std::error::Error for WorkingTreeOpenError {}
 
 impl WorkingTree {
     /// Return the base path for this working tree.
-    pub fn basedir(&self) -> std::path::PathBuf {
+    pub fn basedir(&self) -> PathBuf {
         Python::with_gil(|py| {
             self.to_object(py)
                 .getattr(py, "basedir")
@@ -589,7 +587,7 @@ impl WorkingTree {
         })
     }
 
-    pub fn open(path: &std::path::Path) -> Result<WorkingTree, WorkingTreeOpenError> {
+    pub fn open(path: &Path) -> Result<WorkingTree, WorkingTreeOpenError> {
         Python::with_gil(|py| {
             let m = py.import("breezy.workingtree")?;
             let c = m.getattr("WorkingTree")?;
@@ -598,15 +596,13 @@ impl WorkingTree {
         })
     }
 
-    pub fn open_containing(
-        path: &std::path::Path,
-    ) -> Result<(WorkingTree, std::path::PathBuf), WorkingTreeOpenError> {
+    pub fn open_containing(path: &Path) -> Result<(WorkingTree, PathBuf), WorkingTreeOpenError> {
         Python::with_gil(|py| {
             let m = py.import("breezy.workingtree")?;
             let c = m.getattr("WorkingTree")?;
             let (wt, p): (&PyAny, String) =
                 c.call_method1("open_containing", (path,))?.extract()?;
-            Ok((WorkingTree(wt.to_object(py)), std::path::PathBuf::from(p)))
+            Ok((WorkingTree(wt.to_object(py)), PathBuf::from(p)))
         })
     }
 
@@ -636,7 +632,7 @@ impl WorkingTree {
         })
     }
 
-    pub fn abspath(&self, path: &std::path::Path) -> Result<std::path::PathBuf, Error> {
+    pub fn abspath(&self, path: &Path) -> Result<PathBuf, Error> {
         Python::with_gil(|py| {
             Ok(self
                 .to_object(py)
@@ -645,7 +641,7 @@ impl WorkingTree {
         })
     }
 
-    pub fn relpath(&self, path: &std::path::Path) -> Result<std::path::PathBuf, Error> {
+    pub fn relpath(&self, path: &Path) -> Result<PathBuf, Error> {
         Python::with_gil(|py| {
             Ok(self
                 .to_object(py)
@@ -664,7 +660,7 @@ impl WorkingTree {
         })
     }
 
-    pub fn add(&self, paths: &[&std::path::Path]) -> Result<(), Error> {
+    pub fn add(&self, paths: &[&Path]) -> Result<(), Error> {
         Python::with_gil(|py| {
             self.to_object(py)
                 .call_method1(py, "add", (paths.to_vec(),))
@@ -673,7 +669,7 @@ impl WorkingTree {
         .map(|_| ())
     }
 
-    pub fn smart_add(&self, paths: &[&std::path::Path]) -> Result<(), Error> {
+    pub fn smart_add(&self, paths: &[&Path]) -> Result<(), Error> {
         Python::with_gil(|py| {
             self.to_object(py)
                 .call_method1(py, "smart_add", (paths.to_vec(),))
@@ -687,7 +683,7 @@ impl WorkingTree {
         message: &str,
         allow_pointless: Option<bool>,
         committer: Option<&str>,
-        specific_files: Option<&[&std::path::Path]>,
+        specific_files: Option<&[&Path]>,
     ) -> Result<RevisionId, CommitError> {
         Python::with_gil(|py| {
             let kwargs = pyo3::types::PyDict::new(py);
@@ -754,7 +750,7 @@ impl MutableTree for WorkingTree {}
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct TreeChange {
-    pub path: (Option<std::path::PathBuf>, Option<std::path::PathBuf>),
+    pub path: (Option<PathBuf>, Option<PathBuf>),
     pub changed_content: bool,
     pub versioned: (Option<bool>, Option<bool>),
     pub name: (Option<std::ffi::OsString>, Option<std::ffi::OsString>),
