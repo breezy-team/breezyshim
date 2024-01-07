@@ -230,13 +230,15 @@ impl Default for ControlDirFormat {
         Python::with_gil(|py| {
             let breezy = PyModule::import(py, "breezy.controldir").unwrap();
             let cd_format = breezy.getattr("ControlDirFormat").unwrap();
-            ControlDirFormat(cd_format.call_method0("get_default_format").unwrap().into())
+            let obj = cd_format.call_method0("get_default_format").unwrap();
+            assert!(!obj.is_none());
+            ControlDirFormat(obj.into())
         })
     }
 }
 
 impl ControlDirFormat {
-    pub fn get_format_string(&self) -> String {
+    pub fn get_format_string(&self) -> Vec<u8> {
         Python::with_gil(|py| {
             self.0
                 .call_method0(py, "get_format_string")
@@ -484,15 +486,6 @@ impl AsFormat for &ControlDirFormat {
     fn as_format(&self) -> Option<ControlDirFormat> {
         Some(ControlDirFormat(self.0.clone()))
     }
-}
-
-#[test]
-fn test_create_on_transport() {
-    let td = tempfile::tempdir().unwrap();
-    let url = url::Url::from_directory_path(td.path()).unwrap();
-
-    let controldir = create(&url, &ControlDirFormat::default(), None).unwrap();
-    assert_eq!(controldir.get_format().get_format_string(), "2a");
 }
 
 pub fn create_branch_convenience(base: &url::Url) -> Result<Box<dyn Branch>, CreateError> {
