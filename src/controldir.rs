@@ -54,27 +54,17 @@ impl ControlDir {
         .unwrap()
     }
 
+    #[deprecated]
     pub fn create_branch_convenience(base: &url::Url) -> Result<Box<dyn Branch>, CreateError> {
-        Python::with_gil(|py| {
-            let m = py.import("breezy.controldir")?;
-            let cd = m.getattr("ControlDir")?;
-            let branch = cd.call_method("create_branch_convenience", (base.to_string(),), None)?;
-            Ok(Box::new(RegularBranch::new(branch.to_object(py))) as Box<dyn Branch>)
-        })
+        create_branch_convenience(base)
     }
 
+    #[deprecated]
     pub fn create_standalone_workingtree(
         base: &std::path::Path,
         format: impl AsFormat,
     ) -> Result<WorkingTree, CreateError> {
-        let base = base.to_str().unwrap();
-        Python::with_gil(|py| {
-            let m = py.import("breezy.controldir")?;
-            let cd = m.getattr("ControlDir")?;
-            let format = format.to_object(py);
-            let wt = cd.call_method("create_standalone_workingtree", (base, format), None)?;
-            Ok(WorkingTree(wt.to_object(py)))
-        })
+        create_standalone_workingtree(base, format)
     }
 
     pub fn cloning_metadir(&self) -> ControlDirFormat {
@@ -503,4 +493,27 @@ fn test_create_on_transport() {
 
     let controldir = create(&url, &ControlDirFormat::default(), None).unwrap();
     assert_eq!(controldir.get_format().get_format_string(), "2a");
+}
+
+pub fn create_branch_convenience(base: &url::Url) -> Result<Box<dyn Branch>, CreateError> {
+    Python::with_gil(|py| {
+        let m = py.import("breezy.controldir")?;
+        let cd = m.getattr("ControlDir")?;
+        let branch = cd.call_method("create_branch_convenience", (base.to_string(),), None)?;
+        Ok(Box::new(RegularBranch::new(branch.to_object(py))) as Box<dyn Branch>)
+    })
+}
+
+pub fn create_standalone_workingtree(
+    base: &std::path::Path,
+    format: impl AsFormat,
+) -> Result<WorkingTree, CreateError> {
+    let base = base.to_str().unwrap();
+    Python::with_gil(|py| {
+        let m = py.import("breezy.controldir")?;
+        let cd = m.getattr("ControlDir")?;
+        let format = format.to_object(py);
+        let wt = cd.call_method("create_standalone_workingtree", (base, format), None)?;
+        Ok(WorkingTree(wt.to_object(py)))
+    })
 }
