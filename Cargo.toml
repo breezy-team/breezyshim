@@ -38,7 +38,7 @@ workspace = true
 features = [ "serde",]
 
 [workspace.dependencies]
-pyo3 = ">=0.18"
+pyo3 = ">=0.20"
 
 [dev-dependencies.pyo3]
 workspace = true
