@@ -41,6 +41,7 @@ pub mod transform;
 pub mod transport;
 pub mod tree;
 pub mod urlutils;
+pub mod version;
 pub mod workspace;
 
 #[cfg(feature = "debian")]
