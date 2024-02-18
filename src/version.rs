@@ -78,3 +78,20 @@ pub fn version() -> Version {
         }
     })
 }
+
+#[test]
+fn test_version_serialize() {
+    let v = Version {
+        major: 1,
+        minor: 2,
+        micro: 3,
+        level: ReleaseLevel::Final,
+        serial: 0,
+    };
+    assert_eq!(v.to_string(), "1.2.3");
+}
+
+#[test]
+fn test_version() {
+    version().to_string();
+}
