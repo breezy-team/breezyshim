@@ -83,6 +83,11 @@ impl std::fmt::Display for BreezyNotInstalled {
     }
 }
 
+#[ctor::ctor]
+fn ensure_initialized() {
+    init().unwrap();
+}
+
 static INIT_BREEZY: Once = Once::new();
 
 pub fn init() -> Result<(), BreezyNotInstalled> {
@@ -110,6 +115,12 @@ pub fn init() -> Result<(), BreezyNotInstalled> {
             let m = py.import("breezy.controldir").unwrap();
             let f = m.getattr("ControlDirFormat").unwrap();
             f.call_method0("known_formats").unwrap();
+        });
+
+        // Prevent race conditions
+        pyo3::Python::with_gil(|py| {
+            let m = py.import("breezy.config").unwrap();
+            m.call_method0("GlobalStack").unwrap();
         });
     });
     Ok(())

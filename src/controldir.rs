@@ -213,6 +213,12 @@ impl ControlDir {
 
 pub struct ControlDirFormat(PyObject);
 
+impl ToPyObject for ControlDirFormat {
+    fn to_object(&self, py: Python) -> PyObject {
+        self.0.clone_ref(py)
+    }
+}
+
 impl Clone for ControlDirFormat {
     fn clone(&self) -> Self {
         Python::with_gil(|py| ControlDirFormat(self.0.clone_ref(py)))
@@ -394,7 +400,9 @@ pub fn create(
         let m = py.import("breezy.controldir")?;
         let cd = m.getattr("ControlDir")?;
         let kwargs = PyDict::new(py);
-        kwargs.set_item("format", format.to_object(py))?;
+        if let Some(format) = format.as_format() {
+            kwargs.set_item("format", format.to_object(py))?;
+        }
         if let Some(possible_transports) = possible_transports {
             kwargs.set_item("possible_transports", possible_transports.to_object(py))?;
         }
@@ -461,7 +469,7 @@ pub fn open_from_transport(
     })
 }
 
-pub trait AsFormat: ToPyObject {
+pub trait AsFormat {
     fn as_format(&self) -> Option<ControlDirFormat>;
 }
 
@@ -469,16 +477,12 @@ impl AsFormat for &str {
     fn as_format(&self) -> Option<ControlDirFormat> {
         Python::with_gil(|py| {
             let m = py.import("breezy.controldir").ok()?;
-            let cd = m.getattr("ControlDirFormat").ok()?;
-            let format = cd.call_method1("get", (self.to_object(py),)).ok()?;
+            let cd = m.getattr("format_registry").ok()?;
+            let format = cd
+                .call_method1("make_controldir", (self.to_string(),))
+                .ok()?;
             Some(ControlDirFormat(format.to_object(py)))
         })
-    }
-}
-
-impl ToPyObject for &ControlDirFormat {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.to_object(py)
     }
 }
 
@@ -497,6 +501,11 @@ pub fn create_branch_convenience(base: &url::Url) -> Result<Box<dyn Branch>, Cre
     })
 }
 
+/// Create a standalone working tree.
+///
+/// # Arguments
+/// * `base` - The base directory for the working tree.
+/// * `format` - The format of the working tree.
 pub fn create_standalone_workingtree(
     base: &std::path::Path,
     format: impl AsFormat,
@@ -505,8 +514,32 @@ pub fn create_standalone_workingtree(
     Python::with_gil(|py| {
         let m = py.import("breezy.controldir")?;
         let cd = m.getattr("ControlDir")?;
-        let format = format.to_object(py);
-        let wt = cd.call_method("create_standalone_workingtree", (base, format), None)?;
+        let format = format.as_format();
+        let wt = cd.call_method(
+            "create_standalone_workingtree",
+            (base, format.unwrap_or_default().to_object(py)),
+            None,
+        )?;
         Ok(WorkingTree(wt.to_object(py)))
     })
+}
+
+#[test]
+fn test_create_standalone_workingtree() {
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
+
+    assert_eq!(wt.basedir(), tmp_dir.path());
+}
+
+#[test]
+fn test_create_branch_convenience() {
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let branch =
+        create_branch_convenience(&url::Url::from_directory_path(tmp_dir.path()).unwrap()).unwrap();
+
+    assert_eq!(
+        branch.get_user_url(),
+        url::Url::from_directory_path(tmp_dir.path()).unwrap()
+    );
 }
