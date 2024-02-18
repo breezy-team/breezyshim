@@ -764,18 +764,17 @@ impl WorkingTree {
 
     pub fn pull(
         &self,
-        py: Python,
         source: &dyn crate::branch::Branch,
         overwrite: Option<bool>,
-    ) -> Result<(), Error> {
-        let kwargs = {
-            let kwargs = pyo3::types::PyDict::new(py);
-            if let Some(overwrite) = overwrite {
-                kwargs.set_item("overwrite", overwrite).unwrap();
-            }
-            kwargs
-        };
+    ) -> Result<(), PullError> {
         Python::with_gil(|py| {
+            let kwargs = {
+                let kwargs = pyo3::types::PyDict::new(py);
+                if let Some(overwrite) = overwrite {
+                    kwargs.set_item("overwrite", overwrite).unwrap();
+                }
+                kwargs
+            };
             self.to_object(py)
                 .call_method(py, "pull", (source.to_object(py),), Some(kwargs))
         })
