@@ -8,6 +8,7 @@ use pyo3::types::PyDict;
 
 import_exception!(breezy.errors, NotBranchError);
 import_exception!(breezy.errors, DependencyNotPresent);
+import_exception!(breezy.errors, DivergedBranches);
 import_exception!(breezy.controldir, NoColocatedBranchSupport);
 
 #[derive(Debug)]
@@ -79,6 +80,44 @@ impl std::fmt::Display for BranchOpenError {
 }
 
 impl std::error::Error for BranchOpenError {}
+
+#[derive(Debug)]
+pub enum PullError {
+    DivergedBranches,
+    Other(PyErr),
+}
+
+impl From<PyErr> for PullError {
+    fn from(err: PyErr) -> Self {
+        Python::with_gil(|py| {
+            if err.is_instance_of::<DivergedBranches>(py) {
+                PullError::DivergedBranches
+            } else {
+                PullError::Other(err)
+            }
+        })
+    }
+}
+
+impl From<PullError> for PyErr {
+    fn from(err: PullError) -> Self {
+        match err {
+            PullError::DivergedBranches => DivergedBranches::new_err("DivergedBranches"),
+            PullError::Other(err) => err,
+        }
+    }
+}
+
+impl std::fmt::Display for PullError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PullError::DivergedBranches => write!(f, "DivergedBranches"),
+            PullError::Other(err) => write!(f, "Other({})", err),
+        }
+    }
+}
+
+impl std::error::Error for PullError {}
 
 #[derive(Clone)]
 pub struct BranchFormat(PyObject);
@@ -194,10 +233,18 @@ pub trait Branch: ToPyObject + Send {
         })
     }
 
-    fn pull(&self, source_branch: &dyn Branch) -> PyResult<()> {
+    fn pull(&self, source_branch: &dyn Branch, overwrite: Option<bool>) -> Result<(), PullError> {
         Python::with_gil(|py| {
-            self.to_object(py)
-                .call_method(py, "pull", (&source_branch.to_object(py),), None)?;
+            let kwargs = PyDict::new(py);
+            if let Some(overwrite) = overwrite {
+                kwargs.set_item("overwrite", overwrite)?;
+            }
+            self.to_object(py).call_method(
+                py,
+                "pull",
+                (&source_branch.to_object(py),),
+                Some(kwargs),
+            )?;
             Ok(())
         })
     }
