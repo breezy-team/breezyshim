@@ -121,6 +121,7 @@ pub fn init() -> Result<(), BreezyNotInstalled> {
         pyo3::Python::with_gil(|py| {
             let m = py.import("breezy.config").unwrap();
             m.call_method0("GlobalStack").unwrap();
+            m.call_method1("LocationStack", ("file:///",)).unwrap();
         });
     });
     Ok(())
