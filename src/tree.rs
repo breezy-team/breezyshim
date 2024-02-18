@@ -6,6 +6,7 @@ use pyo3::import_exception;
 use pyo3::prelude::*;
 
 import_exception!(breezy.commit, PointlessCommit);
+import_exception!(breezy.commit, NoWhoami);
 import_exception!(breezy.errors, NotBranchError);
 import_exception!(breezy.errors, DependencyNotPresent);
 import_exception!(breezy.transport, NoSuchFile);
@@ -472,6 +473,7 @@ impl Tree for RevisionTree {}
 #[derive(Debug)]
 pub enum CommitError {
     PointlessCommit,
+    NoWhoami,
     Other(PyErr),
 }
 
@@ -479,6 +481,7 @@ impl std::fmt::Display for CommitError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
             CommitError::PointlessCommit => write!(f, "Pointless commit"),
+            CommitError::NoWhoami => write!(f, "No whoami"),
             CommitError::Other(e) => write!(f, "Other error: {}", e),
         }
     }
@@ -712,6 +715,8 @@ impl WorkingTree {
                 .map_err(|e| {
                     if e.is_instance_of::<PointlessCommit>(py) {
                         CommitError::PointlessCommit
+                    } else if e.is_instance_of::<NoWhoami>(py) {
+                        CommitError::NoWhoami
                     } else {
                         CommitError::Other(e)
                     }
