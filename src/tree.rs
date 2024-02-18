@@ -9,6 +9,7 @@ import_exception!(breezy.commit, PointlessCommit);
 import_exception!(breezy.commit, NoWhoami);
 import_exception!(breezy.errors, NotBranchError);
 import_exception!(breezy.errors, DependencyNotPresent);
+import_exception!(breezy.errors, DivergedBranches);
 import_exception!(breezy.transport, NoSuchFile);
 
 pub type Path = std::path::Path;
@@ -165,6 +166,34 @@ impl From<Error> for PyErr {
         }
     }
 }
+
+#[derive(Debug)]
+pub enum PullError {
+    DivergedBranches,
+    Other(PyErr),
+}
+
+impl From<PyErr> for PullError {
+    fn from(e: PyErr) -> Self {
+        Python::with_gil(|py| {
+            if e.is_instance_of::<DivergedBranches>(py) {
+                return PullError::DivergedBranches;
+            }
+            PullError::Other(e)
+        })
+    }
+}
+
+impl std::fmt::Display for PullError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            PullError::DivergedBranches => write!(f, "Diverged branches"),
+            PullError::Other(e) => write!(f, "{}", e),
+        }
+    }
+}
+
+impl std::error::Error for PullError {}
 
 pub trait Tree: ToPyObject {
     fn get_tag_dict(&self) -> Result<std::collections::HashMap<String, RevisionId>, PyErr> {
@@ -733,10 +762,22 @@ impl WorkingTree {
         })
     }
 
-    pub fn pull(&self, source: &dyn crate::branch::Branch) -> Result<(), Error> {
+    pub fn pull(
+        &self,
+        py: Python,
+        source: &dyn crate::branch::Branch,
+        overwrite: Option<bool>,
+    ) -> Result<(), Error> {
+        let kwargs = {
+            let kwargs = pyo3::types::PyDict::new(py);
+            if let Some(overwrite) = overwrite {
+                kwargs.set_item("overwrite", overwrite).unwrap();
+            }
+            kwargs
+        };
         Python::with_gil(|py| {
             self.to_object(py)
-                .call_method1(py, "pull", (source.to_object(py),))
+                .call_method(py, "pull", (source.to_object(py),), Some(kwargs))
         })
         .map_err(|e| e.into())
         .map(|_| ())
