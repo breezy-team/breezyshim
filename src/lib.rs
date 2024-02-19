@@ -17,6 +17,7 @@
 
 pub mod bazaar;
 pub mod branch;
+pub mod config;
 pub mod controldir;
 pub mod delta;
 pub mod diff;

@@ -15,6 +15,7 @@ tempfile = "3.6.0"
 lazy_static = "1.4.0"
 chrono = "0.4"
 ctor = "0.2.6"
+lazy-regex = "3.1.0"
 
 [features]
 default = ["debian"]
