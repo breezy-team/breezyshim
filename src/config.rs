@@ -8,9 +8,14 @@ pub fn parse_username(e: &str) -> (String, String) {
     }
 }
 
-pub fn extract_email_address(e: &str) -> String {
+pub fn extract_email_address(e: &str) -> Option<String> {
     let (_name, email) = parse_username(e);
-    email
+
+    if email.is_empty() {
+        None
+    } else {
+        Some(email)
+    }
 }
 
 #[test]
@@ -29,6 +34,7 @@ fn test_parse_username() {
 fn test_extract_email_address() {
     assert_eq!(
         extract_email_address("John Doe <joe@example.com>"),
-        "joe@example.com".to_string()
+        Some("joe@example.com".to_string())
     );
+    assert_eq!(extract_email_address("John Doe"), None);
 }
