@@ -23,7 +23,7 @@ debian = ["dep:debversion"]
 auto-initialize = ["pyo3/auto-initialize"]
 
 [dependencies.debversion]
-version = "0.2"
+version = ">=0.2"
 optional = true
 features = [ "python-debian",]
 
