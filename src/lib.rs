@@ -129,10 +129,3 @@ pub fn init() -> Result<(), BreezyNotInstalled> {
     });
     Ok(())
 }
-
-pub fn load_plugins() {
-    pyo3::Python::with_gil(|py| {
-        let m = py.import("breezy.plugin").unwrap();
-        m.call_method0("load_plugins").unwrap();
-    })
-}

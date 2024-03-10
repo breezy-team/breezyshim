@@ -1,11 +1,20 @@
+use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 
-pub fn load_plugins() {
+pub fn load_plugins() -> bool {
     Python::with_gil(|py| {
         let m = py.import("breezy.plugin").unwrap();
-        let load_plugins = m.getattr("load_plugins").unwrap();
-        load_plugins.call0().unwrap();
-    });
+        match m.call_method0("load_plugins") {
+            Ok(_) => true,
+            Err(e)
+                if e.is_instance_of::<PyRuntimeError>(py)
+                    && e.to_string().contains("Breezy already initialized") =>
+            {
+                false
+            }
+            Err(e) => panic!("Error loading plugins: {}", e),
+        }
+    })
 }
 
 #[cfg(test)]
