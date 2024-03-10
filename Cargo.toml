@@ -14,13 +14,13 @@ pyo3-filelike = ">=0.1"
 tempfile = "3.6.0"
 lazy_static = "1.4.0"
 chrono = "0.4"
-ctor = "0.2.6"
+ctor = { version = "0.2.6", optional = true }
 lazy-regex = "3.1.0"
 
 [features]
-default = ["debian"]
+default = ["debian", "auto-initialize"]
 debian = ["dep:debversion"]
-auto-initialize = ["pyo3/auto-initialize"]
+auto-initialize = ["dep:ctor"]
 
 [dependencies.debversion]
 version = ">=0.2"
@@ -44,4 +44,3 @@ pyo3 = ">=0.20"
 
 [dev-dependencies.pyo3]
 workspace = true
-features = [ "auto-initialize",]

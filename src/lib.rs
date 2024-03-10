@@ -84,6 +84,7 @@ impl std::fmt::Display for BreezyNotInstalled {
     }
 }
 
+#[cfg(feature = "auto-initialize")]
 #[ctor::ctor]
 fn ensure_initialized() {
     init().unwrap();
@@ -93,6 +94,7 @@ static INIT_BREEZY: Once = Once::new();
 
 pub fn init() -> Result<(), BreezyNotInstalled> {
     INIT_BREEZY.call_once(|| {
+        pyo3::prepare_freethreaded_python();
         pyo3::Python::with_gil(|py| match py.import("breezy") {
             Ok(_) => Ok(()),
             Err(e) => {
