@@ -29,6 +29,32 @@ impl RevisionId {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_revision_id() {
+        let id = RevisionId::null();
+        assert!(id.is_null());
+        assert!(!id.is_reserved());
+    }
+
+    #[test]
+    fn test_revision_id_from_vec() {
+        let id = RevisionId::from(b"test".to_vec());
+        assert!(!id.is_null());
+        assert!(!id.is_reserved());
+    }
+
+    #[test]
+    fn test_reserved_revision_id() {
+        let id = RevisionId::from(b":test".to_vec());
+        assert!(!id.is_null());
+        assert!(id.is_reserved());
+    }
+}
+
 impl From<Vec<u8>> for RevisionId {
     fn from(value: Vec<u8>) -> Self {
         Self(value)
