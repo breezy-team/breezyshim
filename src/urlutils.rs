@@ -13,6 +13,19 @@ pub fn join_segment_parameters(
     })
 }
 
+#[test]
+fn test_join_segment_parameters() {
+    let url = url::Url::parse("http://example.com/blah").unwrap();
+    let mut parameters = std::collections::HashMap::new();
+    parameters.insert("a".to_string(), "1".to_string());
+    parameters.insert("b".to_string(), "2".to_string());
+    let result = join_segment_parameters(&url, parameters);
+    assert_eq!(
+        result,
+        url::Url::parse("http://example.com/blah,a=1,b=2").unwrap()
+    );
+}
+
 pub fn split_segment_parameters(
     url: &url::Url,
 ) -> (url::Url, std::collections::HashMap<String, String>) {
@@ -25,4 +38,18 @@ pub fn split_segment_parameters(
             .map(|(s, m)| (url::Url::parse(s.as_str()).unwrap(), m))
             .unwrap()
     })
+}
+
+#[test]
+fn test_split_segment_parameters() {
+    let url = url::Url::parse("http://example.com/blah,a=1,b=2").unwrap();
+    let (result_url, result_parameters) = split_segment_parameters(&url);
+    assert_eq!(
+        result_url,
+        url::Url::parse("http://example.com/blah").unwrap()
+    );
+    let mut expected_parameters = std::collections::HashMap::new();
+    expected_parameters.insert("a".to_string(), "1".to_string());
+    expected_parameters.insert("b".to_string(), "2".to_string());
+    assert_eq!(result_parameters, expected_parameters);
 }

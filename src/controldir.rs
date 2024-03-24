@@ -211,6 +211,12 @@ impl ControlDir {
     }
 }
 
+impl std::fmt::Debug for ControlDir {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_fmt(format_args!("ControlDir({:?})", self.0))
+    }
+}
+
 pub struct ControlDirFormat(PyObject);
 
 impl ToPyObject for ControlDirFormat {
@@ -241,6 +247,12 @@ impl Default for ControlDirFormat {
             ControlDirFormat(obj.into())
         })
     }
+}
+
+#[test]
+fn test_control_dir_format_default() {
+    let d = ControlDirFormat::default();
+    d.get_format_string();
 }
 
 impl ControlDirFormat {
@@ -289,7 +301,7 @@ impl From<PyErr> for OpenError {
 
         pyo3::Python::with_gil(|py| {
             if err.is_instance_of::<NotBranchError>(py) {
-                OpenError::NotFound(err.value(py).getattr("value").unwrap().extract().unwrap())
+                OpenError::NotFound(err.value(py).getattr("path").unwrap().extract().unwrap())
             } else if err.is_instance_of::<UnknownFormatError>(py) {
                 OpenError::UnknownFormat
             } else {
@@ -375,6 +387,23 @@ pub fn open_tree_or_branch(
     })
 }
 
+#[test]
+fn test_open_tree_or_branch() {
+    let tmp_dir = tempfile::tempdir().unwrap();
+    create_branch_convenience(&url::Url::from_directory_path(tmp_dir.path()).unwrap()).unwrap();
+    let (wt, branch) = open_tree_or_branch(
+        &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
+        None,
+        None,
+    )
+    .unwrap();
+    assert_eq!(wt.unwrap().basedir(), tmp_dir.path());
+    assert_eq!(
+        branch.get_user_url(),
+        url::Url::from_directory_path(tmp_dir.path()).unwrap()
+    );
+}
+
 pub fn open(
     url: impl AsLocation,
     possible_transports: Option<&mut Vec<Transport>>,
@@ -389,6 +418,36 @@ pub fn open(
         let controldir = cd.call_method("open", (url.as_location(),), Some(kwargs))?;
         Ok(ControlDir(controldir.to_object(py)))
     })
+}
+
+#[test]
+fn test_open() {
+    let tmp_dir = tempfile::tempdir().unwrap();
+
+    let e = open(
+        &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
+        None,
+    )
+    .unwrap_err();
+
+    assert!(matches!(e, OpenError::NotFound(_)),);
+
+    let cd = create(
+        &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
+        "2a",
+        None,
+    )
+    .unwrap();
+
+    let od = open(
+        &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
+        None,
+    )
+    .unwrap();
+    assert_eq!(
+        cd.get_format().get_format_string(),
+        od.get_format().get_format_string()
+    );
 }
 
 pub fn create(
@@ -411,6 +470,27 @@ pub fn create(
     })
 }
 
+#[test]
+fn test_create() {
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let cd = create(
+        &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
+        "2a",
+        None,
+    )
+    .unwrap();
+
+    let od = open(
+        &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
+        None,
+    )
+    .unwrap();
+    assert_eq!(
+        cd.get_format().get_format_string(),
+        od.get_format().get_format_string()
+    );
+}
+
 pub fn create_on_transport(
     transport: &Transport,
     format: impl AsFormat,
@@ -424,6 +504,17 @@ pub fn create_on_transport(
             None,
         )?))
     })
+}
+
+#[test]
+fn test_create_on_transport() {
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let transport = crate::transport::get_transport(
+        &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
+        None,
+    )
+    .unwrap();
+    let _cd = create_on_transport(&transport, "2a").unwrap();
 }
 
 pub fn open_containing_from_transport(
@@ -449,6 +540,18 @@ pub fn open_containing_from_transport(
     })
 }
 
+#[test]
+fn test_open_containing_from_transport() {
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let transport = crate::transport::get_transport(
+        &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
+        None,
+    )
+    .unwrap();
+    let e = open_containing_from_transport(&transport, None).unwrap_err();
+    assert!(matches!(e, OpenError::NotFound(_)),);
+}
+
 pub fn open_from_transport(
     transport: &Transport,
     probers: Option<&[Prober]>,
@@ -467,6 +570,18 @@ pub fn open_from_transport(
         )?;
         Ok(ControlDir(controldir.to_object(py)))
     })
+}
+
+#[test]
+fn test_open_from_transport() {
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let transport = crate::transport::get_transport(
+        &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
+        None,
+    )
+    .unwrap();
+    let e = open_from_transport(&transport, None).unwrap_err();
+    assert!(matches!(e, OpenError::NotFound(_)),);
 }
 
 pub trait AsFormat {

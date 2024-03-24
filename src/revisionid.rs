@@ -53,6 +53,12 @@ mod tests {
         assert!(!id.is_null());
         assert!(id.is_reserved());
     }
+
+    #[test]
+    fn test_as_bytes() {
+        let id = RevisionId::from(b"test".to_vec());
+        assert_eq!(id.as_bytes(), b"test");
+    }
 }
 
 impl From<Vec<u8>> for RevisionId {
