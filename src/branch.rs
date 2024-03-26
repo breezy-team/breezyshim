@@ -39,12 +39,7 @@ impl From<PyErr> for BranchOpenError {
                     .unwrap()
                     .extract::<String>()
                     .unwrap();
-                let e = err
-                    .value(py)
-                    .getattr("error")
-                    .unwrap()
-                    .extract::<String>()
-                    .unwrap();
+                let e = err.value(py).getattr("error").unwrap().to_string();
                 BranchOpenError::DependencyNotPresent(l, e)
             } else {
                 BranchOpenError::Other(err)
