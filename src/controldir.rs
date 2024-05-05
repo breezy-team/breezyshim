@@ -397,7 +397,11 @@ fn test_open_tree_or_branch() {
         None,
     )
     .unwrap();
-    assert_eq!(wt.unwrap().basedir(), tmp_dir.path());
+
+    assert_eq!(
+        wt.unwrap().basedir().canonicalize().unwrap(),
+        tmp_dir.path().canonicalize().unwrap()
+    );
     assert_eq!(
         branch.get_user_url(),
         url::Url::from_directory_path(tmp_dir.path()).unwrap()
@@ -644,7 +648,10 @@ fn test_create_standalone_workingtree() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
 
-    assert_eq!(wt.basedir(), tmp_dir.path());
+    assert_eq!(
+        wt.basedir().canonicalize().unwrap(),
+        tmp_dir.path().canonicalize().unwrap()
+    );
 }
 
 #[test]
