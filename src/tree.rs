@@ -506,6 +506,26 @@ impl RevisionTree {
             crate::repository::Repository::new(repository)
         })
     }
+
+    pub fn get_revision_id(&self) -> RevisionId {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method0(py, "get_revision_id")
+                .unwrap()
+                .extract(py)
+                .unwrap()
+        })
+    }
+
+    pub fn get_parent_ids(&self) -> Vec<RevisionId> {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method0(py, "get_parent_ids")
+                .unwrap()
+                .extract(py)
+                .unwrap()
+        })
+    }
 }
 
 #[derive(Debug)]
