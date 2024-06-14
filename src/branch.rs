@@ -244,6 +244,16 @@ pub trait Branch: ToPyObject + Send {
         })
     }
 
+    fn get_parent(&self) -> Option<String> {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method0(py, "get_parent")
+                .unwrap()
+                .extract(py)
+                .unwrap()
+        })
+    }
+
     fn get_public_branch(&self) -> Option<String> {
         Python::with_gil(|py| {
             self.to_object(py)
