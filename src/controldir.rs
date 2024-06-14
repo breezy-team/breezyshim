@@ -168,6 +168,7 @@ impl ControlDir {
         source_branch: Option<&dyn Branch>,
         create_tree_if_local: Option<bool>,
         stacked: Option<bool>,
+        revision_id: Option<&crate::RevisionId>,
     ) -> ControlDir {
         Python::with_gil(|py| {
             let kwargs = PyDict::new(py);
@@ -182,6 +183,11 @@ impl ControlDir {
             if let Some(source_branch) = source_branch {
                 kwargs
                     .set_item("source_branch", &source_branch.to_object(py))
+                    .unwrap();
+            }
+            if let Some(revision_id) = revision_id {
+                kwargs
+                    .set_item("revision_id", revision_id.to_object(py))
                     .unwrap();
             }
 
