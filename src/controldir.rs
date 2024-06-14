@@ -199,6 +199,16 @@ impl ControlDir {
         })
     }
 
+    pub fn has_workingtree(&self) -> bool {
+        Python::with_gil(|py| {
+            let result = self
+                .to_object(py)
+                .call_method0(py, "has_workingtree")
+                .unwrap();
+            result.extract(py).unwrap()
+        })
+    }
+
     pub fn open_workingtree(&self) -> PyResult<WorkingTree> {
         Python::with_gil(|py| {
             let wt = self.0.call_method0(py, "open_workingtree")?.extract(py)?;
