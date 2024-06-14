@@ -341,20 +341,14 @@ impl std::fmt::Display for OpenError {
 
 impl std::error::Error for OpenError {}
 
-impl ToPyObject for OpenError {
-    fn to_object(&self, py: Python) -> PyObject {
-        match self {
-            OpenError::Python(err) => err.to_object(py),
-            OpenError::NotFound(name) => {
-                let m = PyModule::import(py, "breezy.errors").unwrap();
-                let e = m.getattr("NotBranchError").unwrap();
-                e.call1((name,)).unwrap().to_object(py)
-            }
-            OpenError::UnknownFormat(format) => {
-                let m = PyModule::import(py, "breezy.errors").unwrap();
-                let e = m.getattr("UnknownFormatError").unwrap();
-                e.call1((format,)).unwrap().to_object(py)
-            }
+impl From<OpenError> for PyErr {
+    fn from(err: OpenError) -> PyErr {
+        pyo3::import_exception!(breezy.errors, NotBranchError);
+        pyo3::import_exception!(breezy.errors, UnknownFormatError);
+        match err {
+            OpenError::Python(err) => err,
+            OpenError::NotFound(name) => NotBranchError::new_err((name,)),
+            OpenError::UnknownFormat(name) => UnknownFormatError::new_err((name,)),
         }
     }
 }
