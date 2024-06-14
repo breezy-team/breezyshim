@@ -5,6 +5,12 @@ pub mod tree;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FileId(Vec<u8>);
 
+impl Default for FileId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FileId {
     pub fn new() -> Self {
         Self(vec![])

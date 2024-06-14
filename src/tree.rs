@@ -500,7 +500,7 @@ impl ToPyObject for RevisionTree {
 impl Tree for RevisionTree {}
 
 impl RevisionTree {
-    fn repository(&self) -> crate::repository::Repository {
+    pub fn repository(&self) -> crate::repository::Repository {
         Python::with_gil(|py| {
             let repository = self.to_object(py).getattr(py, "_repository").unwrap();
             crate::repository::Repository::new(repository)
