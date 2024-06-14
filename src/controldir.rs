@@ -307,7 +307,7 @@ impl ControlDirFormat {
 pub enum OpenError {
     Python(PyErr),
     NotFound(String),
-    UnknownFormat,
+    UnknownFormat(String),
 }
 
 impl From<PyErr> for OpenError {
@@ -319,7 +319,9 @@ impl From<PyErr> for OpenError {
             if err.is_instance_of::<NotBranchError>(py) {
                 OpenError::NotFound(err.value(py).getattr("path").unwrap().extract().unwrap())
             } else if err.is_instance_of::<UnknownFormatError>(py) {
-                OpenError::UnknownFormat
+                OpenError::UnknownFormat(
+                    err.value(py).getattr("format").unwrap().extract().unwrap(),
+                )
             } else {
                 OpenError::Python(err)
             }
@@ -332,18 +334,36 @@ impl std::fmt::Display for OpenError {
         match self {
             OpenError::Python(err) => err.fmt(f),
             OpenError::NotFound(name) => write!(f, "Not found: {}", name),
-            OpenError::UnknownFormat => write!(f, "Unknown format"),
+            OpenError::UnknownFormat(name) => write!(f, "Unknown format: {}", name),
         }
     }
 }
 
 impl std::error::Error for OpenError {}
 
+impl ToPyObject for OpenError {
+    fn to_object(&self, py: Python) -> PyObject {
+        match self {
+            OpenError::Python(err) => err.to_object(py),
+            OpenError::NotFound(name) => {
+                let m = PyModule::import(py, "breezy.errors").unwrap();
+                let e = m.getattr("NotBranchError").unwrap();
+                e.call1((name,)).unwrap().to_object(py)
+            }
+            OpenError::UnknownFormat(format) => {
+                let m = PyModule::import(py, "breezy.errors").unwrap();
+                let e = m.getattr("UnknownFormatError").unwrap();
+                e.call1((format,)).unwrap().to_object(py)
+            }
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum CreateError {
     Python(PyErr),
     AlreadyExists,
-    UnknownFormat,
+    UnknownFormat(String),
 }
 
 impl From<PyErr> for CreateError {
@@ -355,7 +375,9 @@ impl From<PyErr> for CreateError {
             if err.is_instance_of::<AlreadyControlDirError>(py) {
                 CreateError::AlreadyExists
             } else if err.is_instance_of::<UnknownFormatError>(py) {
-                CreateError::UnknownFormat
+                CreateError::UnknownFormat(
+                    err.value(py).getattr("format").unwrap().extract().unwrap(),
+                )
             } else {
                 CreateError::Python(err)
             }
@@ -368,7 +390,7 @@ impl std::fmt::Display for CreateError {
         match self {
             CreateError::Python(err) => err.fmt(f),
             CreateError::AlreadyExists => write!(f, "Already exists"),
-            CreateError::UnknownFormat => write!(f, "Unknown format"),
+            CreateError::UnknownFormat(format) => write!(f, "Unknown format: {}", format),
         }
     }
 }
