@@ -281,7 +281,7 @@ impl ProposalBuilder {
     pub fn description(self, description: &str) -> Self {
         Python::with_gil(|py| {
             self.1
-                .bind(py)
+                .as_ref(py)
                 .set_item("description", description)
                 .unwrap();
         });
@@ -290,14 +290,14 @@ impl ProposalBuilder {
 
     pub fn labels(self, labels: &[&str]) -> Self {
         Python::with_gil(|py| {
-            self.1.bind(py).set_item("labels", labels).unwrap();
+            self.1.as_ref(py).set_item("labels", labels).unwrap();
         });
         self
     }
 
     pub fn reviewers(self, reviewers: &[&str]) -> Self {
         Python::with_gil(|py| {
-            self.1.bind(py).set_item("reviewers", reviewers).unwrap();
+            self.1.as_ref(py).set_item("reviewers", reviewers).unwrap();
         });
         self
     }
@@ -305,7 +305,7 @@ impl ProposalBuilder {
     pub fn allow_collaboration(self, allow_collaboration: bool) -> Self {
         Python::with_gil(|py| {
             self.1
-                .bind(py)
+                .as_ref(py)
                 .set_item("allow_collaboration", allow_collaboration)
                 .unwrap();
         });
@@ -314,7 +314,7 @@ impl ProposalBuilder {
 
     pub fn title(self, title: &str) -> Self {
         Python::with_gil(|py| {
-            self.1.bind(py).set_item("title", title).unwrap();
+            self.1.as_ref(py).set_item("title", title).unwrap();
         });
         self
     }
@@ -322,7 +322,7 @@ impl ProposalBuilder {
     pub fn commit_message(self, commit_message: &str) -> Self {
         Python::with_gil(|py| {
             self.1
-                .bind(py)
+                .as_ref(py)
                 .set_item("commit_message", commit_message)
                 .unwrap();
         });
@@ -358,7 +358,7 @@ impl Forge {
     pub fn forge_kind(&self) -> String {
         Python::with_gil(|py| {
             self.to_object(py)
-                .bind(py)
+                .as_ref(py)
                 .get_type()
                 .name()
                 .unwrap()
@@ -369,7 +369,7 @@ impl Forge {
     pub fn forge_name(&self) -> String {
         Python::with_gil(|py| {
             self.to_object(py)
-                .bind(py)
+                .as_ref(py)
                 .get_type()
                 .name()
                 .unwrap()
@@ -439,7 +439,7 @@ impl Forge {
                         (status.to_object(py), author),
                         None,
                     )?
-                    .bind(py)
+                    .as_ref(py)
                     .iter()
                     .unwrap()
                     .map(|proposal| MergeProposal::from(proposal.unwrap().to_object(py)))
