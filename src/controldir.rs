@@ -134,7 +134,7 @@ impl ControlDir {
         stop_revision: Option<&crate::RevisionId>,
         overwrite: Option<bool>,
         tag_selector: Option<Box<dyn Fn(String) -> bool>>,
-    ) -> PyResult<Box<dyn Branch>> {
+    ) -> crate::Result<Box<dyn Branch>> {
         Python::with_gil(|py| {
             let kwargs = PyDict::new(py);
             if let Some(to_branch_name) = to_branch_name {
@@ -209,14 +209,14 @@ impl ControlDir {
         })
     }
 
-    pub fn open_workingtree(&self) -> PyResult<WorkingTree> {
+    pub fn open_workingtree(&self) -> crate::Result<WorkingTree> {
         Python::with_gil(|py| {
             let wt = self.0.call_method0(py, "open_workingtree")?.extract(py)?;
             Ok(WorkingTree(wt))
         })
     }
 
-    pub fn branch_names(&self) -> PyResult<Vec<String>> {
+    pub fn branch_names(&self) -> crate::Result<Vec<String>> {
         Python::with_gil(|py| {
             let names = self
                 .0

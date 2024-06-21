@@ -93,7 +93,7 @@ fn ensure_initialized() {
 
 static INIT_BREEZY: Once = Once::new();
 
-pub fn init() -> Result<(), BreezyNotInstalled> {
+pub fn init() -> std::result::Result<(), BreezyNotInstalled> {
     INIT_BREEZY.call_once(|| {
         pyo3::prepare_freethreaded_python();
         pyo3::Python::with_gil(|py| match py.import("breezy") {
@@ -130,3 +130,5 @@ pub fn init() -> Result<(), BreezyNotInstalled> {
     });
     Ok(())
 }
+
+pub type Result<R> = std::result::Result<R, crate::error::Error>;
