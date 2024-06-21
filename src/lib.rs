@@ -22,6 +22,7 @@ pub mod controldir;
 pub mod delta;
 pub mod diff;
 pub mod dirty_tracker;
+pub mod error;
 pub mod export;
 pub mod forge;
 pub mod github;
