@@ -33,3 +33,5 @@ impl From<Error> for PyErr {
         }
     }
 }
+
+pub type Result<R> = std::result::Result<R, Error>;
