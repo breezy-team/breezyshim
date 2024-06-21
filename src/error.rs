@@ -1,28 +1,35 @@
+use pyo3::import_exception;
 use pyo3::PyErr;
 
+import_exception!(breezy.errors, UnknownFormatError);
+
+#[derive(Debug)]
 pub enum Error {
     Other(PyErr),
-}
-
-impl std::fmt::Debug for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Self::Other(e) => write!(f, "Error::Other({:?})", e),
-        }
-    }
+    UnknownFormat(String),
 }
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
             Self::Other(e) => write!(f, "Error::Other({})", e),
+            Self::UnknownFormat(s) => write!(f, "Unknown format: {}", s),
         }
     }
 }
 
+impl std::error::Error for Error {}
+
 impl From<PyErr> for Error {
-    fn from(o: PyErr) -> Self {
-        Self::Other(o)
+    fn from(err: PyErr) -> Self {
+        pyo3::Python::with_gil(|py| {
+            let value = err.value(py);
+            if err.is_instance_of::<UnknownFormatError>(py) {
+                Error::UnknownFormat(value.getattr("format").unwrap().extract().unwrap())
+            } else {
+                Self::Other(err)
+            }
+        })
     }
 }
 
@@ -30,6 +37,7 @@ impl From<Error> for PyErr {
     fn from(e: Error) -> Self {
         match e {
             Error::Other(e) => e,
+            Error::UnknownFormat(s) => UnknownFormatError::new_err((s,)),
         }
     }
 }
