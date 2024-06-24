@@ -92,7 +92,8 @@ pub enum TreeEntry {
 
 impl FromPyObject<'_> for TreeEntry {
     fn extract(ob: &PyAny) -> PyResult<Self> {
-        match ob.getattr("kind")?.extract()? {
+        let kind: std::borrow::Cow<str> = ob.getattr("kind")?.extract()?;
+        match kind.as_ref() {
             "file" => {
                 let executable: bool = ob.getattr("executable")?.extract()?;
                 let kind: Kind = ob.getattr("kind")?.extract()?;
