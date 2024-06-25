@@ -1,4 +1,4 @@
-use pyo3::prelude::PyAnyMethods;
+use pyo3::prelude::*;
 
 pub fn join_segment_parameters(
     url: &url::Url,

@@ -55,7 +55,7 @@ pub use dirty_tracker::DirtyTracker;
 pub use forge::{get_forge, Forge, MergeProposal, MergeProposalStatus};
 pub use lock::Lock;
 use pyo3::exceptions::PyImportError;
-use pyo3::prelude::PyAnyMethods;
+use pyo3::prelude::*;
 pub use revisionid::RevisionId;
 use std::sync::Once;
 pub use transport::{get_transport, Transport};

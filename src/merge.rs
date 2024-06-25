@@ -7,7 +7,6 @@ use crate::RevisionId;
 use pyo3::import_exception;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
-use pyo3::prelude::PyAnyMethods;
 
 import_exception!(breezy.errors, UnrelatedBranches);
 

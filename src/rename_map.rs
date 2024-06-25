@@ -1,4 +1,4 @@
-use pyo3::prelude::PyAnyMethods;
+use pyo3::prelude::*;
 use crate::tree::{MutableTree, Tree};
 
 pub fn guess_renames(from_tree: &dyn Tree, mutable_tree: &dyn MutableTree) -> pyo3::PyResult<()> {
