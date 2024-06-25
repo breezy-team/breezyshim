@@ -7,6 +7,7 @@ use crate::RevisionId;
 use pyo3::import_exception;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
+use pyo3::prelude::PyAnyMethods;
 
 import_exception!(breezy.errors, UnrelatedBranches);
 
@@ -41,16 +42,16 @@ impl From<PyObject> for Merger {
 impl Merger {
     pub fn new(branch: &dyn Branch, this_tree: &dyn Tree, revision_graph: &Graph) -> Self {
         Python::with_gil(|py| {
-            let m = py.import("breezy.merge").unwrap();
+            let m = py.import_bound("breezy.merge").unwrap();
             let cls = m.getattr("Merger").unwrap();
-            let kwargs = PyDict::new(py);
+            let kwargs = PyDict::new_bound(py);
             kwargs
                 .set_item("this_tree", this_tree.to_object(py))
                 .unwrap();
             kwargs
                 .set_item("revision_graph", revision_graph.to_object(py))
                 .unwrap();
-            let merger = cls.call((branch.to_object(py),), Some(kwargs)).unwrap();
+            let merger = cls.call((branch.to_object(py),), Some(&kwargs)).unwrap();
             Merger(merger.into())
         })
     }
@@ -105,7 +106,7 @@ impl Merger {
 
     pub fn set_merge_type(&mut self, merge_type: MergeType) {
         Python::with_gil(|py| {
-            let m = py.import("breezy.merge").unwrap();
+            let m = py.import_bound("breezy.merge").unwrap();
             let merge_type = match merge_type {
                 MergeType::Merge3 => m.getattr("Merge3Merger").unwrap(),
             };
@@ -127,9 +128,9 @@ impl Merger {
         tree_branch: &dyn Branch,
     ) -> Result<Self, Error> {
         Python::with_gil(|py| {
-            let m = py.import("breezy.merge").unwrap();
+            let m = py.import_bound("breezy.merge").unwrap();
             let cls = m.getattr("Merger").unwrap();
-            let kwargs = PyDict::new(py);
+            let kwargs = PyDict::new_bound(py);
             kwargs
                 .set_item("other_branch", other_branch.to_object(py))
                 .unwrap();
@@ -140,7 +141,7 @@ impl Merger {
             let merger = cls.call_method(
                 "from_revision_ids",
                 (other_tree.to_object(py),),
-                Some(kwargs),
+                Some(&kwargs),
             )?;
             Ok(Merger(merger.into()))
         })

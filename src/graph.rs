@@ -49,10 +49,10 @@ impl From<PyErr> for Error {
         Python::with_gil(|py| {
             if e.is_instance_of::<RevisionNotPresent>(py) {
                 Error::RevisionNotPresent(RevisionId::from(
-                    e.value(py)
-                        .getattr("revision_id")
+                    e.into_value(py)
+                        .getattr(py, "revision_id")
                         .unwrap()
-                        .extract::<Vec<u8>>()
+                        .extract::<Vec<u8>>(py)
                         .unwrap(),
                 ))
             } else {

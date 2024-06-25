@@ -62,13 +62,13 @@ impl FromPyObject<'_> for RevisionId {
 
 impl ToPyObject for &RevisionId {
     fn to_object(&self, py: Python) -> PyObject {
-        pyo3::types::PyBytes::new(py, &self.0).to_object(py)
+        pyo3::types::PyBytes::new_bound(py, &self.0).to_object(py)
     }
 }
 
 impl IntoPy<PyObject> for RevisionId {
     fn into_py(self, py: Python) -> PyObject {
-        pyo3::types::PyBytes::new(py, self.0.as_slice()).to_object(py)
+        pyo3::types::PyBytes::new_bound(py, self.0.as_slice()).to_object(py)
     }
 }
 

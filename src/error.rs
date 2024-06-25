@@ -23,9 +23,9 @@ impl std::error::Error for Error {}
 impl From<PyErr> for Error {
     fn from(err: PyErr) -> Self {
         pyo3::Python::with_gil(|py| {
-            let value = err.value(py);
             if err.is_instance_of::<UnknownFormatError>(py) {
-                Error::UnknownFormat(value.getattr("format").unwrap().extract().unwrap())
+                let value = err.into_value(py);
+                Error::UnknownFormat(value.getattr(py, "format").unwrap().extract(py).unwrap())
             } else {
                 Self::Other(err)
             }

@@ -12,7 +12,7 @@ pub fn reset_tree(
     dirty_tracker: Option<&DirtyTracker>,
 ) -> PyResult<()> {
     Python::with_gil(|py| {
-        let workspace_m = py.import("breezy.workspace")?;
+        let workspace_m = py.import_bound("breezy.workspace")?;
         let reset_tree = workspace_m.getattr("reset_tree")?;
         let local_tree: PyObject = local_tree.to_object(py);
         let basis_tree: Option<PyObject> = basis_tree.map(|o| o.to_object(py));
@@ -56,12 +56,13 @@ impl From<PyErr> for CheckCleanTreeError {
     fn from(e: PyErr) -> Self {
         Python::with_gil(|py| {
             if e.is_instance_of::<WorkspaceDirty>(py) {
-                let tree = e.value(py).getattr("tree").unwrap();
-                let path = e.value(py).getattr("path").unwrap();
+                let value = e.into_value(py);
+                let tree = value.getattr(py, "tree").unwrap();
+                let path = value.getattr(py, "path").unwrap();
                 let path = tree
-                    .call_method1("abspath", (path,))
+                    .call_method1(py, "abspath", (path,))
                     .unwrap()
-                    .extract::<String>()
+                    .extract::<String>(py)
                     .unwrap();
                 CheckCleanTreeError::WorkspaceDirty(std::path::PathBuf::from(path))
             } else {
@@ -77,7 +78,7 @@ pub fn check_clean_tree(
     subpath: &std::path::Path,
 ) -> Result<(), CheckCleanTreeError> {
     Python::with_gil(|py| {
-        let workspace_m = py.import("breezy.workspace")?;
+        let workspace_m = py.import_bound("breezy.workspace")?;
         let check_clean_tree = workspace_m.getattr("check_clean_tree")?;
         let local_tree: PyObject = local_tree.to_object(py).clone_ref(py);
         let basis_tree: PyObject = basis_tree.to_object(py).clone_ref(py);

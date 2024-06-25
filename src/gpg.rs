@@ -80,7 +80,7 @@ pub fn bulk_verify_signatures(
     Error,
 > {
     Python::with_gil(|py| {
-        let gpg = PyModule::import(py, "breezy.gpg").unwrap();
+        let gpg = PyModule::import_bound(py, "breezy.gpg").unwrap();
         let bulk_verify_signatures = gpg.getattr("bulk_verify_signatures").unwrap();
         let r = bulk_verify_signatures
             .call1((

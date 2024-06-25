@@ -44,7 +44,7 @@ impl TreeTransform {
         Python::with_gil(|py| {
             let ret = self.to_object(py).call_method0(py, "iter_changes")?;
 
-            for item in ret.as_ref(py).iter()? {
+            for item in ret.bind(py).iter()? {
                 v.push(item?.extract()?);
             }
 
@@ -58,7 +58,7 @@ impl TreeTransform {
         Python::with_gil(|py| {
             let ret = self.to_object(py).getattr(py, "cooked_conflicts")?;
 
-            for item in ret.as_ref(py).iter()? {
+            for item in ret.bind(py).iter()? {
                 v.push(Conflict(item?.into()));
             }
 

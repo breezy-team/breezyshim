@@ -36,20 +36,20 @@ impl From<PyErr> for Error {
                 Error::LoginRequired
             } else if err.is_instance_of::<UnsupportedForge>(py) {
                 Error::UnsupportedForge(
-                    err.value(py)
-                        .getattr("branch")
+                    err.into_value(py)
+                        .getattr(py, "branch")
                         .unwrap()
-                        .extract::<String>()
+                        .extract::<String>(py)
                         .unwrap()
                         .parse()
                         .unwrap(),
                 )
             } else if err.is_instance_of::<AlreadyControlDirError>(py) {
                 Error::ProjectExists(
-                    err.value(py)
-                        .getattr("path")
+                    err.into_value(py)
+                        .getattr(py, "path")
                         .unwrap()
-                        .extract::<String>()
+                        .extract::<String>(py)
                         .unwrap(),
                 )
             } else {
@@ -281,7 +281,7 @@ impl ProposalBuilder {
     pub fn description(self, description: &str) -> Self {
         Python::with_gil(|py| {
             self.1
-                .as_ref(py)
+                .bind(py)
                 .set_item("description", description)
                 .unwrap();
         });
@@ -290,14 +290,14 @@ impl ProposalBuilder {
 
     pub fn labels(self, labels: &[&str]) -> Self {
         Python::with_gil(|py| {
-            self.1.as_ref(py).set_item("labels", labels).unwrap();
+            self.1.bind(py).set_item("labels", labels).unwrap();
         });
         self
     }
 
     pub fn reviewers(self, reviewers: &[&str]) -> Self {
         Python::with_gil(|py| {
-            self.1.as_ref(py).set_item("reviewers", reviewers).unwrap();
+            self.1.bind(py).set_item("reviewers", reviewers).unwrap();
         });
         self
     }
@@ -305,7 +305,7 @@ impl ProposalBuilder {
     pub fn allow_collaboration(self, allow_collaboration: bool) -> Self {
         Python::with_gil(|py| {
             self.1
-                .as_ref(py)
+                .bind(py)
                 .set_item("allow_collaboration", allow_collaboration)
                 .unwrap();
         });
@@ -314,7 +314,7 @@ impl ProposalBuilder {
 
     pub fn title(self, title: &str) -> Self {
         Python::with_gil(|py| {
-            self.1.as_ref(py).set_item("title", title).unwrap();
+            self.1.bind(py).set_item("title", title).unwrap();
         });
         self
     }
@@ -322,7 +322,7 @@ impl ProposalBuilder {
     pub fn commit_message(self, commit_message: &str) -> Self {
         Python::with_gil(|py| {
             self.1
-                .as_ref(py)
+                .bind(py)
                 .set_item("commit_message", commit_message)
                 .unwrap();
         });
@@ -358,7 +358,7 @@ impl Forge {
     pub fn forge_kind(&self) -> String {
         Python::with_gil(|py| {
             self.to_object(py)
-                .as_ref(py)
+                .bind(py)
                 .get_type()
                 .name()
                 .unwrap()
@@ -369,7 +369,7 @@ impl Forge {
     pub fn forge_name(&self) -> String {
         Python::with_gil(|py| {
             self.to_object(py)
-                .as_ref(py)
+                .bind(py)
                 .get_type()
                 .name()
                 .unwrap()
@@ -419,7 +419,7 @@ impl Forge {
                     "get_proposer",
                     (from_branch.to_object(py), to_branch.to_object(py)),
                 )?,
-                PyDict::new(py).into(),
+                PyDict::new_bound(py).into(),
             ))
         })
     }
@@ -433,13 +433,13 @@ impl Forge {
             Python::with_gil(|py| -> Result<Vec<MergeProposal>, Error> {
                 Ok(self
                     .to_object(py)
-                    .call_method(
+                    .call_method_bound(
                         py,
                         "iter_my_proposals",
                         (status.to_object(py), author),
                         None,
                     )?
-                    .as_ref(py)
+                    .bind(py)
                     .iter()
                     .unwrap()
                     .map(|proposal| MergeProposal::from(proposal.unwrap().to_object(py)))
@@ -456,18 +456,18 @@ impl Forge {
         preferred_schemes: Option<&[&str]>,
     ) -> PyResult<Box<dyn Branch>> {
         Python::with_gil(|py| {
-            let kwargs = PyDict::new(py);
+            let kwargs = PyDict::new_bound(py);
             if let Some(owner) = owner {
                 kwargs.set_item("owner", owner)?;
             }
             if let Some(preferred_schemes) = preferred_schemes {
                 kwargs.set_item("preferred_schemes", preferred_schemes)?;
             }
-            let branch = self.to_object(py).call_method(
+            let branch = self.to_object(py).call_method_bound(
                 py,
                 "get_derived_branch",
                 (main_branch.to_object(py), name),
-                Some(kwargs),
+                Some(&kwargs),
             )?;
             Ok(Box::new(RegularBranch::new(branch)) as Box<dyn Branch>)
         })
@@ -480,15 +480,15 @@ impl Forge {
         status: MergeProposalStatus,
     ) -> PyResult<impl Iterator<Item = MergeProposal>> {
         Python::with_gil(move |py| {
-            let kwargs = PyDict::new(py);
+            let kwargs = PyDict::new_bound(py);
             kwargs.set_item("status", status.to_string())?;
             let proposals: Vec<PyObject> = self
                 .0
-                .call_method(
+                .call_method_bound(
                     py,
                     "iter_proposals",
                     (&source_branch.to_object(py), &target_branch.to_object(py)),
-                    Some(kwargs),
+                    Some(&kwargs),
                 )?
                 .extract(py)?;
             Ok(proposals.into_iter().map(MergeProposal::from))
@@ -506,7 +506,7 @@ impl Forge {
         tag_selector: Option<Box<dyn Fn(String) -> bool>>,
     ) -> PyResult<(Box<dyn Branch>, url::Url)> {
         Python::with_gil(|py| {
-            let kwargs = PyDict::new(py);
+            let kwargs = PyDict::new_bound(py);
             kwargs.set_item("local_branch", &local_branch.to_object(py))?;
             kwargs.set_item("main_branch", &main_branch.to_object(py))?;
             kwargs.set_item("name", name)?;
@@ -524,7 +524,7 @@ impl Forge {
             }
             let (b, u): (PyObject, String) = self
                 .to_object(py)
-                .call_method(py, "publish_derived", (), Some(kwargs))?
+                .call_method_bound(py, "publish_derived", (), Some(&kwargs))?
                 .extract(py)?;
             Ok((
                 Box::new(RegularBranch::new(b)) as Box<dyn Branch>,
@@ -566,7 +566,7 @@ impl ToPyObject for Forge {
 
 pub fn get_forge(branch: &dyn Branch) -> Result<Forge, Error> {
     Python::with_gil(|py| {
-        let m = py.import("breezy.forge").unwrap();
+        let m = py.import_bound("breezy.forge").unwrap();
         let forge = m.call_method1("get_forge", (branch.to_object(py),))?;
         Ok(Forge(forge.to_object(py)))
     })
@@ -574,7 +574,7 @@ pub fn get_forge(branch: &dyn Branch) -> Result<Forge, Error> {
 
 pub fn determine_title(description: &str) -> String {
     Python::with_gil(|py| {
-        let m = py.import("breezy.forge").unwrap();
+        let m = py.import_bound("breezy.forge").unwrap();
         let title = m.call_method1("determine_title", (description,)).unwrap();
         title.extract::<String>()
     })
@@ -583,7 +583,7 @@ pub fn determine_title(description: &str) -> String {
 
 pub fn iter_forge_instances() -> impl Iterator<Item = Forge> {
     let ret = Python::with_gil(|py| {
-        let m = py.import("breezy.forge").unwrap();
+        let m = py.import_bound("breezy.forge").unwrap();
         let f = m.getattr("iter_forge_instances").unwrap();
         let instances = f.call0().unwrap();
         instances
@@ -597,7 +597,7 @@ pub fn iter_forge_instances() -> impl Iterator<Item = Forge> {
 
 pub fn create_project(name: &str, summary: Option<&str>) -> Result<(), Error> {
     Python::with_gil(|py| {
-        let m = py.import("breezy.forge").unwrap();
+        let m = py.import_bound("breezy.forge").unwrap();
         m.call_method1("create_project", (name, summary))?;
         Ok(())
     })
@@ -605,7 +605,7 @@ pub fn create_project(name: &str, summary: Option<&str>) -> Result<(), Error> {
 
 pub fn get_proposal_by_url(url: &url::Url) -> Result<MergeProposal, Error> {
     Python::with_gil(|py| {
-        let m = py.import("breezy.forge").unwrap();
+        let m = py.import_bound("breezy.forge").unwrap();
         let proposal = m.call_method1("get_proposal_by_url", (url.to_string(),))?;
         Ok(MergeProposal::from(proposal.to_object(py)))
     })

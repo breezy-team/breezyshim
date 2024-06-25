@@ -10,7 +10,7 @@ pub fn get(source: &dyn Tree, target: &dyn Tree) -> InterTree {
         let target = target.to_object(py);
 
         let intertree_cls = py
-            .import("breezy.tree")
+            .import_bound("breezy.tree")
             .unwrap()
             .getattr("InterTree")
             .unwrap();

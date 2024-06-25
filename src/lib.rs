@@ -55,6 +55,7 @@ pub use dirty_tracker::DirtyTracker;
 pub use forge::{get_forge, Forge, MergeProposal, MergeProposalStatus};
 pub use lock::Lock;
 use pyo3::exceptions::PyImportError;
+use pyo3::prelude::PyAnyMethods;
 pub use revisionid::RevisionId;
 use std::sync::Once;
 pub use transport::{get_transport, Transport};
@@ -64,13 +65,13 @@ pub use workspace::reset_tree;
 
 pub fn init_git() {
     pyo3::Python::with_gil(|py| {
-        py.import("breezy.git").unwrap();
+        py.import_bound("breezy.git").unwrap();
     })
 }
 
 pub fn init_bzr() {
     pyo3::Python::with_gil(|py| {
-        py.import("breezy.bzr").unwrap();
+        py.import_bound("breezy.bzr").unwrap();
     })
 }
 
@@ -96,7 +97,7 @@ static INIT_BREEZY: Once = Once::new();
 pub fn init() -> std::result::Result<(), BreezyNotInstalled> {
     INIT_BREEZY.call_once(|| {
         pyo3::prepare_freethreaded_python();
-        pyo3::Python::with_gil(|py| match py.import("breezy") {
+        pyo3::Python::with_gil(|py| match py.import_bound("breezy") {
             Ok(_) => Ok(()),
             Err(e) => {
                 if e.is_instance_of::<PyImportError>(py) {
@@ -116,14 +117,14 @@ pub fn init() -> std::result::Result<(), BreezyNotInstalled> {
 
         // Work around a breezy bug
         pyo3::Python::with_gil(|py| {
-            let m = py.import("breezy.controldir").unwrap();
+            let m = py.import_bound("breezy.controldir").unwrap();
             let f = m.getattr("ControlDirFormat").unwrap();
             f.call_method0("known_formats").unwrap();
         });
 
         // Prevent race conditions
         pyo3::Python::with_gil(|py| {
-            let m = py.import("breezy.config").unwrap();
+            let m = py.import_bound("breezy.config").unwrap();
             m.call_method0("GlobalStack").unwrap();
             m.call_method1("LocationStack", ("file:///",)).unwrap();
         });

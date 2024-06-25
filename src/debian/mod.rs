@@ -37,14 +37,14 @@ pub fn build_helper(
     pyo3::prepare_freethreaded_python();
 
     Python::with_gil(|py| -> PyResult<()> {
-        let locals = PyDict::new(py);
+        let locals = PyDict::new_bound(py);
         locals.set_item("local_tree", local_tree)?;
         locals.set_item("subpath", subpath)?;
         locals.set_item("branch", branch)?;
         locals.set_item("target_dir", target_dir)?;
         locals.set_item("builder", builder)?;
 
-        py.import("breezy.plugins.debian.cmds")?
+        py.import_bound("breezy.plugins.debian.cmds")?
             .call_method1("build_helper", (locals,))?;
 
         Ok(())
