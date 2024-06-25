@@ -16,7 +16,7 @@ impl ToPyObject for Prober {
 }
 
 impl FromPyObject<'_> for Prober {
-    fn extract(obj: &PyAny) -> PyResult<Self> {
+    fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
         Ok(Prober(obj.to_object(obj.py())))
     }
 }
@@ -36,7 +36,7 @@ impl ToPyObject for ControlDir {
 }
 
 impl FromPyObject<'_> for ControlDir {
-    fn extract(obj: &PyAny) -> PyResult<Self> {
+    fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
         Ok(ControlDir(obj.to_object(obj.py())))
     }
 }

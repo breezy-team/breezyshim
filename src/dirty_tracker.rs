@@ -14,7 +14,7 @@ impl ToPyObject for DirtyTracker {
 }
 
 impl FromPyObject<'_> for DirtyTracker {
-    fn extract(ob: &PyAny) -> PyResult<Self> {
+    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
         Ok(DirtyTracker {
             obj: ob.to_object(ob.py()),
             owned: false,

@@ -13,7 +13,7 @@ impl From<PyObject> for TreeChange {
 }
 
 impl FromPyObject<'_> for TreeChange {
-    fn extract(_ob: &PyAny) -> PyResult<Self> {
+    fn extract_bound(_ob: &Bound<PyAny>) -> PyResult<Self> {
         Ok(TreeChange {})
     }
 }
@@ -87,7 +87,7 @@ impl ToPyObject for TreeTransform {
 }
 
 impl FromPyObject<'_> for TreeTransform {
-    fn extract(ob: &PyAny) -> PyResult<Self> {
-        Ok(TreeTransform(ob.into()))
+    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
+        Ok(TreeTransform(ob.clone().unbind()))
     }
 }

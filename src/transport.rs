@@ -39,7 +39,7 @@ impl Transport {
 }
 
 impl FromPyObject<'_> for Transport {
-    fn extract(obj: &PyAny) -> PyResult<Self> {
+    fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
         Ok(Transport(obj.to_object(obj.py())))
     }
 }

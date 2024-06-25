@@ -54,7 +54,7 @@ impl<'de> Deserialize<'de> for RevisionId {
 }
 
 impl FromPyObject<'_> for RevisionId {
-    fn extract(ob: &'_ PyAny) -> PyResult<Self> {
+    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
         let bytes = ob.extract::<Vec<u8>>()?;
         Ok(Self(bytes))
     }

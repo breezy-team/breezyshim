@@ -124,7 +124,7 @@ impl ToPyObject for MergeProposalStatus {
 }
 
 impl FromPyObject<'_> for MergeProposalStatus {
-    fn extract(ob: &PyAny) -> PyResult<Self> {
+    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
         let status = ob.extract::<String>()?;
         match status.as_str() {
             "all" => Ok(MergeProposalStatus::All),
@@ -553,7 +553,7 @@ impl std::fmt::Debug for Forge {
 }
 
 impl FromPyObject<'_> for Forge {
-    fn extract(ob: &PyAny) -> PyResult<Self> {
+    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
         Ok(Forge(ob.to_object(ob.py())))
     }
 }

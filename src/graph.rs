@@ -14,7 +14,7 @@ impl ToPyObject for Graph {
 }
 
 impl FromPyObject<'_> for Graph {
-    fn extract(ob: &PyAny) -> PyResult<Self> {
+    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
         Ok(Graph(ob.to_object(ob.py())))
     }
 }

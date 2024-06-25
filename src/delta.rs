@@ -50,7 +50,7 @@ impl TreeDelta {
     }
 }
 impl FromPyObject<'_> for TreeDelta {
-    fn extract(ob: &PyAny) -> PyResult<Self> {
+    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
         let added = ob.getattr("added")?.extract()?;
         let removed = ob.getattr("removed")?.extract()?;
         let renamed = ob.getattr("renamed")?.extract()?;

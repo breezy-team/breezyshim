@@ -68,7 +68,7 @@ impl ToPyObject for Revision {
 }
 
 impl FromPyObject<'_> for Revision {
-    fn extract(ob: &'_ PyAny) -> PyResult<Self> {
+    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
         Ok(Revision {
             revision_id: ob.getattr("revision_id")?.extract()?,
             parent_ids: ob.getattr("parent_ids")?.extract()?,

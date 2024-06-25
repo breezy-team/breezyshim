@@ -55,7 +55,7 @@ impl pyo3::ToPyObject for Kind {
 }
 
 impl pyo3::FromPyObject<'_> for Kind {
-    fn extract(ob: &pyo3::PyAny) -> pyo3::PyResult<Self> {
+    fn extract_bound(ob: &Bound<pyo3::PyAny>) -> pyo3::PyResult<Self> {
         let s: String = ob.extract()?;
         match s.as_str() {
             "file" => Ok(Kind::File),
@@ -91,9 +91,8 @@ pub enum TreeEntry {
 }
 
 impl FromPyObject<'_> for TreeEntry {
-    fn extract(ob: &PyAny) -> PyResult<Self> {
-        let kind: std::borrow::Cow<str> = ob.getattr("kind")?.extract()?;
-        match kind.as_ref() {
+    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
+        match ob.getattr("kind")?.extract()? {
             "file" => {
                 let executable: bool = ob.getattr("executable")?.extract()?;
                 let kind: Kind = ob.getattr("kind")?.extract()?;
@@ -850,8 +849,8 @@ impl ToPyObject for TreeChange {
 }
 
 impl FromPyObject<'_> for TreeChange {
-    fn extract(obj: &PyAny) -> PyResult<Self> {
-        fn from_bool(o: &PyAny) -> PyResult<bool> {
+    fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
+        fn from_bool(o: &Bound<PyAny>) -> PyResult<bool> {
             if let Ok(b) = o.extract::<isize>() {
                 Ok(b != 0)
             } else {
@@ -859,21 +858,21 @@ impl FromPyObject<'_> for TreeChange {
             }
         }
 
-        fn from_opt_bool_tuple(o: &PyAny) -> PyResult<(Option<bool>, Option<bool>)> {
+        fn from_opt_bool_tuple(o: &Bound<PyAny>) -> PyResult<(Option<bool>, Option<bool>)> {
             let tuple = o.extract::<(Option<&PyAny>, Option<&PyAny>)>()?;
             Ok((
-                tuple.0.map(from_bool).transpose()?,
-                tuple.1.map(from_bool).transpose()?,
+                tuple.0.map(|o| from_bool(&o.as_borrowed())).transpose()?,
+                tuple.1.map(|o| from_bool(&o.as_borrowed())).transpose()?,
             ))
         }
 
         let path = obj.getattr("path")?;
-        let changed_content = from_bool(obj.getattr("changed_content")?)?;
+        let changed_content = from_bool(&obj.getattr("changed_content")?)?;
 
-        let versioned = from_opt_bool_tuple(obj.getattr("versioned")?)?;
+        let versioned = from_opt_bool_tuple(&obj.getattr("versioned")?)?;
         let name = obj.getattr("name")?;
         let kind = obj.getattr("kind")?;
-        let executable = from_opt_bool_tuple(obj.getattr("executable")?)?;
+        let executable = from_opt_bool_tuple(&obj.getattr("executable")?)?;
         let copied = obj.getattr("copied")?;
 
         Ok(TreeChange {
