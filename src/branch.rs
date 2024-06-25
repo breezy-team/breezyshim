@@ -379,7 +379,7 @@ pub fn open_containing(url: &url::Url) -> Result<(Box<dyn Branch>, String), Bran
         let m = py.import_bound("breezy.branch").unwrap();
         let c = m.getattr("Branch").unwrap();
 
-        let (b, p): (&PyAny, String) = c
+        let (b, p): (Bound<PyAny>, String) = c
             .call_method1("open_containing", (url.to_string(),))?
             .extract()?;
 

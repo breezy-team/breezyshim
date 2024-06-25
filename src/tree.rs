@@ -661,7 +661,7 @@ impl WorkingTree {
         Python::with_gil(|py| {
             let m = py.import_bound("breezy.workingtree")?;
             let c = m.getattr("WorkingTree")?;
-            let (wt, p): (&PyAny, String) =
+            let (wt, p): (Bound<PyAny>, String) =
                 c.call_method1("open_containing", (path,))?.extract()?;
             Ok((WorkingTree(wt.to_object(py)), PathBuf::from(p)))
         })
@@ -859,7 +859,7 @@ impl FromPyObject<'_> for TreeChange {
         }
 
         fn from_opt_bool_tuple(o: &Bound<PyAny>) -> PyResult<(Option<bool>, Option<bool>)> {
-            let tuple = o.extract::<(Option<&PyAny>, Option<&PyAny>)>()?;
+            let tuple = o.extract::<(Option<Bound<PyAny>>, Option<Bound<PyAny>>)>()?;
             Ok((
                 tuple.0.map(|o| from_bool(&o.as_borrowed())).transpose()?,
                 tuple.1.map(|o| from_bool(&o.as_borrowed())).transpose()?,

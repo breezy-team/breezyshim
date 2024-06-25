@@ -41,7 +41,7 @@ workspace = true
 features = [ "serde",]
 
 [workspace.dependencies]
-pyo3 = ">=0.20"
+pyo3 = { version = ">=0.20", features = ["py-clone"] }
 
 [dev-dependencies.pyo3]
 workspace = true
