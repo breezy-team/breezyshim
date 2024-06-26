@@ -55,7 +55,7 @@ impl pyo3::ToPyObject for Kind {
 }
 
 impl pyo3::FromPyObject<'_> for Kind {
-    fn extract(ob: &pyo3::PyAny) -> pyo3::PyResult<Self> {
+    fn extract_bound(ob: &Bound<pyo3::PyAny>) -> pyo3::PyResult<Self> {
         let s: String = ob.extract()?;
         match s.as_str() {
             "file" => Ok(Kind::File),
@@ -91,7 +91,7 @@ pub enum TreeEntry {
 }
 
 impl FromPyObject<'_> for TreeEntry {
-    fn extract(ob: &PyAny) -> PyResult<Self> {
+    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
         match ob.getattr("kind")?.extract()? {
             "file" => {
                 let executable: bool = ob.getattr("executable")?.extract()?;
@@ -151,7 +151,7 @@ impl From<PyErr> for Error {
     fn from(e: PyErr) -> Self {
         Python::with_gil(|py| {
             if e.is_instance_of::<NoSuchFile>(py) {
-                return Error::NoSuchFile(e.value(py).getattr("path").unwrap().extract().unwrap());
+                return Error::NoSuchFile(e.into_value(py).getattr(py, "path").unwrap().extract(py).unwrap());
             }
             Error::Other(e)
         })
@@ -288,7 +288,7 @@ pub trait Tree: ToPyObject {
         require_versioned: Option<bool>,
     ) -> Result<Box<dyn Iterator<Item = Result<TreeChange, Error>>>, Error> {
         Python::with_gil(|py| {
-            let kwargs = pyo3::types::PyDict::new(py);
+            let kwargs = pyo3::types::PyDict::new_bound(py);
             if let Some(specific_files) = specific_files {
                 kwargs.set_item("specific_files", specific_files)?;
             }
@@ -324,11 +324,11 @@ pub trait Tree: ToPyObject {
                 }
             }
 
-            Ok(Box::new(TreeChangeIter(self.to_object(py).call_method(
+            Ok(Box::new(TreeChangeIter(self.to_object(py).call_method_bound(
                 py,
                 "iter_changes",
                 (other.to_object(py),),
-                Some(kwargs),
+                Some(&kwargs),
             )?))
                 as Box<dyn Iterator<Item = Result<TreeChange, Error>>>)
         })
@@ -360,7 +360,7 @@ pub trait Tree: ToPyObject {
     ) -> Result<Box<dyn Iterator<Item = Result<(PathBuf, bool, Kind, TreeEntry), Error>>>, Error>
     {
         Python::with_gil(|py| {
-            let kwargs = pyo3::types::PyDict::new(py);
+            let kwargs = pyo3::types::PyDict::new_bound(py);
             if let Some(include_root) = include_root {
                 kwargs.set_item("include_root", include_root)?;
             }
@@ -399,11 +399,11 @@ pub trait Tree: ToPyObject {
                 }
             }
 
-            Ok(Box::new(ListFilesIter(self.to_object(py).call_method(
+            Ok(Box::new(ListFilesIter(self.to_object(py).call_method_bound(
                 py,
                 "list_files",
                 (),
-                Some(kwargs),
+                Some(&kwargs),
             )?))
                 as Box<
                     dyn Iterator<Item = Result<(PathBuf, bool, Kind, TreeEntry), Error>>,
@@ -567,24 +567,24 @@ impl From<PyErr> for WorkingTreeOpenError {
         Python::with_gil(|py| {
             if err.is_instance_of::<NotBranchError>(py) {
                 let l = err
-                    .value(py)
-                    .getattr("path")
+                    .into_value(py)
+                    .getattr(py, "path")
                     .unwrap()
-                    .extract::<String>()
+                    .extract::<String>(py)
                     .unwrap();
                 WorkingTreeOpenError::NotBranchError(l)
             } else if err.is_instance_of::<DependencyNotPresent>(py) {
-                let l = err
-                    .value(py)
-                    .getattr("library")
+                let value = err
+                    .into_value(py);
+                let l = value
+                    .getattr(py, "library")
                     .unwrap()
-                    .extract::<String>()
+                    .extract::<String>(py)
                     .unwrap();
-                let e = err
-                    .value(py)
-                    .getattr("error")
+                let e = value
+                    .getattr(py, "error")
                     .unwrap()
-                    .extract::<String>()
+                    .extract::<String>(py)
                     .unwrap();
                 WorkingTreeOpenError::DependencyNotPresent(l, e)
             } else {
@@ -650,7 +650,7 @@ impl WorkingTree {
 
     pub fn open(path: &Path) -> Result<WorkingTree, WorkingTreeOpenError> {
         Python::with_gil(|py| {
-            let m = py.import("breezy.workingtree")?;
+            let m = py.import_bound("breezy.workingtree")?;
             let c = m.getattr("WorkingTree")?;
             let wt = c.call_method1("open", (path,))?;
             Ok(WorkingTree(wt.to_object(py)))
@@ -659,9 +659,9 @@ impl WorkingTree {
 
     pub fn open_containing(path: &Path) -> Result<(WorkingTree, PathBuf), WorkingTreeOpenError> {
         Python::with_gil(|py| {
-            let m = py.import("breezy.workingtree")?;
+            let m = py.import_bound("breezy.workingtree")?;
             let c = m.getattr("WorkingTree")?;
-            let (wt, p): (&PyAny, String) =
+            let (wt, p): (Bound<PyAny>, String) =
                 c.call_method1("open_containing", (path,))?.extract()?;
             Ok((WorkingTree(wt.to_object(py)), PathBuf::from(p)))
         })
@@ -747,7 +747,7 @@ impl WorkingTree {
         specific_files: Option<&[&Path]>,
     ) -> Result<RevisionId, CommitError> {
         Python::with_gil(|py| {
-            let kwargs = pyo3::types::PyDict::new(py);
+            let kwargs = pyo3::types::PyDict::new_bound(py);
             if let Some(committer) = committer {
                 kwargs.set_item("committer", committer).unwrap();
             }
@@ -759,7 +759,7 @@ impl WorkingTree {
             }
 
             let null_commit_reporter = py
-                .import("breezy.commit")
+                .import_bound("breezy.commit")
                 .unwrap()
                 .getattr("NullCommitReporter")
                 .unwrap()
@@ -769,7 +769,7 @@ impl WorkingTree {
 
             Ok(self
                 .to_object(py)
-                .call_method(py, "commit", (message,), Some(kwargs))
+                .call_method_bound(py, "commit", (message,), Some(&kwargs))
                 .map_err(|e| {
                     if e.is_instance_of::<PointlessCommit>(py) {
                         CommitError::PointlessCommit
@@ -798,14 +798,14 @@ impl WorkingTree {
     ) -> Result<(), PullError> {
         Python::with_gil(|py| {
             let kwargs = {
-                let kwargs = pyo3::types::PyDict::new(py);
+                let kwargs = pyo3::types::PyDict::new_bound(py);
                 if let Some(overwrite) = overwrite {
                     kwargs.set_item("overwrite", overwrite).unwrap();
                 }
                 kwargs
             };
             self.to_object(py)
-                .call_method(py, "pull", (source.to_object(py),), Some(kwargs))
+                .call_method_bound(py, "pull", (source.to_object(py),), Some(&kwargs))
         })
         .map_err(|e| e.into())
         .map(|_| ())
@@ -835,7 +835,7 @@ pub struct TreeChange {
 
 impl ToPyObject for TreeChange {
     fn to_object(&self, py: Python) -> PyObject {
-        let dict = pyo3::types::PyDict::new(py);
+        let dict = pyo3::types::PyDict::new_bound(py);
         dict.set_item("path", &self.path).unwrap();
         dict.set_item("changed_content", self.changed_content)
             .unwrap();
@@ -849,8 +849,8 @@ impl ToPyObject for TreeChange {
 }
 
 impl FromPyObject<'_> for TreeChange {
-    fn extract(obj: &PyAny) -> PyResult<Self> {
-        fn from_bool(o: &PyAny) -> PyResult<bool> {
+    fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
+        fn from_bool(o: &Bound<PyAny>) -> PyResult<bool> {
             if let Ok(b) = o.extract::<isize>() {
                 Ok(b != 0)
             } else {
@@ -858,21 +858,21 @@ impl FromPyObject<'_> for TreeChange {
             }
         }
 
-        fn from_opt_bool_tuple(o: &PyAny) -> PyResult<(Option<bool>, Option<bool>)> {
-            let tuple = o.extract::<(Option<&PyAny>, Option<&PyAny>)>()?;
+        fn from_opt_bool_tuple(o: &Bound<PyAny>) -> PyResult<(Option<bool>, Option<bool>)> {
+            let tuple = o.extract::<(Option<Bound<PyAny>>, Option<Bound<PyAny>>)>()?;
             Ok((
-                tuple.0.map(from_bool).transpose()?,
-                tuple.1.map(from_bool).transpose()?,
+                tuple.0.map(|o| from_bool(&o.as_borrowed())).transpose()?,
+                tuple.1.map(|o| from_bool(&o.as_borrowed())).transpose()?,
             ))
         }
 
         let path = obj.getattr("path")?;
-        let changed_content = from_bool(obj.getattr("changed_content")?)?;
+        let changed_content = from_bool(&obj.getattr("changed_content")?)?;
 
-        let versioned = from_opt_bool_tuple(obj.getattr("versioned")?)?;
+        let versioned = from_opt_bool_tuple(&obj.getattr("versioned")?)?;
         let name = obj.getattr("name")?;
         let kind = obj.getattr("kind")?;
-        let executable = from_opt_bool_tuple(obj.getattr("executable")?)?;
+        let executable = from_opt_bool_tuple(&obj.getattr("executable")?)?;
         let copied = obj.getattr("copied")?;
 
         Ok(TreeChange {
@@ -890,8 +890,8 @@ impl FromPyObject<'_> for TreeChange {
 pub struct MemoryTree(pub PyObject);
 
 impl ToPyObject for MemoryTree {
-    fn to_object(&self, _py: Python) -> PyObject {
-        self.0.clone()
+    fn to_object(&self, py: Python) -> PyObject {
+        self.0.clone_ref(py)
     }
 }
 

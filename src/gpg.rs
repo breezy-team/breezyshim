@@ -48,7 +48,7 @@ impl ToPyObject for GPGStrategy {
 }
 
 impl FromPyObject<'_> for GPGStrategy {
-    fn extract(ob: &PyAny) -> PyResult<Self> {
+    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
         Ok(GPGStrategy(ob.to_object(ob.py())))
     }
 }
@@ -56,7 +56,7 @@ impl FromPyObject<'_> for GPGStrategy {
 pub struct VerificationResult {}
 
 impl FromPyObject<'_> for VerificationResult {
-    fn extract(_ob: &PyAny) -> PyResult<Self> {
+    fn extract_bound(_ob: &Bound<PyAny>) -> PyResult<Self> {
         Ok(VerificationResult {})
     }
 }
@@ -80,7 +80,7 @@ pub fn bulk_verify_signatures(
     Error,
 > {
     Python::with_gil(|py| {
-        let gpg = PyModule::import(py, "breezy.gpg").unwrap();
+        let gpg = PyModule::import_bound(py, "breezy.gpg").unwrap();
         let bulk_verify_signatures = gpg.getattr("bulk_verify_signatures").unwrap();
         let r = bulk_verify_signatures
             .call1((

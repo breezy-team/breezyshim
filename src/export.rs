@@ -9,16 +9,16 @@ pub fn export(
     subdir: Option<&std::path::Path>,
 ) -> PyResult<()> {
     Python::with_gil(|py| {
-        let m = py.import("breezy.export").unwrap();
+        let m = py.import_bound("breezy.export").unwrap();
         let export = m.getattr("export").unwrap();
-        let kwargs = PyDict::new(py);
+        let kwargs = PyDict::new_bound(py);
         let subdir = if subdir.is_none() || subdir == Some(Path::new("")) {
             None
         } else {
             Some(subdir)
         };
         kwargs.set_item("subdir", subdir).unwrap();
-        export.call((tree.to_object(py), target, "dir", py.None()), Some(kwargs))?;
+        export.call((tree.to_object(py), target, "dir", py.None()), Some(&kwargs))?;
         Ok(())
     })
 }

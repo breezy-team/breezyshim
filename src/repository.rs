@@ -46,7 +46,7 @@ impl Revision {
 
 impl ToPyObject for Revision {
     fn to_object(&self, py: Python) -> PyObject {
-        let kwargs = PyDict::new(py);
+        let kwargs = PyDict::new_bound(py);
         kwargs.set_item("message", self.message.clone()).unwrap();
         kwargs
             .set_item("committer", self.committer.clone())
@@ -57,18 +57,18 @@ impl ToPyObject for Revision {
         kwargs
             .set_item("parent_ids", self.parent_ids.iter().collect::<Vec<_>>())
             .unwrap();
-        py.import("breezy.revision")
+        py.import_bound("breezy.revision")
             .unwrap()
             .getattr("Revision")
             .unwrap()
-            .call((), Some(kwargs))
+            .call((), Some(&kwargs))
             .unwrap()
             .to_object(py)
     }
 }
 
 impl FromPyObject<'_> for Revision {
-    fn extract(ob: &'_ PyAny) -> PyResult<Self> {
+    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
         Ok(Revision {
             revision_id: ob.getattr("revision_id")?.extract()?,
             parent_ids: ob.getattr("parent_ids")?.extract()?,

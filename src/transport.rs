@@ -39,7 +39,7 @@ impl Transport {
 }
 
 impl FromPyObject<'_> for Transport {
-    fn extract(obj: &PyAny) -> PyResult<Self> {
+    fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
         Ok(Transport(obj.to_object(obj.py())))
     }
 }
@@ -84,13 +84,13 @@ pub fn get_transport(
     possible_transports: Option<&mut Vec<Transport>>,
 ) -> Result<Transport, Error> {
     pyo3::Python::with_gil(|py| {
-        let urlutils = py.import("breezy.transport").unwrap();
-        let kwargs = PyDict::new(py);
+        let urlutils = py.import_bound("breezy.transport").unwrap();
+        let kwargs = PyDict::new_bound(py);
         kwargs.set_item(
             "possible_transports",
             possible_transports.map(|t| t.iter().map(|t| t.0.clone()).collect::<Vec<PyObject>>()),
         )?;
-        let o = urlutils.call_method("get_transport", (url.to_string(),), Some(kwargs))?;
+        let o = urlutils.call_method("get_transport", (url.to_string(),), Some(&kwargs))?;
         Ok(Transport(o.to_object(py)))
     })
 }

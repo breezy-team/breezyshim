@@ -13,7 +13,7 @@ impl From<PyObject> for TreeChange {
 }
 
 impl FromPyObject<'_> for TreeChange {
-    fn extract(_ob: &PyAny) -> PyResult<Self> {
+    fn extract_bound(_ob: &Bound<PyAny>) -> PyResult<Self> {
         Ok(TreeChange {})
     }
 }
@@ -44,7 +44,7 @@ impl TreeTransform {
         Python::with_gil(|py| {
             let ret = self.to_object(py).call_method0(py, "iter_changes")?;
 
-            for item in ret.as_ref(py).iter()? {
+            for item in ret.bind(py).iter()? {
                 v.push(item?.extract()?);
             }
 
@@ -58,7 +58,7 @@ impl TreeTransform {
         Python::with_gil(|py| {
             let ret = self.to_object(py).getattr(py, "cooked_conflicts")?;
 
-            for item in ret.as_ref(py).iter()? {
+            for item in ret.bind(py).iter()? {
                 v.push(Conflict(item?.into()));
             }
 
@@ -87,7 +87,7 @@ impl ToPyObject for TreeTransform {
 }
 
 impl FromPyObject<'_> for TreeTransform {
-    fn extract(ob: &PyAny) -> PyResult<Self> {
-        Ok(TreeTransform(ob.into()))
+    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
+        Ok(TreeTransform(ob.clone().unbind()))
     }
 }

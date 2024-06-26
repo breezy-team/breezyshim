@@ -38,7 +38,7 @@ pub fn check_up_to_date(
     );
     import_exception!(breezy.plugins.debian.vcs_up_to_date, NewArchiveVersion);
     Python::with_gil(|py| {
-        let m = py.import("breezy.plugins.debian.vcs_up_to_date")?;
+        let m = py.import_bound("breezy.plugins.debian.vcs_up_to_date")?;
         let check_up_to_date = m.getattr("check_up_to_date")?;
         match check_up_to_date.call1((tree.to_object(py), subpath.to_path_buf(), &apt.0)) {
             Err(e) if e.is_instance_of::<MissingChangelogError>(py) => {
@@ -46,22 +46,23 @@ pub fn check_up_to_date(
             }
             Err(e) if e.is_instance_of::<PackageMissingInArchive>(py) => {
                 Ok(UpToDateStatus::PackageMissingInArchive {
-                    package: e.value(py).getattr("package")?.extract()?,
+                    package: e.into_value(py).getattr(py, "package")?.extract(py)?,
                 })
             }
             Err(e) if e.is_instance_of::<TreeVersionNotInArchive>(py) => {
+                let value = e.into_value(py);
                 Ok(UpToDateStatus::TreeVersionNotInArchive {
-                    tree_version: e.value(py).getattr("tree_version")?.extract()?,
-                    archive_versions: e
-                        .value(py)
-                        .getattr("archive_versions")?
-                        .extract::<Vec<Version>>()?,
+                    tree_version: value.getattr(py, "tree_version")?.extract(py)?,
+                    archive_versions: value
+                        .getattr(py, "archive_versions")?
+                        .extract::<Vec<Version>>(py)?,
                 })
             }
             Err(e) if e.is_instance_of::<NewArchiveVersion>(py) => {
+                let value = e.into_value(py);
                 Ok(UpToDateStatus::NewArchiveVersion {
-                    archive_version: e.value(py).getattr("archive_version")?.extract()?,
-                    tree_version: e.value(py).getattr("tree_version")?.extract()?,
+                    archive_version: value.getattr(py, "archive_version")?.extract(py)?,
+                    tree_version: value.getattr(py, "tree_version")?.extract(py)?,
                 })
             }
             Ok(_o) => Ok(UpToDateStatus::UpToDate),

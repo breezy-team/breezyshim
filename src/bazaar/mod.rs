@@ -60,7 +60,7 @@ impl pyo3::ToPyObject for FileId {
 }
 
 impl pyo3::FromPyObject<'_> for FileId {
-    fn extract(ob: &PyAny) -> PyResult<Self> {
+    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
         let bytes = ob.extract::<Vec<u8>>()?;
         Ok(Self(bytes))
     }

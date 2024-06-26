@@ -14,7 +14,7 @@ impl ToPyObject for DirtyTracker {
 }
 
 impl FromPyObject<'_> for DirtyTracker {
-    fn extract(ob: &PyAny) -> PyResult<Self> {
+    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
         Ok(DirtyTracker {
             obj: ob.to_object(ob.py()),
             owned: false,
@@ -119,11 +119,11 @@ pub fn get_dirty_tracker(
     Python::with_gil(|py| {
         let dt_cls = match use_inotify {
             Some(true) => {
-                let m = py.import("breezy.dirty_tracker")?;
+                let m = py.import_bound("breezy.dirty_tracker")?;
                 m.getattr("DirtyTracker")?
             }
             Some(false) => return Ok(None),
-            None => match py.import("breezy.dirty_tracker") {
+            None => match py.import_bound("breezy.dirty_tracker") {
                 Ok(m) => m.getattr("DirtyTracker")?,
                 Err(e) => {
                     if e.is_instance_of::<pyo3::exceptions::PyImportError>(py) {

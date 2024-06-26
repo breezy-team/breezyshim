@@ -1,4 +1,5 @@
 use pyo3::import_exception;
+use pyo3::prelude::*;
 use pyo3::PyErr;
 
 import_exception!(breezy.errors, UnknownFormatError);
@@ -38,7 +39,7 @@ impl std::error::Error for Error {}
 impl From<PyErr> for Error {
     fn from(err: PyErr) -> Self {
         pyo3::Python::with_gil(|py| {
-            let value = err.value(py);
+            let value = err.value_bound(py);
             if err.is_instance_of::<UnknownFormatError>(py) {
                 Error::UnknownFormat(value.getattr("format").unwrap().extract().unwrap())
             } else if err.is_instance_of::<NotBranchError>(py) {

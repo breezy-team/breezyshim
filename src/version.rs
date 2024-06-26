@@ -46,7 +46,7 @@ pub fn version() -> Version {
     pyo3::prepare_freethreaded_python();
 
     Python::with_gil(|py| {
-        let m = py.import("breezy").unwrap();
+        let m = py.import_bound("breezy").unwrap();
 
         let version_info = m.getattr("version_info").unwrap();
 
