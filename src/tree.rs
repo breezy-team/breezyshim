@@ -1,16 +1,9 @@
 use crate::branch::{Branch, RegularBranch};
 use crate::controldir::ControlDir;
+use crate::error::Error;
 use crate::lock::Lock;
 use crate::revisionid::RevisionId;
-use pyo3::import_exception;
 use pyo3::prelude::*;
-
-import_exception!(breezy.commit, PointlessCommit);
-import_exception!(breezy.commit, NoWhoami);
-import_exception!(breezy.errors, NotBranchError);
-import_exception!(breezy.errors, DependencyNotPresent);
-import_exception!(breezy.errors, DivergedBranches);
-import_exception!(breezy.transport, NoSuchFile);
 
 pub type Path = std::path::Path;
 pub type PathBuf = std::path::PathBuf;
@@ -130,79 +123,15 @@ impl FromPyObject<'_> for TreeEntry {
     }
 }
 
-#[derive(Debug)]
-pub enum Error {
-    NoSuchFile(PathBuf),
-    Other(PyErr),
-}
-
-impl std::error::Error for Error {}
-
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Error::NoSuchFile(path) => write!(f, "No such file: {}", path.to_string_lossy()),
-            Error::Other(e) => write!(f, "{}", e),
-        }
-    }
-}
-
-impl From<PyErr> for Error {
-    fn from(e: PyErr) -> Self {
-        Python::with_gil(|py| {
-            if e.is_instance_of::<NoSuchFile>(py) {
-                return Error::NoSuchFile(e.into_value(py).getattr(py, "path").unwrap().extract(py).unwrap());
-            }
-            Error::Other(e)
-        })
-    }
-}
-
-impl From<Error> for PyErr {
-    fn from(e: Error) -> Self {
-        match e {
-            Error::NoSuchFile(path) => NoSuchFile::new_err(path.to_string_lossy().to_string()),
-            Error::Other(e) => e,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum PullError {
-    DivergedBranches,
-    Other(PyErr),
-}
-
-impl From<PyErr> for PullError {
-    fn from(e: PyErr) -> Self {
-        Python::with_gil(|py| {
-            if e.is_instance_of::<DivergedBranches>(py) {
-                return PullError::DivergedBranches;
-            }
-            PullError::Other(e)
-        })
-    }
-}
-
-impl std::fmt::Display for PullError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            PullError::DivergedBranches => write!(f, "Diverged branches"),
-            PullError::Other(e) => write!(f, "{}", e),
-        }
-    }
-}
-
-impl std::error::Error for PullError {}
-
 pub trait Tree: ToPyObject {
-    fn get_tag_dict(&self) -> Result<std::collections::HashMap<String, RevisionId>, PyErr> {
+    fn get_tag_dict(&self) -> Result<std::collections::HashMap<String, RevisionId>, Error> {
         Python::with_gil(|py| {
             let branch = self.to_object(py).getattr(py, "branch")?;
             let tags = branch.getattr(py, "tags")?;
             let tag_dict = tags.call_method0(py, "get_tag_dict")?;
             tag_dict.extract(py)
         })
+        .map_err(|e: PyErr| -> Error { e.into() })
     }
 
     fn get_file(&self, path: &Path) -> Result<Box<dyn std::io::Read>, Error> {
@@ -324,13 +253,14 @@ pub trait Tree: ToPyObject {
                 }
             }
 
-            Ok(Box::new(TreeChangeIter(self.to_object(py).call_method_bound(
-                py,
-                "iter_changes",
-                (other.to_object(py),),
-                Some(&kwargs),
-            )?))
-                as Box<dyn Iterator<Item = Result<TreeChange, Error>>>)
+            Ok(
+                Box::new(TreeChangeIter(self.to_object(py).call_method_bound(
+                    py,
+                    "iter_changes",
+                    (other.to_object(py),),
+                    Some(&kwargs),
+                )?)) as Box<dyn Iterator<Item = Result<TreeChange, Error>>>,
+            )
         })
     }
 
@@ -528,25 +458,6 @@ impl RevisionTree {
     }
 }
 
-#[derive(Debug)]
-pub enum CommitError {
-    PointlessCommit,
-    NoWhoami,
-    Other(PyErr),
-}
-
-impl std::fmt::Display for CommitError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            CommitError::PointlessCommit => write!(f, "Pointless commit"),
-            CommitError::NoWhoami => write!(f, "No whoami"),
-            CommitError::Other(e) => write!(f, "Other error: {}", e),
-        }
-    }
-}
-
-impl std::error::Error for CommitError {}
-
 pub struct WorkingTree(pub PyObject);
 
 impl ToPyObject for WorkingTree {
@@ -554,71 +465,6 @@ impl ToPyObject for WorkingTree {
         self.0.to_object(py)
     }
 }
-
-#[derive(Debug)]
-pub enum WorkingTreeOpenError {
-    NotBranchError(String),
-    DependencyNotPresent(String, String),
-    Other(PyErr),
-}
-
-impl From<PyErr> for WorkingTreeOpenError {
-    fn from(err: PyErr) -> Self {
-        Python::with_gil(|py| {
-            if err.is_instance_of::<NotBranchError>(py) {
-                let l = err
-                    .into_value(py)
-                    .getattr(py, "path")
-                    .unwrap()
-                    .extract::<String>(py)
-                    .unwrap();
-                WorkingTreeOpenError::NotBranchError(l)
-            } else if err.is_instance_of::<DependencyNotPresent>(py) {
-                let value = err
-                    .into_value(py);
-                let l = value
-                    .getattr(py, "library")
-                    .unwrap()
-                    .extract::<String>(py)
-                    .unwrap();
-                let e = value
-                    .getattr(py, "error")
-                    .unwrap()
-                    .extract::<String>(py)
-                    .unwrap();
-                WorkingTreeOpenError::DependencyNotPresent(l, e)
-            } else {
-                WorkingTreeOpenError::Other(err)
-            }
-        })
-    }
-}
-
-impl From<WorkingTreeOpenError> for PyErr {
-    fn from(err: WorkingTreeOpenError) -> Self {
-        match err {
-            WorkingTreeOpenError::NotBranchError(l) => NotBranchError::new_err((l,)),
-            WorkingTreeOpenError::DependencyNotPresent(d, e) => {
-                DependencyNotPresent::new_err((d, e))
-            }
-            WorkingTreeOpenError::Other(err) => err,
-        }
-    }
-}
-
-impl std::fmt::Display for WorkingTreeOpenError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            WorkingTreeOpenError::NotBranchError(l) => write!(f, "Not branch error: {}", l),
-            WorkingTreeOpenError::DependencyNotPresent(d, e) => {
-                write!(f, "Dependency not present: {} {}", d, e)
-            }
-            WorkingTreeOpenError::Other(e) => write!(f, "Other error: {}", e),
-        }
-    }
-}
-
-impl std::error::Error for WorkingTreeOpenError {}
 
 impl WorkingTree {
     /// Return the base path for this working tree.
@@ -648,7 +494,7 @@ impl WorkingTree {
         })
     }
 
-    pub fn open(path: &Path) -> Result<WorkingTree, WorkingTreeOpenError> {
+    pub fn open(path: &Path) -> Result<WorkingTree, Error> {
         Python::with_gil(|py| {
             let m = py.import_bound("breezy.workingtree")?;
             let c = m.getattr("WorkingTree")?;
@@ -657,7 +503,7 @@ impl WorkingTree {
         })
     }
 
-    pub fn open_containing(path: &Path) -> Result<(WorkingTree, PathBuf), WorkingTreeOpenError> {
+    pub fn open_containing(path: &Path) -> Result<(WorkingTree, PathBuf), Error> {
         Python::with_gil(|py| {
             let m = py.import_bound("breezy.workingtree")?;
             let c = m.getattr("WorkingTree")?;
@@ -674,7 +520,7 @@ impl WorkingTree {
         })
     }
 
-    pub fn revision_tree(&self, revision_id: &RevisionId) -> Result<Box<RevisionTree>, PyErr> {
+    pub fn revision_tree(&self, revision_id: &RevisionId) -> Result<Box<RevisionTree>, Error> {
         Python::with_gil(|py| {
             let tree = self
                 .to_object(py)
@@ -684,13 +530,14 @@ impl WorkingTree {
         })
     }
 
-    pub fn get_tag_dict(&self) -> Result<std::collections::HashMap<String, RevisionId>, PyErr> {
+    pub fn get_tag_dict(&self) -> Result<std::collections::HashMap<String, RevisionId>, Error> {
         Python::with_gil(|py| {
             let branch = self.to_object(py).getattr(py, "branch")?;
             let tags = branch.getattr(py, "tags")?;
             let tag_dict = tags.call_method0(py, "get_tag_dict")?;
             tag_dict.extract(py)
         })
+        .map_err(|e: PyErr| -> Error { e.into() })
     }
 
     pub fn abspath(&self, path: &Path) -> Result<PathBuf, Error> {
@@ -745,7 +592,7 @@ impl WorkingTree {
         allow_pointless: Option<bool>,
         committer: Option<&str>,
         specific_files: Option<&[&Path]>,
-    ) -> Result<RevisionId, CommitError> {
+    ) -> Result<RevisionId, Error> {
         Python::with_gil(|py| {
             let kwargs = pyo3::types::PyDict::new_bound(py);
             if let Some(committer) = committer {
@@ -770,21 +617,13 @@ impl WorkingTree {
             Ok(self
                 .to_object(py)
                 .call_method_bound(py, "commit", (message,), Some(&kwargs))
-                .map_err(|e| {
-                    if e.is_instance_of::<PointlessCommit>(py) {
-                        CommitError::PointlessCommit
-                    } else if e.is_instance_of::<NoWhoami>(py) {
-                        CommitError::NoWhoami
-                    } else {
-                        CommitError::Other(e)
-                    }
-                })?
+                .map_err(|e| -> Error { e.into() })?
                 .extract(py)
                 .unwrap())
         })
     }
 
-    pub fn last_revision(&self) -> Result<RevisionId, PyErr> {
+    pub fn last_revision(&self) -> Result<RevisionId, Error> {
         Python::with_gil(|py| {
             let last_revision = self.to_object(py).call_method0(py, "last_revision")?;
             Ok(RevisionId::from(last_revision.extract::<Vec<u8>>(py)?))
@@ -795,7 +634,7 @@ impl WorkingTree {
         &self,
         source: &dyn crate::branch::Branch,
         overwrite: Option<bool>,
-    ) -> Result<(), PullError> {
+    ) -> Result<(), Error> {
         Python::with_gil(|py| {
             let kwargs = {
                 let kwargs = pyo3::types::PyDict::new_bound(py);

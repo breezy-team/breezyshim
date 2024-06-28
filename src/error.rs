@@ -17,6 +17,14 @@ import_exception!(breezy.git.remote, RemoteGitError);
 import_exception!(http.client, IncompleteRead);
 import_exception!(breezy.bzr, LineEndingError);
 import_exception!(breezy.errors, InvalidHttpResponse);
+import_exception!(breezy.errors, AlreadyControlDirError);
+import_exception!(breezy.errors, DivergedBranches);
+import_exception!(breezy.workspace, WorkspaceDirty);
+import_exception!(breezy.transport, NoSuchFile);
+import_exception!(breezy.commit, PointlessCommit);
+import_exception!(breezy.commit, NoWhoami);
+import_exception!(breezy.errors, NoSuchTag);
+import_exception!(breezy.errors, TagAlreadyExists);
 
 #[derive(Debug)]
 pub enum Error {
@@ -42,6 +50,14 @@ pub enum Error {
         Option<String>,
         std::collections::HashMap<String, String>,
     ),
+    AlreadyExists,
+    DivergedBranches,
+    WorkspaceDirty(std::path::PathBuf),
+    NoSuchFile(std::path::PathBuf),
+    PointlessCommit,
+    NoWhoami,
+    NoSuchTag(String),
+    TagAlreadyExists(String),
 }
 
 impl std::fmt::Display for Error {
@@ -96,6 +112,15 @@ impl std::fmt::Display for Error {
                     write!(f, "Invalid HTTP response: {} {}", s, c)
                 }
             }
+            Self::AlreadyExists => write!(f, "Already exists"),
+            Self::DivergedBranches => write!(f, "Diverged branches"),
+            Self::WorkspaceDirty(p) => write!(f, "Workspace dirty at {}", p.display()),
+            Self::NoSuchFile(p) => write!(f, "No such file: {}", p.to_string_lossy()),
+            Self::PointlessCommit => write!(f, "Pointless commit"),
+            Self::NoWhoami => write!(f, "No whoami"),
+
+            Self::NoSuchTag(tag) => write!(f, "No such tag: {}", tag),
+            Self::TagAlreadyExists(tag) => write!(f, "Tag already exists: {}", tag),
         }
     }
 }
@@ -162,6 +187,32 @@ impl From<PyErr> for Error {
                     value.getattr("orig_error").unwrap().extract().unwrap(),
                     value.getattr("headers").unwrap().extract().unwrap(),
                 )
+            } else if err.is_instance_of::<AlreadyControlDirError>(py) {
+                Error::AlreadyExists
+            } else if err.is_instance_of::<DivergedBranches>(py) {
+                Error::DivergedBranches
+            } else if err.is_instance_of::<WorkspaceDirty>(py) {
+                let value = err.into_value(py);
+                let tree = value.getattr(py, "tree").unwrap();
+                let path = value.getattr(py, "path").unwrap();
+                let path = tree
+                    .call_method1(py, "abspath", (path,))
+                    .unwrap()
+                    .extract::<String>(py)
+                    .unwrap();
+                Error::WorkspaceDirty(std::path::PathBuf::from(path))
+            } else if err.is_instance_of::<NoSuchFile>(py) {
+                Error::NoSuchFile(std::path::PathBuf::from(
+                    value.getattr("path").unwrap().extract::<String>().unwrap(),
+                ))
+            } else if err.is_instance_of::<PointlessCommit>(py) {
+                Error::PointlessCommit
+            } else if err.is_instance_of::<NoWhoami>(py) {
+                Error::NoWhoami
+            } else if err.is_instance_of::<NoSuchTag>(py) {
+                Error::NoSuchTag(value.getattr("tag_name").unwrap().extract().unwrap())
+            } else if err.is_instance_of::<TagAlreadyExists>(py) {
+                Error::TagAlreadyExists(value.getattr("tag_name").unwrap().extract().unwrap())
             } else {
                 Self::Other(err)
             }
@@ -195,6 +246,14 @@ impl From<Error> for PyErr {
             Error::InvalidHttpResponse(status, msg, orig_error, headers) => {
                 InvalidHttpResponse::new_err((status, msg, orig_error, headers))
             }
+            Error::AlreadyExists => AlreadyControlDirError::new_err(()),
+            Error::DivergedBranches => DivergedBranches::new_err(()),
+            Error::WorkspaceDirty(p) => WorkspaceDirty::new_err(p.to_string_lossy().to_string()),
+            Error::NoSuchFile(p) => NoSuchFile::new_err(p.to_string_lossy().to_string()),
+            Error::PointlessCommit => PointlessCommit::new_err(()),
+            Error::NoWhoami => NoWhoami::new_err(()),
+            Error::NoSuchTag(tag) => NoSuchTag::new_err((tag,)),
+            Error::TagAlreadyExists(tag) => TagAlreadyExists::new_err((tag,)),
         }
     }
 }
