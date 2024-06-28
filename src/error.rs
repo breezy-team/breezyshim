@@ -6,6 +6,17 @@ import_exception!(breezy.errors, UnknownFormatError);
 import_exception!(breezy.errors, NotBranchError);
 import_exception!(breezy.controldir, NoColocatedBranchSupport);
 import_exception!(breezy.errors, DependencyNotPresent);
+import_exception!(breezy.errors, PermissionDenied);
+import_exception!(breezy.transport, UnsupportedProtocol);
+import_exception!(breezy.transport, UnusableRedirect);
+import_exception!(breezy.urlutils, InvalidURL);
+import_exception!(breezy.errors, TransportError);
+import_exception!(breezy.errors, UnsupportedFormatError);
+import_exception!(breezy.errors, UnsupportedVcs);
+import_exception!(breezy.git.remote, RemoteGitError);
+import_exception!(http.client, IncompleteRead);
+import_exception!(breezy.bzr, LineEndingError);
+import_exception!(breezy.errors, InvalidHttpResponse);
 
 #[derive(Debug)]
 pub enum Error {
@@ -14,6 +25,23 @@ pub enum Error {
     NotBranchError(String, Option<String>),
     NoColocatedBranchSupport,
     DependencyNotPresent(String, String),
+    PermissionDenied(std::path::PathBuf, Option<String>),
+    UnsupportedProtocol(String, Option<String>),
+    UnusableRedirect(String, String, String),
+    ConnectionError(String),
+    InvalidURL(String, Option<String>),
+    TransportError(String),
+    UnsupportedFormat(String),
+    UnsupportedVcs(String),
+    RemoteGitError(String),
+    IncompleteRead,
+    LineEndingError(String),
+    InvalidHttpResponse(
+        String,
+        String,
+        Option<String>,
+        std::collections::HashMap<String, String>,
+    ),
 }
 
 impl std::fmt::Display for Error {
@@ -30,6 +58,44 @@ impl std::fmt::Display for Error {
             }
             Self::NoColocatedBranchSupport => write!(f, "No colocated branch support"),
             Self::DependencyNotPresent(d, r) => write!(f, "Dependency {} not present: {}", d, r),
+            Self::PermissionDenied(p, r) => {
+                if let Some(r) = r {
+                    write!(f, "Permission denied: {}: {}", p.display(), r)
+                } else {
+                    write!(f, "Permission denied: {}", p.display())
+                }
+            }
+            Self::UnsupportedProtocol(p, r) => {
+                if let Some(r) = r {
+                    write!(f, "Unsupported protocol: {}: {}", p, r)
+                } else {
+                    write!(f, "Unsupported protocol: {}", p)
+                }
+            }
+            Self::UnusableRedirect(p, r, u) => {
+                write!(f, "Unusable redirect: {}: {} -> {}", p, r, u)
+            }
+            Self::ConnectionError(e) => write!(f, "Connection error: {}", e),
+            Self::InvalidURL(p, r) => {
+                if let Some(r) = r {
+                    write!(f, "Invalid URL: {}: {}", p, r)
+                } else {
+                    write!(f, "Invalid URL: {}", p)
+                }
+            }
+            Self::TransportError(e) => write!(f, "Transport error: {}", e),
+            Self::UnsupportedFormat(s) => write!(f, "Unsupported format: {}", s),
+            Self::UnsupportedVcs(s) => write!(f, "Unsupported VCS: {}", s),
+            Self::RemoteGitError(e) => write!(f, "Remote Git error: {}", e),
+            Self::IncompleteRead => write!(f, "Incomplete read"),
+            Self::LineEndingError(e) => write!(f, "Line ending error: {}", e),
+            Self::InvalidHttpResponse(s, c, b, _hs) => {
+                if let Some(b) = b {
+                    write!(f, "Invalid HTTP response: {} {}: {}", s, c, b)
+                } else {
+                    write!(f, "Invalid HTTP response: {} {}", s, c)
+                }
+            }
         }
     }
 }
@@ -54,6 +120,48 @@ impl From<PyErr> for Error {
                     value.getattr("library").unwrap().extract().unwrap(),
                     value.getattr("error").unwrap().extract().unwrap(),
                 )
+            } else if err.is_instance_of::<PermissionDenied>(py) {
+                Error::PermissionDenied(
+                    value.getattr("path").unwrap().extract().unwrap(),
+                    value.getattr("extra").unwrap().extract().unwrap(),
+                )
+            } else if err.is_instance_of::<UnsupportedProtocol>(py) {
+                Error::UnsupportedProtocol(
+                    value.getattr("url").unwrap().extract().unwrap(),
+                    value.getattr("extra").unwrap().extract().unwrap(),
+                )
+            } else if err.is_instance_of::<UnusableRedirect>(py) {
+                Error::UnusableRedirect(
+                    value.getattr("source").unwrap().extract().unwrap(),
+                    value.getattr("target").unwrap().extract().unwrap(),
+                    value.getattr("reason").unwrap().extract().unwrap(),
+                )
+            } else if err.is_instance_of::<InvalidURL>(py) {
+                Error::InvalidURL(
+                    value.getattr("path").unwrap().extract().unwrap(),
+                    value.getattr("extra").unwrap().extract().unwrap(),
+                )
+            } else if err.is_instance_of::<pyo3::exceptions::PyConnectionError>(py) {
+                Error::ConnectionError(value.getattr("message").unwrap().extract().unwrap())
+            } else if err.is_instance_of::<TransportError>(py) {
+                Error::TransportError(value.getattr("message").unwrap().extract().unwrap())
+            } else if err.is_instance_of::<UnsupportedFormatError>(py) {
+                Error::UnsupportedFormat(value.getattr("format").unwrap().extract().unwrap())
+            } else if err.is_instance_of::<UnsupportedVcs>(py) {
+                Error::UnsupportedVcs(value.getattr("vcs").unwrap().extract().unwrap())
+            } else if err.is_instance_of::<RemoteGitError>(py) {
+                Error::RemoteGitError(value.getattr("msg").unwrap().extract().unwrap())
+            } else if err.is_instance_of::<IncompleteRead>(py) {
+                Error::IncompleteRead
+            } else if err.is_instance_of::<LineEndingError>(py) {
+                Error::LineEndingError(value.getattr("file").unwrap().extract().unwrap())
+            } else if err.is_instance_of::<InvalidHttpResponse>(py) {
+                Error::InvalidHttpResponse(
+                    value.getattr("path").unwrap().extract().unwrap(),
+                    value.getattr("msg").unwrap().extract().unwrap(),
+                    value.getattr("orig_error").unwrap().extract().unwrap(),
+                    value.getattr("headers").unwrap().extract().unwrap(),
+                )
             } else {
                 Self::Other(err)
             }
@@ -70,6 +178,22 @@ impl From<Error> for PyErr {
             Error::NoColocatedBranchSupport => NoColocatedBranchSupport::new_err(()),
             Error::DependencyNotPresent(library, error) => {
                 DependencyNotPresent::new_err((library, error))
+            }
+            Error::PermissionDenied(path, reason) => PermissionDenied::new_err((path, reason)),
+            Error::UnsupportedProtocol(url, error) => UnsupportedProtocol::new_err((url, error)),
+            Error::UnusableRedirect(source, target, reason) => {
+                UnusableRedirect::new_err((source, target, reason))
+            }
+            Error::ConnectionError(e) => pyo3::exceptions::PyConnectionError::new_err((e,)),
+            Error::InvalidURL(path, reason) => InvalidURL::new_err((path, reason)),
+            Error::TransportError(e) => TransportError::new_err((e,)),
+            Error::UnsupportedFormat(s) => UnsupportedFormatError::new_err((s,)),
+            Error::UnsupportedVcs(s) => UnsupportedVcs::new_err((s,)),
+            Error::RemoteGitError(e) => RemoteGitError::new_err((e,)),
+            Error::IncompleteRead => IncompleteRead::new_err(()),
+            Error::LineEndingError(e) => LineEndingError::new_err((e,)),
+            Error::InvalidHttpResponse(status, msg, orig_error, headers) => {
+                InvalidHttpResponse::new_err((status, msg, orig_error, headers))
             }
         }
     }
