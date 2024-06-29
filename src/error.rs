@@ -58,6 +58,7 @@ pub enum Error {
     NoWhoami,
     NoSuchTag(String),
     TagAlreadyExists(String),
+    Socket(std::io::Error),
 }
 
 impl std::fmt::Display for Error {
@@ -121,6 +122,7 @@ impl std::fmt::Display for Error {
 
             Self::NoSuchTag(tag) => write!(f, "No such tag: {}", tag),
             Self::TagAlreadyExists(tag) => write!(f, "Tag already exists: {}", tag),
+            Self::Socket(e) => write!(f, "socket error: {}", e.to_string()),
         }
     }
 }
@@ -129,6 +131,7 @@ impl std::error::Error for Error {}
 
 impl From<PyErr> for Error {
     fn from(err: PyErr) -> Self {
+        pyo3::import_exception!(socket, error);
         pyo3::Python::with_gil(|py| {
             let value = err.value_bound(py);
             if err.is_instance_of::<UnknownFormatError>(py) {
@@ -136,7 +139,7 @@ impl From<PyErr> for Error {
             } else if err.is_instance_of::<NotBranchError>(py) {
                 Error::NotBranchError(
                     value.getattr("path").unwrap().extract().unwrap(),
-                    value.getattr("details").unwrap().extract().unwrap(),
+                    value.getattr("detail").unwrap().extract().unwrap(),
                 )
             } else if err.is_instance_of::<NoColocatedBranchSupport>(py) {
                 Error::NoColocatedBranchSupport
@@ -213,6 +216,10 @@ impl From<PyErr> for Error {
                 Error::NoSuchTag(value.getattr("tag_name").unwrap().extract().unwrap())
             } else if err.is_instance_of::<TagAlreadyExists>(py) {
                 Error::TagAlreadyExists(value.getattr("tag_name").unwrap().extract().unwrap())
+            } else if err.is_instance_of::<error>(py) {
+                Error::Socket(std::io::Error::from_raw_os_error(
+                    value.getattr("errno").unwrap().extract().unwrap(),
+                ))
             } else {
                 Self::Other(err)
             }
@@ -254,6 +261,10 @@ impl From<Error> for PyErr {
             Error::NoWhoami => NoWhoami::new_err(()),
             Error::NoSuchTag(tag) => NoSuchTag::new_err((tag,)),
             Error::TagAlreadyExists(tag) => TagAlreadyExists::new_err((tag,)),
+            Error::Socket(e) => {
+                pyo3::import_exception!(socket, error);
+                error::new_err((e.raw_os_error().unwrap(),))
+            }
         }
     }
 }

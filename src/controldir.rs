@@ -347,7 +347,7 @@ fn test_open() {
     )
     .unwrap_err();
 
-    assert!(matches!(e, Error::NotBranchError(_)),);
+    assert!(matches!(e, Error::NotBranchError(..)),);
 
     let cd = create(
         &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
@@ -466,7 +466,7 @@ fn test_open_containing_from_transport() {
     )
     .unwrap();
     let e = open_containing_from_transport(&transport, None).unwrap_err();
-    assert!(matches!(e, Error::NotBranchError(_)),);
+    assert!(matches!(e, Error::NotBranchError(..)),);
 }
 
 pub fn open_from_transport(
@@ -498,7 +498,7 @@ fn test_open_from_transport() {
     )
     .unwrap();
     let e = open_from_transport(&transport, None).unwrap_err();
-    assert!(matches!(e, Error::NotBranchError(_)),);
+    assert!(matches!(e, Error::NotBranchError(..)),);
 }
 
 pub trait AsFormat {
