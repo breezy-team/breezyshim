@@ -61,6 +61,14 @@ pub enum Error {
     Socket(std::io::Error),
 }
 
+impl From<crate::transport::Error> for Error {
+    fn from(e: crate::transport::Error) -> Self {
+        match e {
+            crate::transport::Error::Python(e) => e.into(),
+        }
+    }
+}
+
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
@@ -122,7 +130,7 @@ impl std::fmt::Display for Error {
 
             Self::NoSuchTag(tag) => write!(f, "No such tag: {}", tag),
             Self::TagAlreadyExists(tag) => write!(f, "Tag already exists: {}", tag),
-            Self::Socket(e) => write!(f, "socket error: {}", e.to_string()),
+            Self::Socket(e) => write!(f, "socket error: {}", e),
         }
     }
 }
