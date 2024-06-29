@@ -22,7 +22,7 @@ import_exception!(breezy.errors, DivergedBranches);
 import_exception!(breezy.workspace, WorkspaceDirty);
 import_exception!(breezy.transport, NoSuchFile);
 import_exception!(breezy.commit, PointlessCommit);
-import_exception!(breezy.commit, NoWhoami);
+import_exception!(breezy.errors, NoWhoami);
 import_exception!(breezy.errors, NoSuchTag);
 import_exception!(breezy.errors, TagAlreadyExists);
 
@@ -42,7 +42,7 @@ pub enum Error {
     UnsupportedFormat(String),
     UnsupportedVcs(String),
     RemoteGitError(String),
-    IncompleteRead,
+    IncompleteRead(Vec<u8>, Option<usize>),
     LineEndingError(String),
     InvalidHttpResponse(
         String,
@@ -50,7 +50,7 @@ pub enum Error {
         Option<String>,
         std::collections::HashMap<String, String>,
     ),
-    AlreadyExists,
+    AlreadyControlDir(std::path::PathBuf),
     DivergedBranches,
     WorkspaceDirty(std::path::PathBuf),
     NoSuchFile(std::path::PathBuf),
@@ -112,7 +112,9 @@ impl std::fmt::Display for Error {
             Self::UnsupportedFormat(s) => write!(f, "Unsupported format: {}", s),
             Self::UnsupportedVcs(s) => write!(f, "Unsupported VCS: {}", s),
             Self::RemoteGitError(e) => write!(f, "Remote Git error: {}", e),
-            Self::IncompleteRead => write!(f, "Incomplete read"),
+            Self::IncompleteRead(partial, expected) => {
+                write!(f, "Incomplete read: {:?} {:?}", partial, expected)
+            }
             Self::LineEndingError(e) => write!(f, "Line ending error: {}", e),
             Self::InvalidHttpResponse(s, c, b, _hs) => {
                 if let Some(b) = b {
@@ -121,7 +123,7 @@ impl std::fmt::Display for Error {
                     write!(f, "Invalid HTTP response: {} {}", s, c)
                 }
             }
-            Self::AlreadyExists => write!(f, "Already exists"),
+            Self::AlreadyControlDir(p) => write!(f, "Already exists: {}", p.display()),
             Self::DivergedBranches => write!(f, "Diverged branches"),
             Self::WorkspaceDirty(p) => write!(f, "Workspace dirty at {}", p.display()),
             Self::NoSuchFile(p) => write!(f, "No such file: {}", p.to_string_lossy()),
@@ -188,7 +190,10 @@ impl From<PyErr> for Error {
             } else if err.is_instance_of::<RemoteGitError>(py) {
                 Error::RemoteGitError(value.getattr("msg").unwrap().extract().unwrap())
             } else if err.is_instance_of::<IncompleteRead>(py) {
-                Error::IncompleteRead
+                Error::IncompleteRead(
+                    value.getattr("partial").unwrap().extract().unwrap(),
+                    value.getattr("expected").unwrap().extract().unwrap(),
+                )
             } else if err.is_instance_of::<LineEndingError>(py) {
                 Error::LineEndingError(value.getattr("file").unwrap().extract().unwrap())
             } else if err.is_instance_of::<InvalidHttpResponse>(py) {
@@ -199,7 +204,7 @@ impl From<PyErr> for Error {
                     value.getattr("headers").unwrap().extract().unwrap(),
                 )
             } else if err.is_instance_of::<AlreadyControlDirError>(py) {
-                Error::AlreadyExists
+                Error::AlreadyControlDir(value.getattr("path").unwrap().extract().unwrap())
             } else if err.is_instance_of::<DivergedBranches>(py) {
                 Error::DivergedBranches
             } else if err.is_instance_of::<WorkspaceDirty>(py) {
@@ -241,7 +246,9 @@ impl From<Error> for PyErr {
             Error::Other(e) => e,
             Error::UnknownFormat(s) => UnknownFormatError::new_err((s,)),
             Error::NotBranchError(path, details) => NotBranchError::new_err((path, details)),
-            Error::NoColocatedBranchSupport => NoColocatedBranchSupport::new_err(()),
+            Error::NoColocatedBranchSupport => {
+                Python::with_gil(|py| NoColocatedBranchSupport::new_err((py.None(),)))
+            }
             Error::DependencyNotPresent(library, error) => {
                 DependencyNotPresent::new_err((library, error))
             }
@@ -256,14 +263,21 @@ impl From<Error> for PyErr {
             Error::UnsupportedFormat(s) => UnsupportedFormatError::new_err((s,)),
             Error::UnsupportedVcs(s) => UnsupportedVcs::new_err((s,)),
             Error::RemoteGitError(e) => RemoteGitError::new_err((e,)),
-            Error::IncompleteRead => IncompleteRead::new_err(()),
+            Error::IncompleteRead(partial, expected) => Python::with_gil(|py| {
+                let bytes = pyo3::types::PyBytes::new_bound(py, partial.as_slice());
+                IncompleteRead::new_err((bytes.unbind(), expected))
+            }),
             Error::LineEndingError(e) => LineEndingError::new_err((e,)),
             Error::InvalidHttpResponse(status, msg, orig_error, headers) => {
                 InvalidHttpResponse::new_err((status, msg, orig_error, headers))
             }
-            Error::AlreadyExists => AlreadyControlDirError::new_err(()),
-            Error::DivergedBranches => DivergedBranches::new_err(()),
-            Error::WorkspaceDirty(p) => WorkspaceDirty::new_err(p.to_string_lossy().to_string()),
+            Error::AlreadyControlDir(path) => {
+                AlreadyControlDirError::new_err((path.to_string_lossy().to_string(),))
+            }
+            Error::DivergedBranches => {
+                Python::with_gil(|py| DivergedBranches::new_err((py.None(), py.None())))
+            }
+            Error::WorkspaceDirty(p) => WorkspaceDirty::new_err((p.to_string_lossy().to_string(),)),
             Error::NoSuchFile(p) => NoSuchFile::new_err(p.to_string_lossy().to_string()),
             Error::PointlessCommit => PointlessCommit::new_err(()),
             Error::NoWhoami => NoWhoami::new_err(()),
@@ -275,4 +289,270 @@ impl From<Error> for PyErr {
             }
         }
     }
+}
+
+#[test]
+fn test_error_unknownformat() {
+    let e = Error::UnknownFormat("foo".to_string());
+    let p: PyErr = e.into();
+    // Verify that p is an instance of UnknownFormatError
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<UnknownFormatError>(py));
+    });
+}
+
+#[test]
+fn test_error_notbrancherror() {
+    let e = Error::NotBranchError("foo".to_string(), Some("bar".to_string()));
+    let p: PyErr = e.into();
+    // Verify that p is an instance of NotBranchError
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<NotBranchError>(py));
+    });
+}
+
+#[test]
+fn test_error_nocolocatedbranchsupport() {
+    let e = Error::NoColocatedBranchSupport;
+    let p: PyErr = e.into();
+    // Verify that p is an instance of NoColocatedBranchSupport
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<NoColocatedBranchSupport>(py), "{}", p);
+    });
+}
+
+#[test]
+fn test_error_dependencynotpresent() {
+    let e = Error::DependencyNotPresent("foo".to_string(), "bar".to_string());
+    let p: PyErr = e.into();
+    // Verify that p is an instance of DependencyNotPresent
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<DependencyNotPresent>(py));
+    });
+}
+
+#[test]
+fn test_error_permissiondenied() {
+    let e = Error::PermissionDenied(std::path::PathBuf::from("foo"), Some("bar".to_string()));
+    let p: PyErr = e.into();
+    // Verify that p is an instance of PermissionDenied
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<PermissionDenied>(py));
+    });
+}
+
+#[test]
+fn test_error_unsupportedprotocol() {
+    let e = Error::UnsupportedProtocol("foo".to_string(), Some("bar".to_string()));
+    let p: PyErr = e.into();
+    // Verify that p is an instance of UnsupportedProtocol
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<UnsupportedProtocol>(py));
+    });
+}
+
+#[test]
+fn test_error_unusableredirect() {
+    let e = Error::UnusableRedirect("foo".to_string(), "bar".to_string(), "baz".to_string());
+    let p: PyErr = e.into();
+    // Verify that p is an instance of UnusableRedirect
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<UnusableRedirect>(py));
+    });
+}
+
+#[test]
+fn test_error_connectionerror() {
+    let e = Error::ConnectionError("foo".to_string());
+    let p: PyErr = e.into();
+    // Verify that p is an instance of PyConnectionError
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<pyo3::exceptions::PyConnectionError>(py));
+    });
+}
+
+#[test]
+fn test_error_invalidurl() {
+    let e = Error::InvalidURL("foo".to_string(), Some("bar".to_string()));
+    let p: PyErr = e.into();
+    // Verify that p is an instance of InvalidURL
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<InvalidURL>(py));
+    });
+}
+
+#[test]
+fn test_error_transporterror() {
+    let e = Error::TransportError("foo".to_string());
+    let p: PyErr = e.into();
+    // Verify that p is an instance of TransportError
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<TransportError>(py));
+    });
+}
+
+#[test]
+fn test_error_unsupportedformat() {
+    let e = Error::UnsupportedFormat("foo".to_string());
+    let p: PyErr = e.into();
+    // Verify that p is an instance of UnsupportedFormatError
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<UnsupportedFormatError>(py));
+    });
+}
+
+#[test]
+fn test_error_unsupportedvcs() {
+    let e = Error::UnsupportedVcs("foo".to_string());
+    let p: PyErr = e.into();
+    // Verify that p is an instance of UnsupportedVcs
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<UnsupportedVcs>(py));
+    });
+}
+
+#[test]
+fn test_error_remotegiterror() {
+    let e = Error::RemoteGitError("foo".to_string());
+    let p: PyErr = e.into();
+    // Verify that p is an instance of RemoteGitError
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<RemoteGitError>(py));
+    });
+}
+
+#[test]
+fn test_error_incompleteread() {
+    let e = Error::IncompleteRead(vec![1, 2, 3], Some(4));
+    let p: PyErr = e.into();
+    // Verify that p is an instance of IncompleteRead
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<IncompleteRead>(py), "{}", p);
+    });
+}
+
+#[test]
+fn test_error_lineendingerror() {
+    let e = Error::LineEndingError("foo".to_string());
+    let p: PyErr = e.into();
+    // Verify that p is an instance of LineEndingError
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<LineEndingError>(py));
+    });
+}
+
+#[test]
+fn test_error_invalidhttpresponse() {
+    let e = Error::InvalidHttpResponse(
+        "foo".to_string(),
+        "bar".to_string(),
+        Some("baz".to_string()),
+        std::collections::HashMap::new(),
+    );
+    let p: PyErr = e.into();
+    // Verify that p is an instance of InvalidHttpResponse
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<InvalidHttpResponse>(py));
+    });
+}
+
+#[test]
+fn test_error_alreadyexists() {
+    let e = Error::AlreadyControlDir(std::path::PathBuf::from("foo"));
+    let p: PyErr = e.into();
+    // Verify that p is an instance of AlreadyControlDirError
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<AlreadyControlDirError>(py), "{}", p);
+    });
+}
+
+#[test]
+fn test_error_divergedbranches() {
+    let e = Error::DivergedBranches;
+    let p: PyErr = e.into();
+    // Verify that p is an instance of DivergedBranches
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<DivergedBranches>(py), "{}", p);
+    });
+}
+
+#[test]
+#[ignore] // WorkspaceDirty takes a tree argument, which is not implemented
+fn test_error_workspacedirty() {
+    let e = Error::WorkspaceDirty(std::path::PathBuf::from("foo"));
+    let p: PyErr = e.into();
+    // Verify that p is an instance of WorkspaceDirty
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<WorkspaceDirty>(py), "{}", p);
+    });
+}
+
+#[test]
+fn test_error_nosuchfile() {
+    let e = Error::NoSuchFile(std::path::PathBuf::from("foo"));
+    let p: PyErr = e.into();
+    // Verify that p is an instance of NoSuchFile
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<NoSuchFile>(py));
+    });
+}
+
+#[test]
+fn test_error_pointlesscommit() {
+    let e = Error::PointlessCommit;
+    let p: PyErr = e.into();
+    // Verify that p is an instance of PointlessCommit
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<PointlessCommit>(py));
+    });
+}
+
+#[test]
+fn test_error_nowhoami() {
+    let e = Error::NoWhoami;
+    let p: PyErr = e.into();
+    // Verify that p is an instance of NoWhoami
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<NoWhoami>(py), "{}", p);
+    });
+}
+
+#[test]
+fn test_error_nosuchtag() {
+    let e = Error::NoSuchTag("foo".to_string());
+    let p: PyErr = e.into();
+    // Verify that p is an instance of NoSuchTag
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<NoSuchTag>(py));
+    });
+}
+
+#[test]
+fn test_error_tagalreadyexists() {
+    let e = Error::TagAlreadyExists("foo".to_string());
+    let p: PyErr = e.into();
+    // Verify that p is an instance of TagAlreadyExists
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<TagAlreadyExists>(py));
+    });
+}
+
+#[test]
+fn test_error_socket() {
+    let e = Error::Socket(std::io::Error::from_raw_os_error(0));
+    let p: PyErr = e.into();
+    // Verify that p is an instance of error
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<pyo3::exceptions::PyOSError>(py));
+    });
+}
+
+#[test]
+fn test_error_other() {
+    let e = Error::Other(PyErr::new::<UnknownFormatError, _>((("foo",),)));
+    let p: PyErr = e.into();
+    // Verify that p is an instance of error
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<pyo3::exceptions::PyException>(py));
+    });
 }
