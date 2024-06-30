@@ -27,6 +27,8 @@ import_exception!(breezy.errors, NoSuchTag);
 import_exception!(breezy.errors, TagAlreadyExists);
 import_exception!(breezy.forge, ForgeLoginRequired);
 import_exception!(breezy.forge, UnsupportedForge);
+import_exception!(breezy.forge, MergeProposalExists);
+import_exception!(breezy.errors, UnsupportedOperation);
 
 #[derive(Debug)]
 pub enum Error {
@@ -64,6 +66,8 @@ pub enum Error {
     ForgeLoginRequired,
     UnsupportedForge(url::Url),
     ForgeProjectExists(String),
+    MergeProposalExists(url::Url, Option<url::Url>),
+    UnsupportedOperation(String, String),
 }
 
 impl From<crate::transport::Error> for Error {
@@ -147,6 +151,14 @@ impl std::fmt::Display for Error {
             Self::ForgeLoginRequired => write!(f, "Forge login required"),
             Self::UnsupportedForge(url) => write!(f, "Unsupported forge: {}", url),
             Self::ForgeProjectExists(p) => write!(f, "Forge project exists: {}", p),
+            Self::MergeProposalExists(p, r) => {
+                if let Some(r) = r {
+                    write!(f, "Merge proposal exists: {} -> {}", p, r)
+                } else {
+                    write!(f, "Merge proposal exists: {}", p)
+                }
+            }
+            Self::UnsupportedOperation(a, b) => write!(f, "Unsupported operation: {} on {}", a, b),
         }
     }
 }
@@ -259,6 +271,23 @@ impl From<PyErr> for Error {
                         .parse()
                         .unwrap(),
                 )
+            } else if err.is_instance_of::<MergeProposalExists>(py) {
+                let source_url: String = value.getattr("url").unwrap().extract().unwrap();
+                let existing_proposal = value.getattr("existing_proposal").unwrap();
+                let target_url: Option<String> = if existing_proposal.is_none() {
+                    None
+                } else {
+                    Some(existing_proposal.getattr("url").unwrap().extract().unwrap())
+                };
+                Error::MergeProposalExists(
+                    source_url.parse().unwrap(),
+                    target_url.map(|u| u.parse().unwrap()),
+                )
+            } else if err.is_instance_of::<UnsupportedOperation>(py) {
+                Error::UnsupportedOperation(
+                    value.getattr("mname").unwrap().extract().unwrap(),
+                    value.getattr("tname").unwrap().extract().unwrap(),
+                )
             } else {
                 Self::Other(err)
             }
@@ -318,6 +347,12 @@ impl From<Error> for PyErr {
             }
             Error::UnsupportedForge(url) => UnsupportedForge::new_err((url.to_string(),)),
             Error::ForgeProjectExists(name) => AlreadyControlDirError::new_err((name.to_string(),)),
+            Error::MergeProposalExists(source, _target) => {
+                Python::with_gil(|py| MergeProposalExists::new_err((source.to_string(), py.None())))
+            }
+            Error::UnsupportedOperation(mname, tname) => {
+                UnsupportedOperation::new_err((mname, tname))
+            }
         }
     }
 }
@@ -605,5 +640,39 @@ fn test_error_unsupported_forge() {
     // Verify that p is an instance of UnsupportedForge
     Python::with_gil(|py| {
         assert!(p.is_instance_of::<UnsupportedForge>(py));
+    });
+}
+
+#[test]
+fn test_error_forge_project_exists() {
+    let e = Error::ForgeProjectExists("foo".to_string());
+    let p: PyErr = e.into();
+    // Verify that p is an instance of AlreadyControlDirError
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<AlreadyControlDirError>(py), "{}", p);
+    });
+}
+
+#[test]
+fn test_error_merge_proposal_exists() {
+    let e = Error::MergeProposalExists(
+        "http://source.com".parse().unwrap(),
+        Some("http://target.com".parse().unwrap()),
+    );
+    let p: PyErr = e.into();
+    // Verify that p is an instance of MergeProposalExists
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<MergeProposalExists>(py), "{}", p);
+    });
+}
+
+#[test]
+#[ignore] // UnsupportedOperation takes two arguments, which is not implemented
+fn test_error_unsupported_operation() {
+    let e = Error::UnsupportedOperation("foo".to_string(), "bar".to_string());
+    let p: PyErr = e.into();
+    // Verify that p is an instance of UnsupportedOperation
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<UnsupportedOperation>(py), "{}", p);
     });
 }

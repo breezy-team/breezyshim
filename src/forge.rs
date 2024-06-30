@@ -1,83 +1,11 @@
 use crate::branch::{py_tag_selector, Branch, RegularBranch};
+use crate::error::Error;
 use crate::revisionid::RevisionId;
 use pyo3::conversion::ToPyObject;
 use pyo3::exceptions::PyValueError;
 use pyo3::import_exception;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
-
-import_exception!(breezy.forge, ForgeLoginRequired);
-import_exception!(breezy.forge, UnsupportedForge);
-import_exception!(breezy.errors, AlreadyControlDirError);
-
-#[derive(Clone, Debug)]
-pub enum Error {
-    LoginRequired,
-    UnsupportedForge(url::Url),
-    ProjectExists(String),
-}
-
-impl From<Error> for crate::error::Error {
-    fn from(err: Error) -> Self {
-        match err {
-            Error::LoginRequired => crate::error::Error::ForgeLoginRequired,
-            Error::UnsupportedForge(url) => crate::error::Error::UnsupportedForge(url),
-            Error::ProjectExists(name) => crate::error::Error::ForgeProjectExists(name),
-        }
-    }
-}
-
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Error::LoginRequired => write!(f, "Login required"),
-            Error::UnsupportedForge(url) => write!(f, "Unsupported forge: {}", url),
-            Error::ProjectExists(name) => write!(f, "Project already exists: {}", name),
-        }
-    }
-}
-
-impl std::error::Error for Error {}
-
-impl From<PyErr> for Error {
-    fn from(err: PyErr) -> Self {
-        Python::with_gil(|py| {
-            if err.is_instance_of::<ForgeLoginRequired>(py) {
-                Error::LoginRequired
-            } else if err.is_instance_of::<UnsupportedForge>(py) {
-                Error::UnsupportedForge(
-                    err.into_value(py)
-                        .getattr(py, "branch")
-                        .unwrap()
-                        .extract::<String>(py)
-                        .unwrap()
-                        .parse()
-                        .unwrap(),
-                )
-            } else if err.is_instance_of::<AlreadyControlDirError>(py) {
-                Error::ProjectExists(
-                    err.into_value(py)
-                        .getattr(py, "path")
-                        .unwrap()
-                        .extract::<String>(py)
-                        .unwrap(),
-                )
-            } else {
-                panic!("Unexpected error: {}", err);
-            }
-        })
-    }
-}
-
-impl From<Error> for PyErr {
-    fn from(err: Error) -> PyErr {
-        match err {
-            Error::LoginRequired => ForgeLoginRequired::new_err("Login required"),
-            Error::UnsupportedForge(url) => UnsupportedForge::new_err(url.to_string()),
-            Error::ProjectExists(name) => AlreadyControlDirError::new_err(name),
-        }
-    }
-}
 
 #[derive(Clone)]
 pub struct Forge(PyObject);
@@ -159,6 +87,10 @@ impl From<PyObject> for MergeProposal {
 }
 
 impl MergeProposal {
+    pub fn from_url(url: &url::Url) -> Result<Self, Error> {
+        get_proposal_by_url(url)
+    }
+
     pub fn reopen(&self) -> Result<(), crate::error::Error> {
         Python::with_gil(|py| {
             self.0.call_method0(py, "reopen")?;

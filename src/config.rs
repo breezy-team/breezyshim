@@ -42,6 +42,13 @@ fn test_extract_email_address() {
     assert_eq!(extract_email_address("John Doe"), None);
 }
 
+pub trait ConfigValue: ToPyObject {}
+
+impl ConfigValue for String {}
+impl ConfigValue for str {}
+impl ConfigValue for i64 {}
+impl ConfigValue for bool {}
+
 #[derive(Clone)]
 pub struct BranchConfig(PyObject);
 
@@ -50,9 +57,10 @@ impl BranchConfig {
         Self(o)
     }
 
-    pub fn set_user_option(&self, key: &str, value: &str) -> Result<()> {
+    pub fn set_user_option(&self, key: &str, value: &impl ConfigValue) -> Result<()> {
         Python::with_gil(|py| -> Result<()> {
-            self.0.call_method1(py, "set_user_option", (key, value))?;
+            self.0
+                .call_method1(py, "set_user_option", (key, value.to_object(py)))?;
             Ok(())
         })?;
         Ok(())
