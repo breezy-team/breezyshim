@@ -47,6 +47,7 @@ dependencies = [
  "debversion",
  "lazy-regex",
  "lazy_static",
+ "log",
  "pyo3",
  "pyo3-filelike",
  "serde",

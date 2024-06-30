@@ -120,6 +120,10 @@ pub fn init() {
             );
         }
 
+        if major >= 4 {
+            log::warn!("Support for Breezy 4.0 is experimental and incomplete.");
+        }
+
         init_git();
         init_bzr();
 
