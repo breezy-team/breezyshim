@@ -26,7 +26,7 @@ pub trait Branch: ToPyObject + Send {
         Python::with_gil(|py| BranchFormat(self.to_object(py).getattr(py, "_format").unwrap()))
     }
 
-    fn lock_read(&self) -> PyResult<Lock> {
+    fn lock_read(&self) -> Result<Lock, crate::error::Error> {
         Python::with_gil(|py| {
             Ok(Lock::from(
                 self.to_object(py).call_method0(py, "lock_read")?,
@@ -34,7 +34,7 @@ pub trait Branch: ToPyObject + Send {
         })
     }
 
-    fn tags(&self) -> PyResult<crate::tags::Tags> {
+    fn tags(&self) -> Result<crate::tags::Tags, crate::error::Error> {
         Python::with_gil(|py| {
             Ok(crate::tags::Tags::from(
                 self.to_object(py).getattr(py, "tags")?,
@@ -68,7 +68,7 @@ pub trait Branch: ToPyObject + Send {
         })
     }
 
-    fn basis_tree(&self) -> PyResult<crate::tree::RevisionTree> {
+    fn basis_tree(&self) -> Result<crate::tree::RevisionTree, crate::error::Error> {
         Python::with_gil(|py| {
             Ok(crate::tree::RevisionTree(
                 self.to_object(py).call_method0(py, "basis_tree")?,
@@ -100,7 +100,7 @@ pub trait Branch: ToPyObject + Send {
         overwrite: bool,
         stop_revision: Option<&RevisionId>,
         tag_selector: Option<Box<dyn Fn(String) -> bool>>,
-    ) -> PyResult<()> {
+    ) -> Result<(), crate::error::Error> {
         Python::with_gil(|py| {
             let kwargs = PyDict::new_bound(py);
             kwargs.set_item("overwrite", overwrite)?;
@@ -191,6 +191,14 @@ pub trait Branch: ToPyObject + Send {
             )
         })
     }
+
+    fn get_config(&self) -> crate::config::BranchConfig {
+        Python::with_gil(|py| {
+            crate::config::BranchConfig::new(
+                self.to_object(py).call_method0(py, "get_config").unwrap(),
+            )
+        })
+    }
 }
 
 #[derive(Clone)]
@@ -228,15 +236,19 @@ impl ToPyObject for MemoryBranch {
 impl Branch for MemoryBranch {}
 
 impl MemoryBranch {
-    pub fn new(repository: &Repository, revno: Option<u32>, revid: &RevisionId) -> PyResult<Self> {
+    pub fn new(repository: &Repository, revno: Option<u32>, revid: &RevisionId) -> Self {
         Python::with_gil(|py| {
             let mb_cls = py
-                .import_bound("breezy.memorybranch")?
-                .getattr("MemoryBranch")?;
+                .import_bound("breezy.memorybranch")
+                .unwrap()
+                .getattr("MemoryBranch")
+                .unwrap();
 
-            let o = mb_cls.call1((repository.to_object(py), (revno, revid.clone())))?;
+            let o = mb_cls
+                .call1((repository.to_object(py), (revno, revid.clone())))
+                .unwrap();
 
-            Ok(MemoryBranch(o.to_object(py)))
+            MemoryBranch(o.to_object(py))
         })
     }
 }

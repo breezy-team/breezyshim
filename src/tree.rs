@@ -85,7 +85,8 @@ pub enum TreeEntry {
 
 impl FromPyObject<'_> for TreeEntry {
     fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
-        match ob.getattr("kind")?.extract()? {
+        let kind: String = ob.getattr("kind")?.extract()?;
+        match kind.as_str() {
             "file" => {
                 let executable: bool = ob.getattr("executable")?.extract()?;
                 let kind: Kind = ob.getattr("kind")?.extract()?;

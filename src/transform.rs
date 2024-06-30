@@ -38,7 +38,9 @@ impl From<PyObject> for PreviewTree {
 impl Tree for PreviewTree {}
 
 impl TreeTransform {
-    pub fn iter_changes(&self) -> PyResult<Box<dyn Iterator<Item = TreeChange>>> {
+    pub fn iter_changes(
+        &self,
+    ) -> Result<Box<dyn Iterator<Item = TreeChange>>, crate::error::Error> {
         let mut v: Vec<TreeChange> = vec![];
 
         Python::with_gil(|py| {
@@ -52,7 +54,7 @@ impl TreeTransform {
         })
     }
 
-    pub fn cooked_conflicts(&self) -> PyResult<Vec<Conflict>> {
+    pub fn cooked_conflicts(&self) -> Result<Vec<Conflict>, crate::error::Error> {
         let mut v: Vec<Conflict> = vec![];
 
         Python::with_gil(|py| {
@@ -66,7 +68,7 @@ impl TreeTransform {
         })
     }
 
-    pub fn get_preview_tree(&self) -> PyResult<PreviewTree> {
+    pub fn get_preview_tree(&self) -> Result<PreviewTree, crate::error::Error> {
         Python::with_gil(|py| {
             let ret = self.to_object(py).getattr(py, "preview_tree")?;
             Ok(PreviewTree(ret))

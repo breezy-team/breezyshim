@@ -25,6 +25,8 @@ import_exception!(breezy.commit, PointlessCommit);
 import_exception!(breezy.errors, NoWhoami);
 import_exception!(breezy.errors, NoSuchTag);
 import_exception!(breezy.errors, TagAlreadyExists);
+import_exception!(breezy.forge, ForgeLoginRequired);
+import_exception!(breezy.forge, UnsupportedForge);
 
 #[derive(Debug)]
 pub enum Error {
@@ -59,6 +61,9 @@ pub enum Error {
     NoSuchTag(String),
     TagAlreadyExists(String),
     Socket(std::io::Error),
+    ForgeLoginRequired,
+    UnsupportedForge(url::Url),
+    ForgeProjectExists(String),
 }
 
 impl From<crate::transport::Error> for Error {
@@ -66,6 +71,12 @@ impl From<crate::transport::Error> for Error {
         match e {
             crate::transport::Error::Python(e) => e.into(),
         }
+    }
+}
+
+impl From<url::ParseError> for Error {
+    fn from(e: url::ParseError) -> Self {
+        Error::InvalidURL(e.to_string(), None)
     }
 }
 
@@ -133,6 +144,9 @@ impl std::fmt::Display for Error {
             Self::NoSuchTag(tag) => write!(f, "No such tag: {}", tag),
             Self::TagAlreadyExists(tag) => write!(f, "Tag already exists: {}", tag),
             Self::Socket(e) => write!(f, "socket error: {}", e),
+            Self::ForgeLoginRequired => write!(f, "Forge login required"),
+            Self::UnsupportedForge(url) => write!(f, "Unsupported forge: {}", url),
+            Self::ForgeProjectExists(p) => write!(f, "Forge project exists: {}", p),
         }
     }
 }
@@ -233,6 +247,18 @@ impl From<PyErr> for Error {
                 Error::Socket(std::io::Error::from_raw_os_error(
                     value.getattr("errno").unwrap().extract().unwrap(),
                 ))
+            } else if err.is_instance_of::<ForgeLoginRequired>(py) {
+                Error::ForgeLoginRequired
+            } else if err.is_instance_of::<UnsupportedForge>(py) {
+                Error::UnsupportedForge(
+                    value
+                        .getattr("url")
+                        .unwrap()
+                        .extract::<String>()
+                        .unwrap()
+                        .parse()
+                        .unwrap(),
+                )
             } else {
                 Self::Other(err)
             }
@@ -287,6 +313,11 @@ impl From<Error> for PyErr {
                 pyo3::import_exception!(socket, error);
                 error::new_err((e.raw_os_error().unwrap(),))
             }
+            Error::ForgeLoginRequired => {
+                Python::with_gil(|py| ForgeLoginRequired::new_err((py.None(),)))
+            }
+            Error::UnsupportedForge(url) => UnsupportedForge::new_err((url.to_string(),)),
+            Error::ForgeProjectExists(name) => AlreadyControlDirError::new_err((name.to_string(),)),
         }
     }
 }
@@ -554,5 +585,25 @@ fn test_error_other() {
     // Verify that p is an instance of error
     Python::with_gil(|py| {
         assert!(p.is_instance_of::<pyo3::exceptions::PyException>(py));
+    });
+}
+
+#[test]
+fn test_error_forge_login_required() {
+    let e = Error::ForgeLoginRequired;
+    let p: PyErr = e.into();
+    // Verify that p is an instance of ForgeLoginRequired
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<ForgeLoginRequired>(py));
+    });
+}
+
+#[test]
+fn test_error_unsupported_forge() {
+    let e = Error::UnsupportedForge("http://example.com".parse().unwrap());
+    let p: PyErr = e.into();
+    // Verify that p is an instance of UnsupportedForge
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<UnsupportedForge>(py));
     });
 }

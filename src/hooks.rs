@@ -15,7 +15,7 @@ impl HookDict {
         .unwrap()
     }
 
-    pub fn clear(&self, name: &str) -> PyResult<()> {
+    pub fn clear(&self, name: &str) -> Result<(), crate::error::Error> {
         Python::with_gil(|py| {
             let entrypoint = self.0.bind(py).get_item(name)?;
             entrypoint.call_method0("clear")?;
@@ -23,7 +23,7 @@ impl HookDict {
         })
     }
 
-    pub fn add(&self, name: &str, func: Hook) -> PyResult<()> {
+    pub fn add(&self, name: &str, func: Hook) -> Result<(), crate::error::Error> {
         Python::with_gil(|py| {
             let entrypoint = self.0.bind(py).get_item(name)?;
             entrypoint.call_method1("add", (func.0,))?;
@@ -31,7 +31,7 @@ impl HookDict {
         })
     }
 
-    pub fn get(&self, name: &str) -> PyResult<Vec<Hook>> {
+    pub fn get(&self, name: &str) -> Result<Vec<Hook>, crate::error::Error> {
         Python::with_gil(|py| {
             let entrypoint = self.0.bind(py).get_item(name)?;
             Ok(entrypoint

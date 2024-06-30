@@ -55,7 +55,7 @@ impl Merger {
         })
     }
 
-    pub fn find_base(&self) -> PyResult<Option<RevisionId>> {
+    pub fn find_base(&self) -> Result<Option<RevisionId>, crate::error::Error> {
         Python::with_gil(|py| match self.0.call_method0(py, "find_base") {
             Ok(_py_obj) => Ok(self
                 .0
@@ -71,13 +71,14 @@ impl Merger {
                 }
             }
         })
+        .map_err(Into::into)
     }
 
     pub fn set_other_revision(
         &mut self,
         other_revision: &RevisionId,
         other_branch: &dyn Branch,
-    ) -> PyResult<()> {
+    ) -> Result<(), crate::error::Error> {
         Python::with_gil(|py| {
             self.0.call_method1(
                 py,
@@ -92,7 +93,7 @@ impl Merger {
         &mut self,
         base_revision: &RevisionId,
         base_branch: &dyn Branch,
-    ) -> PyResult<()> {
+    ) -> Result<(), crate::error::Error> {
         Python::with_gil(|py| {
             self.0.call_method1(
                 py,
@@ -113,7 +114,7 @@ impl Merger {
         })
     }
 
-    pub fn make_merger(&self) -> PyResult<Submerger> {
+    pub fn make_merger(&self) -> Result<Submerger, crate::error::Error> {
         Python::with_gil(|py| {
             let merger = self.0.call_method0(py, "make_merger")?;
             Ok(Submerger(merger))
@@ -150,7 +151,7 @@ impl Merger {
 pub struct Submerger(PyObject);
 
 impl Submerger {
-    pub fn make_preview_transform(&self) -> PyResult<TreeTransform> {
+    pub fn make_preview_transform(&self) -> Result<TreeTransform, crate::error::Error> {
         Python::with_gil(|py| {
             let transform = self
                 .0

@@ -12,12 +12,18 @@ impl From<PyObject> for Tags {
 }
 
 impl Tags {
-    pub fn get_reverse_tag_dict(&self) -> PyResult<HashMap<RevisionId, HashSet<String>>> {
+    pub fn get_reverse_tag_dict(
+        &self,
+    ) -> Result<HashMap<RevisionId, HashSet<String>>, crate::error::Error> {
         Python::with_gil(|py| self.0.call_method0(py, "get_reverse_tag_dict")?.extract(py))
+            .map_err(Into::into)
     }
 
-    pub fn get_tag_dict(&self) -> PyResult<HashMap<String, HashSet<RevisionId>>> {
+    pub fn get_tag_dict(
+        &self,
+    ) -> Result<HashMap<String, HashSet<RevisionId>>, crate::error::Error> {
         Python::with_gil(|py| self.0.call_method0(py, "get_tag_dict")?.extract(py))
+            .map_err(Into::into)
     }
 
     pub fn lookup_tag(&self, tag: &str) -> Result<RevisionId, Error> {
