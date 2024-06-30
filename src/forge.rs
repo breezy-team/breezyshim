@@ -3,7 +3,6 @@ use crate::error::Error;
 use crate::revisionid::RevisionId;
 use pyo3::conversion::ToPyObject;
 use pyo3::exceptions::PyValueError;
-use pyo3::import_exception;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
