@@ -14,6 +14,7 @@ import_exception!(breezy.errors, TransportError);
 import_exception!(breezy.errors, UnsupportedFormatError);
 import_exception!(breezy.errors, UnsupportedVcs);
 import_exception!(breezy.git.remote, RemoteGitError);
+import_exception!(breezy.git.remote, ProtectedBranchHookDeclined);
 import_exception!(http.client, IncompleteRead);
 import_exception!(breezy.bzr, LineEndingError);
 import_exception!(breezy.errors, InvalidHttpResponse);
@@ -68,6 +69,7 @@ pub enum Error {
     ForgeProjectExists(String),
     MergeProposalExists(url::Url, Option<url::Url>),
     UnsupportedOperation(String, String),
+    ProtectedBranchHookDeclined(String),
 }
 
 impl From<crate::transport::Error> for Error {
@@ -159,6 +161,9 @@ impl std::fmt::Display for Error {
                 }
             }
             Self::UnsupportedOperation(a, b) => write!(f, "Unsupported operation: {} on {}", a, b),
+            Self::ProtectedBranchHookDeclined(e) => {
+                write!(f, "Protected branch hook declined: {}", e)
+            }
         }
     }
 }
@@ -288,6 +293,8 @@ impl From<PyErr> for Error {
                     value.getattr("mname").unwrap().extract().unwrap(),
                     value.getattr("tname").unwrap().extract().unwrap(),
                 )
+            } else if err.is_instance_of::<ProtectedBranchHookDeclined>(py) {
+                Error::ProtectedBranchHookDeclined(value.getattr("msg").unwrap().extract().unwrap())
             } else {
                 Self::Other(err)
             }
@@ -353,6 +360,7 @@ impl From<Error> for PyErr {
             Error::UnsupportedOperation(mname, tname) => {
                 UnsupportedOperation::new_err((mname, tname))
             }
+            Error::ProtectedBranchHookDeclined(msg) => ProtectedBranchHookDeclined::new_err((msg,)),
         }
     }
 }
@@ -674,5 +682,15 @@ fn test_error_unsupported_operation() {
     // Verify that p is an instance of UnsupportedOperation
     Python::with_gil(|py| {
         assert!(p.is_instance_of::<UnsupportedOperation>(py), "{}", p);
+    });
+}
+
+#[test]
+fn test_error_protected_branch_hook_declined() {
+    let e = Error::ProtectedBranchHookDeclined("foo".to_string());
+    let p: PyErr = e.into();
+    // Verify that p is an instance of ProtectedBranchHookDeclined
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<ProtectedBranchHookDeclined>(py), "{}", p);
     });
 }
