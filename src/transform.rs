@@ -38,6 +38,13 @@ impl From<PyObject> for PreviewTree {
 impl Tree for PreviewTree {}
 
 impl TreeTransform {
+    pub fn finalize(&self) -> Result<(), crate::error::Error> {
+        Python::with_gil(|py| {
+            self.to_object(py).call_method0(py, "finalize")?;
+            Ok(())
+        })
+    }
+
     pub fn iter_changes(
         &self,
     ) -> Result<Box<dyn Iterator<Item = TreeChange>>, crate::error::Error> {
