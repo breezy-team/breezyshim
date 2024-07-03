@@ -33,6 +33,7 @@ pub mod intertree;
 pub mod location;
 pub mod lock;
 pub mod merge;
+pub mod patches;
 pub mod plugin;
 pub mod rename_map;
 pub mod repository;
