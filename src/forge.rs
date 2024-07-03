@@ -1,73 +1,10 @@
 use crate::branch::{py_tag_selector, Branch, RegularBranch};
+use crate::error::Error;
 use crate::revisionid::RevisionId;
 use pyo3::conversion::ToPyObject;
 use pyo3::exceptions::PyValueError;
-use pyo3::import_exception;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
-
-import_exception!(breezy.forge, ForgeLoginRequired);
-import_exception!(breezy.forge, UnsupportedForge);
-import_exception!(breezy.errors, AlreadyControlDirError);
-
-#[derive(Clone, Debug)]
-pub enum Error {
-    LoginRequired,
-    UnsupportedForge(url::Url),
-    ProjectExists(String),
-}
-
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Error::LoginRequired => write!(f, "Login required"),
-            Error::UnsupportedForge(url) => write!(f, "Unsupported forge: {}", url),
-            Error::ProjectExists(name) => write!(f, "Project already exists: {}", name),
-        }
-    }
-}
-
-impl std::error::Error for Error {}
-
-impl From<PyErr> for Error {
-    fn from(err: PyErr) -> Self {
-        Python::with_gil(|py| {
-            if err.is_instance_of::<ForgeLoginRequired>(py) {
-                Error::LoginRequired
-            } else if err.is_instance_of::<UnsupportedForge>(py) {
-                Error::UnsupportedForge(
-                    err.into_value(py)
-                        .getattr(py, "branch")
-                        .unwrap()
-                        .extract::<String>(py)
-                        .unwrap()
-                        .parse()
-                        .unwrap(),
-                )
-            } else if err.is_instance_of::<AlreadyControlDirError>(py) {
-                Error::ProjectExists(
-                    err.into_value(py)
-                        .getattr(py, "path")
-                        .unwrap()
-                        .extract::<String>(py)
-                        .unwrap(),
-                )
-            } else {
-                panic!("Unexpected error: {}", err);
-            }
-        })
-    }
-}
-
-impl From<Error> for PyErr {
-    fn from(err: Error) -> PyErr {
-        match err {
-            Error::LoginRequired => ForgeLoginRequired::new_err("Login required"),
-            Error::UnsupportedForge(url) => UnsupportedForge::new_err(url.to_string()),
-            Error::ProjectExists(name) => AlreadyControlDirError::new_err(name),
-        }
-    }
-}
 
 #[derive(Clone)]
 pub struct Forge(PyObject);
@@ -149,63 +86,70 @@ impl From<PyObject> for MergeProposal {
 }
 
 impl MergeProposal {
-    pub fn reopen(&self) -> PyResult<()> {
+    pub fn from_url(url: &url::Url) -> Result<Self, Error> {
+        get_proposal_by_url(url)
+    }
+
+    pub fn reopen(&self) -> Result<(), crate::error::Error> {
         Python::with_gil(|py| {
             self.0.call_method0(py, "reopen")?;
             Ok(())
         })
     }
 
-    pub fn close(&self) -> PyResult<()> {
+    pub fn close(&self) -> Result<(), crate::error::Error> {
         Python::with_gil(|py| {
             self.0.call_method0(py, "close")?;
             Ok(())
         })
     }
 
-    pub fn url(&self) -> PyResult<url::Url> {
+    pub fn url(&self) -> Result<url::Url, crate::error::Error> {
         Python::with_gil(|py| {
             let url = self.0.getattr(py, "url")?;
             Ok(url.extract::<String>(py)?.parse().unwrap())
         })
     }
 
-    pub fn is_merged(&self) -> PyResult<bool> {
+    pub fn is_merged(&self) -> Result<bool, crate::error::Error> {
         Python::with_gil(|py| {
             let is_merged = self.0.call_method0(py, "is_merged")?;
-            is_merged.extract(py)
+            is_merged.extract(py).map_err(|e| e.into())
         })
     }
 
-    pub fn is_closed(&self) -> PyResult<bool> {
+    pub fn is_closed(&self) -> Result<bool, crate::error::Error> {
         Python::with_gil(|py| {
             let is_closed = self.0.call_method0(py, "is_closed")?;
-            is_closed.extract(py)
+            is_closed.extract(py).map_err(|e| e.into())
         })
     }
 
-    pub fn get_title(&self) -> PyResult<Option<String>> {
+    pub fn get_title(&self) -> Result<Option<String>, crate::error::Error> {
         Python::with_gil(|py| {
             let title = self.0.call_method0(py, "get_title")?;
-            title.extract(py)
+            title.extract(py).map_err(|e| e.into())
         })
     }
 
-    pub fn set_title(&self, title: Option<&str>) -> PyResult<()> {
+    pub fn set_title(&self, title: Option<&str>) -> Result<(), crate::error::Error> {
         Python::with_gil(|py| {
             self.0.call_method1(py, "set_title", (title,))?;
             Ok(())
         })
     }
 
-    pub fn get_commit_message(&self) -> PyResult<Option<String>> {
+    pub fn get_commit_message(&self) -> Result<Option<String>, crate::error::Error> {
         Python::with_gil(|py| {
             let commit_message = self.0.call_method0(py, "get_commit_message")?;
-            commit_message.extract(py)
+            commit_message.extract(py).map_err(|e| e.into())
         })
     }
 
-    pub fn set_commit_message(&self, commit_message: Option<&str>) -> PyResult<()> {
+    pub fn set_commit_message(
+        &self,
+        commit_message: Option<&str>,
+    ) -> Result<(), crate::error::Error> {
         Python::with_gil(|py| {
             self.0
                 .call_method1(py, "set_commit_message", (commit_message,))?;
@@ -213,46 +157,46 @@ impl MergeProposal {
         })
     }
 
-    pub fn get_target_branch_url(&self) -> PyResult<Option<url::Url>> {
+    pub fn get_target_branch_url(&self) -> Result<Option<url::Url>, crate::error::Error> {
         Python::with_gil(|py| {
             let target_branch_url = self.0.call_method0(py, "get_target_branch_url")?;
             target_branch_url
                 .extract::<String>(py)?
-                .parse()
+                .parse::<url::Url>()
                 .map(Some)
-                .map_err(|e| PyValueError::new_err(format!("{}", e)))
+                .map_err(|e| e.into())
         })
     }
 
-    pub fn get_source_branch_url(&self) -> PyResult<Option<url::Url>> {
+    pub fn get_source_branch_url(&self) -> Result<Option<url::Url>, crate::error::Error> {
         Python::with_gil(|py| {
             let source_branch_url = self.0.call_method0(py, "get_source_branch_url")?;
             source_branch_url
                 .extract::<String>(py)?
-                .parse()
+                .parse::<url::Url>()
                 .map(Some)
-                .map_err(|e| PyValueError::new_err(format!("{}", e)))
+                .map_err(|e| e.into())
         })
     }
 
-    pub fn get_description(&self) -> PyResult<Option<String>> {
+    pub fn get_description(&self) -> Result<Option<String>, crate::error::Error> {
         Python::with_gil(|py| {
             let description = self.0.call_method0(py, "get_description")?;
-            description.extract(py)
+            description.extract(py).map_err(|e| e.into())
         })
     }
 
-    pub fn set_description(&self, description: Option<&str>) -> PyResult<()> {
+    pub fn set_description(&self, description: Option<&str>) -> Result<(), crate::error::Error> {
         Python::with_gil(|py| {
             self.0.call_method1(py, "set_description", (description,))?;
             Ok(())
         })
     }
 
-    pub fn can_be_merged(&self) -> PyResult<bool> {
+    pub fn can_be_merged(&self) -> Result<bool, crate::error::Error> {
         Python::with_gil(|py| {
             let can_be_merged = self.0.call_method0(py, "can_be_merged")?;
-            can_be_merged.extract(py)
+            can_be_merged.extract(py).map_err(|e| e.into())
         })
     }
 
@@ -329,7 +273,7 @@ impl ProposalBuilder {
         self
     }
 
-    pub fn build(self) -> PyResult<MergeProposal> {
+    pub fn build(self) -> Result<MergeProposal, crate::error::Error> {
         Python::with_gil(|py| {
             let kwargs = self.1;
             let proposal = self.0.call_method1(py, "create_proposal", (kwargs,))?;
@@ -339,7 +283,10 @@ impl ProposalBuilder {
 }
 
 impl Forge {
-    pub fn get_proposal_by_url(&self, url: &url::Url) -> PyResult<MergeProposal> {
+    pub fn get_proposal_by_url(
+        &self,
+        url: &url::Url,
+    ) -> Result<MergeProposal, crate::error::Error> {
         Python::with_gil(|py| {
             let proposal =
                 self.to_object(py)
@@ -411,7 +358,7 @@ impl Forge {
         &self,
         from_branch: &dyn Branch,
         to_branch: &dyn Branch,
-    ) -> PyResult<ProposalBuilder> {
+    ) -> Result<ProposalBuilder, crate::error::Error> {
         Python::with_gil(|py| {
             Ok(ProposalBuilder(
                 self.0.call_method1(
@@ -454,7 +401,7 @@ impl Forge {
         name: &str,
         owner: Option<&str>,
         preferred_schemes: Option<&[&str]>,
-    ) -> PyResult<Box<dyn Branch>> {
+    ) -> Result<Box<dyn Branch>, crate::error::Error> {
         Python::with_gil(|py| {
             let kwargs = PyDict::new_bound(py);
             if let Some(owner) = owner {
@@ -478,7 +425,7 @@ impl Forge {
         source_branch: &dyn Branch,
         target_branch: &dyn Branch,
         status: MergeProposalStatus,
-    ) -> PyResult<impl Iterator<Item = MergeProposal>> {
+    ) -> Result<impl Iterator<Item = MergeProposal>, crate::error::Error> {
         Python::with_gil(move |py| {
             let kwargs = PyDict::new_bound(py);
             kwargs.set_item("status", status.to_string())?;
@@ -504,7 +451,7 @@ impl Forge {
         owner: Option<&str>,
         stop_revision: Option<&RevisionId>,
         tag_selector: Option<Box<dyn Fn(String) -> bool>>,
-    ) -> PyResult<(Box<dyn Branch>, url::Url)> {
+    ) -> Result<(Box<dyn Branch>, url::Url), crate::error::Error> {
         Python::with_gil(|py| {
             let kwargs = PyDict::new_bound(py);
             kwargs.set_item("local_branch", &local_branch.to_object(py))?;

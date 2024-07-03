@@ -1,3 +1,6 @@
+use crate::Result;
+use pyo3::prelude::*;
+
 pub fn parse_username(e: &str) -> (String, String) {
     if let Some((_, username, email)) =
         lazy_regex::regex_captures!(r"(.*?)\s*<?([\[\]\w+.-]+@[\w+.-]+)>?", e)
@@ -37,4 +40,29 @@ fn test_extract_email_address() {
         Some("joe@example.com".to_string())
     );
     assert_eq!(extract_email_address("John Doe"), None);
+}
+
+pub trait ConfigValue: ToPyObject {}
+
+impl ConfigValue for String {}
+impl ConfigValue for str {}
+impl ConfigValue for i64 {}
+impl ConfigValue for bool {}
+
+#[derive(Clone)]
+pub struct BranchConfig(PyObject);
+
+impl BranchConfig {
+    pub fn new(o: PyObject) -> Self {
+        Self(o)
+    }
+
+    pub fn set_user_option(&self, key: &str, value: &impl ConfigValue) -> Result<()> {
+        Python::with_gil(|py| -> Result<()> {
+            self.0
+                .call_method1(py, "set_user_option", (key, value.to_object(py)))?;
+            Ok(())
+        })?;
+        Ok(())
+    }
 }

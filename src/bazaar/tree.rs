@@ -1,4 +1,5 @@
-use crate::tree::{Error, MutableTree, Path};
+use crate::error::Error;
+use crate::tree::{MutableTree, Path};
 use pyo3::prelude::*;
 
 pub trait MutableInventoryTree: MutableTree {

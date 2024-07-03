@@ -1,120 +1,10 @@
 use crate::controldir::ControlDir;
+use crate::error::Error;
 use crate::lock::Lock;
 use crate::repository::Repository;
 use crate::revisionid::RevisionId;
-use pyo3::import_exception;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
-
-import_exception!(breezy.errors, NotBranchError);
-import_exception!(breezy.errors, DependencyNotPresent);
-import_exception!(breezy.errors, DivergedBranches);
-import_exception!(breezy.controldir, NoColocatedBranchSupport);
-
-#[derive(Debug)]
-pub enum BranchOpenError {
-    NotBranchError(String),
-    NoColocatedBranchSupport,
-    DependencyNotPresent(String, String),
-    Other(PyErr),
-}
-
-impl From<PyErr> for BranchOpenError {
-    fn from(err: PyErr) -> Self {
-        Python::with_gil(|py| {
-            if err.is_instance_of::<NotBranchError>(py) {
-                let value = err
-                    .into_value(py);
-                let l = value
-                    .getattr(py, "path")
-                    .unwrap()
-                    .extract::<String>(py)
-                    .unwrap();
-                BranchOpenError::NotBranchError(l)
-            } else if err.is_instance_of::<NoColocatedBranchSupport>(py) {
-                BranchOpenError::NoColocatedBranchSupport
-            } else if err.is_instance_of::<DependencyNotPresent>(py) {
-                let value = err
-                    .into_value(py);
-                let l = value
-                    .getattr(py, "library")
-                    .unwrap()
-                    .extract::<String>(py)
-                    .unwrap();
-                let e = value.getattr(py, "error").unwrap().to_string();
-                BranchOpenError::DependencyNotPresent(l, e)
-            } else {
-                BranchOpenError::Other(err)
-            }
-        })
-    }
-}
-
-impl From<BranchOpenError> for PyErr {
-    fn from(err: BranchOpenError) -> Self {
-        match err {
-            BranchOpenError::NotBranchError(l) => NotBranchError::new_err((l,)),
-            BranchOpenError::DependencyNotPresent(d, e) => DependencyNotPresent::new_err((d, e)),
-            BranchOpenError::NoColocatedBranchSupport => {
-                NoColocatedBranchSupport::new_err("NoColocatedBranchSupport")
-            }
-            BranchOpenError::Other(err) => err,
-        }
-    }
-}
-
-impl std::fmt::Display for BranchOpenError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            BranchOpenError::NotBranchError(p) => write!(f, "NotBranchError: {}", p),
-            BranchOpenError::DependencyNotPresent(d, e) => {
-                write!(f, "DependencyNotPresent({}, {})", d, e)
-            }
-            BranchOpenError::NoColocatedBranchSupport => write!(f, "NoColocatedBranchSupport"),
-            BranchOpenError::Other(err) => write!(f, "Other({})", err),
-        }
-    }
-}
-
-impl std::error::Error for BranchOpenError {}
-
-#[derive(Debug)]
-pub enum PullError {
-    DivergedBranches,
-    Other(PyErr),
-}
-
-impl From<PyErr> for PullError {
-    fn from(err: PyErr) -> Self {
-        Python::with_gil(|py| {
-            if err.is_instance_of::<DivergedBranches>(py) {
-                PullError::DivergedBranches
-            } else {
-                PullError::Other(err)
-            }
-        })
-    }
-}
-
-impl From<PullError> for PyErr {
-    fn from(err: PullError) -> Self {
-        match err {
-            PullError::DivergedBranches => DivergedBranches::new_err("DivergedBranches"),
-            PullError::Other(err) => err,
-        }
-    }
-}
-
-impl std::fmt::Display for PullError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            PullError::DivergedBranches => write!(f, "DivergedBranches"),
-            PullError::Other(err) => write!(f, "Other({})", err),
-        }
-    }
-}
-
-impl std::error::Error for PullError {}
 
 #[derive(Clone)]
 pub struct BranchFormat(PyObject);
@@ -136,7 +26,7 @@ pub trait Branch: ToPyObject + Send {
         Python::with_gil(|py| BranchFormat(self.to_object(py).getattr(py, "_format").unwrap()))
     }
 
-    fn lock_read(&self) -> PyResult<Lock> {
+    fn lock_read(&self) -> Result<Lock, crate::error::Error> {
         Python::with_gil(|py| {
             Ok(Lock::from(
                 self.to_object(py).call_method0(py, "lock_read")?,
@@ -144,7 +34,7 @@ pub trait Branch: ToPyObject + Send {
         })
     }
 
-    fn tags(&self) -> PyResult<crate::tags::Tags> {
+    fn tags(&self) -> Result<crate::tags::Tags, crate::error::Error> {
         Python::with_gil(|py| {
             Ok(crate::tags::Tags::from(
                 self.to_object(py).getattr(py, "tags")?,
@@ -178,7 +68,7 @@ pub trait Branch: ToPyObject + Send {
         })
     }
 
-    fn basis_tree(&self) -> PyResult<crate::tree::RevisionTree> {
+    fn basis_tree(&self) -> Result<crate::tree::RevisionTree, crate::error::Error> {
         Python::with_gil(|py| {
             Ok(crate::tree::RevisionTree(
                 self.to_object(py).call_method0(py, "basis_tree")?,
@@ -210,7 +100,7 @@ pub trait Branch: ToPyObject + Send {
         overwrite: bool,
         stop_revision: Option<&RevisionId>,
         tag_selector: Option<Box<dyn Fn(String) -> bool>>,
-    ) -> PyResult<()> {
+    ) -> Result<(), crate::error::Error> {
         Python::with_gil(|py| {
             let kwargs = PyDict::new_bound(py);
             kwargs.set_item("overwrite", overwrite)?;
@@ -230,7 +120,7 @@ pub trait Branch: ToPyObject + Send {
         })
     }
 
-    fn pull(&self, source_branch: &dyn Branch, overwrite: Option<bool>) -> Result<(), PullError> {
+    fn pull(&self, source_branch: &dyn Branch, overwrite: Option<bool>) -> Result<(), Error> {
         Python::with_gil(|py| {
             let kwargs = PyDict::new_bound(py);
             if let Some(overwrite) = overwrite {
@@ -301,6 +191,14 @@ pub trait Branch: ToPyObject + Send {
             )
         })
     }
+
+    fn get_config(&self) -> crate::config::BranchConfig {
+        Python::with_gil(|py| {
+            crate::config::BranchConfig::new(
+                self.to_object(py).call_method0(py, "get_config").unwrap(),
+            )
+        })
+    }
 }
 
 #[derive(Clone)]
@@ -338,13 +236,19 @@ impl ToPyObject for MemoryBranch {
 impl Branch for MemoryBranch {}
 
 impl MemoryBranch {
-    pub fn new(repository: &Repository, revno: Option<u32>, revid: &RevisionId) -> PyResult<Self> {
+    pub fn new(repository: &Repository, revno: Option<u32>, revid: &RevisionId) -> Self {
         Python::with_gil(|py| {
-            let mb_cls = py.import_bound("breezy.memorybranch")?.getattr("MemoryBranch")?;
+            let mb_cls = py
+                .import_bound("breezy.memorybranch")
+                .unwrap()
+                .getattr("MemoryBranch")
+                .unwrap();
 
-            let o = mb_cls.call1((repository.to_object(py), (revno, revid.clone())))?;
+            let o = mb_cls
+                .call1((repository.to_object(py), (revno, revid.clone())))
+                .unwrap();
 
-            Ok(MemoryBranch(o.to_object(py)))
+            MemoryBranch(o.to_object(py))
         })
     }
 }
@@ -365,7 +269,7 @@ pub(crate) fn py_tag_selector(
     Ok(PyTagSelector(tag_selector).into_py(py))
 }
 
-pub fn open(url: &url::Url) -> Result<Box<dyn Branch>, BranchOpenError> {
+pub fn open(url: &url::Url) -> Result<Box<dyn Branch>, Error> {
     Python::with_gil(|py| {
         let m = py.import_bound("breezy.branch").unwrap();
         let c = m.getattr("Branch").unwrap();
@@ -374,7 +278,7 @@ pub fn open(url: &url::Url) -> Result<Box<dyn Branch>, BranchOpenError> {
     })
 }
 
-pub fn open_containing(url: &url::Url) -> Result<(Box<dyn Branch>, String), BranchOpenError> {
+pub fn open_containing(url: &url::Url) -> Result<(Box<dyn Branch>, String), Error> {
     Python::with_gil(|py| {
         let m = py.import_bound("breezy.branch").unwrap();
         let c = m.getattr("Branch").unwrap();

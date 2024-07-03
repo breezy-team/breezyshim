@@ -3,11 +3,11 @@ use crate::delta::TreeDelta;
 use crate::graph::Graph;
 use crate::revisionid::RevisionId;
 use crate::tree::RevisionTree;
+use chrono::DateTime;
+use chrono::TimeZone;
 use pyo3::exceptions::PyStopIteration;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
-use chrono::DateTime;
-use chrono::TimeZone;
 
 #[derive(Clone)]
 pub struct RepositoryFormat(PyObject);
@@ -123,7 +123,7 @@ impl Repository {
         &self,
         other_repository: &Repository,
         stop_revision: Option<&RevisionId>,
-    ) -> PyResult<()> {
+    ) -> Result<(), crate::error::Error> {
         Python::with_gil(|py| {
             self.0.call_method1(
                 py,
@@ -137,7 +137,7 @@ impl Repository {
         })
     }
 
-    pub fn revision_tree(&self, revid: &RevisionId) -> PyResult<RevisionTree> {
+    pub fn revision_tree(&self, revid: &RevisionId) -> Result<RevisionTree, crate::error::Error> {
         Python::with_gil(|py| {
             let o = self.0.call_method1(py, "revision_tree", (revid.clone(),))?;
             Ok(RevisionTree(o))
@@ -186,11 +186,12 @@ impl Repository {
         })
     }
 
-    pub fn get_revision(&self, revision_id: &RevisionId) -> PyResult<Revision> {
+    pub fn get_revision(&self, revision_id: &RevisionId) -> Result<Revision, crate::error::Error> {
         Python::with_gil(|py| {
             self.0
                 .call_method1(py, "get_revision", (revision_id.clone(),))?
                 .extract(py)
         })
+        .map_err(|e| e.into())
     }
 }

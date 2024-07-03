@@ -26,10 +26,12 @@ pub mod error;
 pub mod export;
 pub mod forge;
 pub mod github;
+pub mod gitlab;
 pub mod gpg;
 pub mod graph;
 pub mod hooks;
 pub mod intertree;
+pub mod launchpad;
 pub mod location;
 pub mod lock;
 pub mod merge;
@@ -76,42 +78,54 @@ pub fn init_bzr() {
     })
 }
 
-#[derive(Debug)]
-pub struct BreezyNotInstalled {
-    pub message: String,
-}
-
-impl std::fmt::Display for BreezyNotInstalled {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "Breezy is not installed: {}", self.message)
-    }
-}
-
 #[cfg(feature = "auto-initialize")]
 #[ctor::ctor]
 fn ensure_initialized() {
-    init().unwrap();
+    init();
 }
+
+const MINIMUM_VERSION: (usize, usize, usize) = (3, 3, 6);
 
 static INIT_BREEZY: Once = Once::new();
 
-pub fn init() -> std::result::Result<(), BreezyNotInstalled> {
+pub fn init() {
     INIT_BREEZY.call_once(|| {
         pyo3::prepare_freethreaded_python();
-        pyo3::Python::with_gil(|py| match py.import_bound("breezy") {
-            Ok(_) => Ok(()),
+        let (major, minor, micro) = pyo3::Python::with_gil(|py| match py.import_bound("breezy") {
+            Ok(breezy) => {
+                let (major, minor, micro, _releaselevel, _serial): (
+                    usize,
+                    usize,
+                    usize,
+                    String,
+                    usize,
+                ) = breezy.getattr("version_info").unwrap().extract().unwrap();
+                (major, minor, micro)
+            }
             Err(e) => {
                 if e.is_instance_of::<PyImportError>(py) {
-                    Err(BreezyNotInstalled {
-                        message: e.to_string(),
-                    })
+                    panic!("Breezy is not installed. Please install Breezy first.");
                 } else {
                     Err::<(), pyo3::PyErr>(e).unwrap();
                     unreachable!()
                 }
             }
-        })
-        .expect("Breezy is not installed");
+        });
+
+        if (major, minor, micro) < MINIMUM_VERSION {
+            panic!(
+                "Breezy version {} is too old, please upgrade to at least {}.",
+                format!("{}.{}.{}", major, minor, micro),
+                format!(
+                    "{}.{}.{}",
+                    MINIMUM_VERSION.0, MINIMUM_VERSION.1, MINIMUM_VERSION.2
+                )
+            );
+        }
+
+        if major >= 4 {
+            log::warn!("Support for Breezy 4.0 is experimental and incomplete.");
+        }
 
         init_git();
         init_bzr();
@@ -130,7 +144,6 @@ pub fn init() -> std::result::Result<(), BreezyNotInstalled> {
             m.call_method1("LocationStack", ("file:///",)).unwrap();
         });
     });
-    Ok(())
 }
 
 pub type Result<R> = std::result::Result<R, crate::error::Error>;

@@ -9,7 +9,7 @@ pub fn show_diff_trees(
     mut w: impl Write,
     old_label: Option<&str>,
     new_label: Option<&str>,
-) -> PyResult<()> {
+) -> Result<(), crate::error::Error> {
     Python::with_gil(|py| -> PyResult<()> {
         let m = py.import_bound("breezy.diff")?;
         let f = m.getattr("show_diff_trees")?;
@@ -25,7 +25,10 @@ pub fn show_diff_trees(
             kwargs.set_item("new_label", new_label)?;
         }
 
-        f.call((tree1.to_object(py), tree2.to_object(py), &o), Some(&kwargs))?;
+        f.call(
+            (tree1.to_object(py), tree2.to_object(py), &o),
+            Some(&kwargs),
+        )?;
 
         let s = o.call_method0("getvalue")?.extract::<Vec<u8>>()?;
 

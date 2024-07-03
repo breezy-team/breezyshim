@@ -9,3 +9,17 @@ pub fn retrieve_github_token() -> String {
         token.extract().unwrap()
     })
 }
+
+pub fn login() -> PyResult<()> {
+    Python::with_gil(|py| {
+        let m = py.import_bound("breezy.plugins.github.cmds").unwrap();
+        let cmd = m.getattr("cmd_github_login").unwrap();
+
+        let cmd_gl = cmd.call0().unwrap();
+        cmd_gl.call_method0("_setup_outf").unwrap();
+
+        cmd_gl.call_method0("run").unwrap();
+
+        Ok(())
+    })
+}

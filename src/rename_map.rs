@@ -1,8 +1,11 @@
-use pyo3::prelude::*;
 use crate::tree::{MutableTree, Tree};
+use pyo3::prelude::*;
 
-pub fn guess_renames(from_tree: &dyn Tree, mutable_tree: &dyn MutableTree) -> pyo3::PyResult<()> {
-    pyo3::Python::with_gil(|py| {
+pub fn guess_renames(
+    from_tree: &dyn Tree,
+    mutable_tree: &dyn MutableTree,
+) -> Result<(), crate::error::Error> {
+    pyo3::Python::with_gil(|py| -> Result<(), pyo3::PyErr> {
         let m = py.import_bound("breezy.rename_map")?;
         let rename_map = m.getattr("RenameMap")?;
         rename_map.call_method1(
@@ -11,4 +14,5 @@ pub fn guess_renames(from_tree: &dyn Tree, mutable_tree: &dyn MutableTree) -> py
         )?;
         Ok(())
     })
+    .map_err(Into::into)
 }
