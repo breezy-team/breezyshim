@@ -71,3 +71,29 @@ impl pyo3::IntoPy<pyo3::PyObject> for FileId {
         self.0.to_object(py)
     }
 }
+
+pub fn gen_revision_id(username: &str, timestamp: Option<usize>) -> Vec<u8> {
+    Python::with_gil(|py| {
+        let m = py.import_bound("breezy.bzr.generate_ids").unwrap();
+        let gen_revision_id = m.getattr("gen_revision_id").unwrap();
+        gen_revision_id.call1((username, timestamp)).unwrap().extract().unwrap()
+    })
+}
+
+#[test]
+fn test_gen_revision_id() {
+    gen_revision_id("user", None);
+}
+
+pub fn gen_file_id(name: &str) -> Vec<u8> {
+    Python::with_gil(|py| {
+        let m = py.import_bound("breezy.bzr.generate_ids").unwrap();
+        let gen_file_id = m.getattr("gen_file_id").unwrap();
+        gen_file_id.call1((name, )).unwrap().extract().unwrap()
+    })
+}
+
+#[test]
+fn test_file_id() {
+    gen_file_id("somename");
+}
