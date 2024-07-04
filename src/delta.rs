@@ -75,7 +75,7 @@ impl FromPyObject<'_> for TreeDelta {
     }
 }
 
-fn filter_excluded<'a>(iter_changes: impl Iterator<Item = TreeChange> + 'a, exclude: &'a [&'a std::path::Path]) -> impl Iterator<Item = TreeChange> + 'a {
+pub fn filter_excluded<'a>(iter_changes: impl Iterator<Item = TreeChange> + 'a, exclude: &'a [&'a std::path::Path]) -> impl Iterator<Item = TreeChange> + 'a {
     iter_changes.filter(|change| {
         let new_excluded = if let Some(p) = change.path.1.as_ref() {
             is_inside_any(exclude, p.as_path())
