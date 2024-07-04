@@ -35,6 +35,7 @@ pub mod launchpad;
 pub mod location;
 pub mod lock;
 pub mod merge;
+pub mod osutils;
 pub mod patches;
 pub mod plugin;
 pub mod rename_map;
