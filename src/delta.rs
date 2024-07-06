@@ -1,5 +1,6 @@
 use crate::tree::TreeChange;
 use pyo3::prelude::*;
+use crate::osutils::is_inside_any;
 
 /// Describes changes from one tree to another.
 ///
@@ -72,4 +73,29 @@ impl FromPyObject<'_> for TreeDelta {
             missing,
         })
     }
+}
+
+pub fn filter_excluded<'a>(iter_changes: impl Iterator<Item = TreeChange> + 'a, exclude: &'a [&'a std::path::Path]) -> impl Iterator<Item = TreeChange> + 'a {
+    iter_changes.filter(|change| {
+        let new_excluded = if let Some(p) = change.path.1.as_ref() {
+            is_inside_any(exclude, p.as_path())
+        } else {
+            false
+        };
+
+        let old_excluded = if let Some(p) = change.path.0.as_ref() {
+            is_inside_any(exclude, p.as_path())
+        } else {
+            false
+        };
+
+        if old_excluded && new_excluded {
+            false
+        } else if old_excluded || new_excluded {
+            // TODO(jelmer): Perhaps raise an error here instead?
+            false
+        } else {
+            true
+        }
+    })
 }
