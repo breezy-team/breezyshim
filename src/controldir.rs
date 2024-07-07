@@ -96,6 +96,38 @@ impl ControlDir {
         })
     }
 
+    pub fn create_repository(&self) -> crate::Result<()> {
+        Python::with_gil(|py| {
+            self.to_object(py).call_method0(py, "create_repository")?;
+            Ok(())
+        })
+    }
+
+    pub fn create_workingtree(&self) -> crate::Result<WorkingTree> {
+        Python::with_gil(|py| {
+            let wt = self
+                .to_object(py)
+                .call_method0(py, "create_workingtree")?
+                .extract(py)?;
+            Ok(WorkingTree(wt))
+        })
+    }
+
+    pub fn set_branch_reference(
+        &self,
+        branch: &dyn Branch,
+        name: Option<&str>,
+    ) -> crate::Result<()> {
+        Python::with_gil(|py| {
+            self.to_object(py).call_method1(
+                py,
+                "set_branch_reference",
+                (&branch.to_object(py), name),
+            )?;
+            Ok(())
+        })
+    }
+
     pub fn push_branch(
         &self,
         source_branch: &dyn Branch,
