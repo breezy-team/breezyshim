@@ -430,6 +430,12 @@ impl ToPyObject for RevisionTree {
 
 impl Tree for RevisionTree {}
 
+impl Clone for RevisionTree {
+    fn clone(&self) -> Self {
+        Python::with_gil(|py| RevisionTree(self.0.clone_ref(py)))
+    }
+}
+
 impl RevisionTree {
     pub fn repository(&self) -> crate::repository::Repository {
         Python::with_gil(|py| {
@@ -460,6 +466,12 @@ impl RevisionTree {
 }
 
 pub struct WorkingTree(pub PyObject);
+
+impl Clone for WorkingTree {
+    fn clone(&self) -> Self {
+        Python::with_gil(|py| WorkingTree(self.0.clone_ref(py)))
+    }
+}
 
 impl ToPyObject for WorkingTree {
     fn to_object(&self, py: Python) -> PyObject {
