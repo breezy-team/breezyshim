@@ -19,9 +19,7 @@ impl Tags {
             .map_err(Into::into)
     }
 
-    pub fn get_tag_dict(
-        &self,
-    ) -> Result<HashMap<String, HashSet<RevisionId>>, crate::error::Error> {
+    pub fn get_tag_dict(&self) -> Result<HashMap<String, RevisionId>, crate::error::Error> {
         Python::with_gil(|py| self.0.call_method0(py, "get_tag_dict")?.extract(py))
             .map_err(Into::into)
     }
