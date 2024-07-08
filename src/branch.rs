@@ -199,6 +199,16 @@ pub trait Branch: ToPyObject + Send {
             )
         })
     }
+
+    fn get_config_stack(&self) -> crate::config::ConfigStack {
+        Python::with_gil(|py| {
+            crate::config::ConfigStack::new(
+                self.to_object(py)
+                    .call_method0(py, "get_config_stack")
+                    .unwrap(),
+            )
+        })
+    }
 }
 
 #[derive(Clone)]

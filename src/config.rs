@@ -66,3 +66,41 @@ impl BranchConfig {
         Ok(())
     }
 }
+
+pub struct ConfigStack(PyObject);
+
+impl ConfigStack {
+    pub fn new(o: PyObject) -> Self {
+        Self(o)
+    }
+
+    pub fn get(&self, key: &str) -> Result<Option<PyObject>> {
+        Python::with_gil(|py| -> Result<Option<PyObject>> {
+            let value = self.0.call_method1(py, "get", (key,))?;
+            if value.is_none(py) {
+                Ok(None)
+            } else {
+                Ok(Some(value))
+            }
+        })
+    }
+}
+
+pub fn global_stack() -> Result<ConfigStack> {
+    Python::with_gil(|py| -> Result<ConfigStack> {
+        let m = py.import_bound("breezy.config")?;
+        let stack = m.call_method0("GlobalStack")?;
+        Ok(ConfigStack::new(stack.to_object(py)))
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_config_stack() {
+        let stack = global_stack().unwrap();
+        stack.get("email").unwrap();
+    }
+}
