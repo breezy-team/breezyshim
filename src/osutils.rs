@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 pub fn is_inside(dir: &Path, fname: &Path) -> bool {
     fname.starts_with(dir)

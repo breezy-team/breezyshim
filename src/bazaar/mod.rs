@@ -1,4 +1,5 @@
 use crate::controldir::Prober;
+use pyo3::exceptions::PyModuleNotFoundError;
 use pyo3::prelude::*;
 
 pub mod tree;
@@ -104,6 +105,28 @@ fn test_file_id() {
 }
 
 pub struct RemoteBzrProber(PyObject);
+
+impl RemoteBzrProber {
+    pub fn new() -> Option<Self> {
+        Python::with_gil(|py| {
+            let m = match py.import_bound("breezy.bzr") {
+                Ok(m) => m,
+                Err(e) => {
+                    if e.is_instance_of::<PyModuleNotFoundError>(py) {
+                        return None;
+                    } else {
+                        e.print_and_set_sys_last_vars(py);
+                        panic!("Failed to import breezy.bzr");
+                    }
+                }
+            };
+            let prober = m
+                .getattr("RemoteBzrProber")
+                .expect("Failed to get RemoteBzrProber");
+            Some(Self(prober.to_object(py)))
+        })
+    }
+}
 
 impl FromPyObject<'_> for RemoteBzrProber {
     fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {

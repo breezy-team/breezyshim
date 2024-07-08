@@ -598,3 +598,23 @@ fn test_create_branch_convenience() {
         url::Url::from_directory_path(tmp_dir.path()).unwrap()
     );
 }
+
+pub fn all_probers() -> Vec<Box<dyn Prober>> {
+    struct PyProber(PyObject);
+    impl ToPyObject for PyProber {
+        fn to_object(&self, py: Python) -> PyObject {
+            self.0.clone_ref(py)
+        }
+    }
+    impl Prober for PyProber {}
+    Python::with_gil(|py| -> PyResult<Vec<Box<dyn Prober>>> {
+        let m = py.import_bound("breezy.controldir")?;
+        let cdf = m.getattr("ControlDirFormat")?;
+        let probers = cdf.getattr("all_probers")?.extract::<Vec<PyObject>>()?;
+        Ok(probers
+            .into_iter()
+            .map(|p| Box::new(PyProber(p)) as Box<dyn Prober>)
+            .collect::<Vec<_>>())
+    })
+    .unwrap()
+}
