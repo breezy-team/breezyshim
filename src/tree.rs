@@ -418,6 +418,18 @@ pub trait MutableTree: Tree {
         })
         .map_err(|e| e.into())
     }
+
+    fn remove(&self, files: &[&std::path::Path]) -> Result<(), Error> {
+        Python::with_gil(|py| -> Result<(), PyErr> {
+            self.to_object(py).call_method1(
+                py,
+                "remove",
+                (files.iter().map(|p| p.to_path_buf()).collect::<Vec<_>>(),),
+            )?;
+            Ok(())
+        })
+        .map_err(|e| e.into())
+    }
 }
 
 pub struct RevisionTree(pub PyObject);
@@ -765,3 +777,23 @@ impl From<&dyn Branch> for MemoryTree {
 impl Tree for MemoryTree {}
 
 impl MutableTree for MemoryTree {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::controldir::{create_standalone_workingtree, ControlDirFormat};
+
+    #[test]
+    fn test_remove() {
+        let td = tempfile::tempdir().unwrap();
+        let wt = create_standalone_workingtree(td.path(), &ControlDirFormat::default()).unwrap();
+        let path = td.path().join("foo");
+        std::fs::write(&path, b"").unwrap();
+        wt.add(&[&std::path::Path::new("foo")]).unwrap();
+        wt.commit("Initial commit", None, None, None).unwrap();
+        assert!(wt.has_filename(&path));
+        wt.remove(&[&path]).unwrap();
+        assert!(!wt.is_versioned(&path));
+        std::mem::drop(td);
+    }
+}
