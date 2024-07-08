@@ -26,6 +26,16 @@ pub trait Branch: ToPyObject + Send {
         Python::with_gil(|py| BranchFormat(self.to_object(py).getattr(py, "_format").unwrap()))
     }
 
+    fn revno(&self) -> u32 {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method0(py, "revno")
+                .unwrap()
+                .extract(py)
+                .unwrap()
+        })
+    }
+
     fn lock_read(&self) -> Result<Lock, crate::error::Error> {
         Python::with_gil(|py| {
             Ok(Lock::from(
