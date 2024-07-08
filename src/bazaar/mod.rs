@@ -1,3 +1,4 @@
+use crate::controldir::Prober;
 use pyo3::prelude::*;
 
 pub mod tree;
@@ -76,7 +77,11 @@ pub fn gen_revision_id(username: &str, timestamp: Option<usize>) -> Vec<u8> {
     Python::with_gil(|py| {
         let m = py.import_bound("breezy.bzr.generate_ids").unwrap();
         let gen_revision_id = m.getattr("gen_revision_id").unwrap();
-        gen_revision_id.call1((username, timestamp)).unwrap().extract().unwrap()
+        gen_revision_id
+            .call1((username, timestamp))
+            .unwrap()
+            .extract()
+            .unwrap()
     })
 }
 
@@ -89,7 +94,7 @@ pub fn gen_file_id(name: &str) -> Vec<u8> {
     Python::with_gil(|py| {
         let m = py.import_bound("breezy.bzr.generate_ids").unwrap();
         let gen_file_id = m.getattr("gen_file_id").unwrap();
-        gen_file_id.call1((name, )).unwrap().extract().unwrap()
+        gen_file_id.call1((name,)).unwrap().extract().unwrap()
     })
 }
 
@@ -97,3 +102,19 @@ pub fn gen_file_id(name: &str) -> Vec<u8> {
 fn test_file_id() {
     gen_file_id("somename");
 }
+
+pub struct RemoteBzrProber(PyObject);
+
+impl FromPyObject<'_> for RemoteBzrProber {
+    fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
+        Ok(Self(obj.to_object(obj.py())))
+    }
+}
+
+impl ToPyObject for RemoteBzrProber {
+    fn to_object(&self, py: Python) -> PyObject {
+        self.0.to_object(py)
+    }
+}
+
+impl Prober for RemoteBzrProber {}

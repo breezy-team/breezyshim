@@ -8,25 +8,7 @@ use crate::location::AsLocation;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
-pub struct Prober(PyObject);
-
-impl ToPyObject for Prober {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.to_object(py)
-    }
-}
-
-impl FromPyObject<'_> for Prober {
-    fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(Prober(obj.to_object(obj.py())))
-    }
-}
-
-impl Prober {
-    pub fn new(obj: PyObject) -> Self {
-        Prober(obj)
-    }
-}
+pub trait Prober: ToPyObject {}
 
 pub struct ControlDir(PyObject);
 
@@ -468,14 +450,17 @@ fn test_create_on_transport() {
 
 pub fn open_containing_from_transport(
     transport: &Transport,
-    probers: Option<&[Prober]>,
+    probers: Option<&[&dyn Prober]>,
 ) -> Result<(ControlDir, String), Error> {
     Python::with_gil(|py| {
         let m = py.import_bound("breezy.controldir")?;
         let cd = m.getattr("ControlDir")?;
         let kwargs = PyDict::new_bound(py);
         if let Some(probers) = probers {
-            kwargs.set_item("probers", probers.iter().map(|p| &p.0).collect::<Vec<_>>())?;
+            kwargs.set_item(
+                "probers",
+                probers.iter().map(|p| p.to_object(py)).collect::<Vec<_>>(),
+            )?;
         }
 
         let (controldir, subpath): (PyObject, String) = cd
@@ -503,14 +488,17 @@ fn test_open_containing_from_transport() {
 
 pub fn open_from_transport(
     transport: &Transport,
-    probers: Option<&[Prober]>,
+    probers: Option<&[&dyn Prober]>,
 ) -> Result<ControlDir, Error> {
     Python::with_gil(|py| {
         let m = py.import_bound("breezy.controldir")?;
         let cd = m.getattr("ControlDir")?;
         let kwargs = PyDict::new_bound(py);
         if let Some(probers) = probers {
-            kwargs.set_item("probers", probers.iter().map(|p| &p.0).collect::<Vec<_>>())?;
+            kwargs.set_item(
+                "probers",
+                probers.iter().map(|p| p.to_object(py)).collect::<Vec<_>>(),
+            )?;
         }
         let controldir = cd.call_method(
             "open_from_transport",
