@@ -2,9 +2,9 @@ use crate::controldir::Prober;
 use pyo3::exceptions::PyModuleNotFoundError;
 use pyo3::prelude::*;
 
-pub struct RemoteCVSProber(PyObject);
+pub struct CVSProber(PyObject);
 
-impl RemoteCVSProber {
+impl CVSProber {
     pub fn new() -> Option<Self> {
         Python::with_gil(|py| {
             let m = match py.import_bound("breezy.plugins.cvs") {
@@ -24,19 +24,19 @@ impl RemoteCVSProber {
     }
 }
 
-impl FromPyObject<'_> for RemoteCVSProber {
+impl FromPyObject<'_> for CVSProber {
     fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
         Ok(Self(obj.to_object(obj.py())))
     }
 }
 
-impl ToPyObject for RemoteCVSProber {
+impl ToPyObject for CVSProber {
     fn to_object(&self, py: Python) -> PyObject {
         self.0.to_object(py)
     }
 }
 
-impl Prober for RemoteCVSProber {}
+impl Prober for CVSProber {}
 
 #[cfg(test)]
 mod tests {
@@ -44,6 +44,6 @@ mod tests {
 
     #[test]
     fn test_remote_cvs_prober() {
-        let _ = RemoteCVSProber::new();
+        let _ = CVSProber::new();
     }
 }
