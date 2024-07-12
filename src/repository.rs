@@ -1,6 +1,7 @@
 use crate::controldir::ControlDir;
 use crate::delta::TreeDelta;
 use crate::graph::Graph;
+use crate::location::AsLocation;
 use crate::revisionid::RevisionId;
 use crate::tree::RevisionTree;
 use chrono::DateTime;
@@ -193,5 +194,30 @@ impl Repository {
                 .extract(py)
         })
         .map_err(|e| e.into())
+    }
+}
+
+pub fn open(base: impl AsLocation) -> Result<Repository, crate::error::Error> {
+    Python::with_gil(|py| {
+        let o = py
+            .import_bound("breezy.repository")?
+            .getattr("Repository")?
+            .call_method1("open", (base.as_location(),))?;
+        Ok(Repository::new(o.into()))
+    })
+}
+
+#[cfg(test)]
+mod repository_tests {
+    use crate::controldir::ControlDirFormat;
+    #[test]
+    fn test_simple() {
+        let td = tempfile::tempdir().unwrap();
+        let _dir = crate::controldir::create_standalone_workingtree(
+            td.path(),
+            &ControlDirFormat::default(),
+        )
+        .unwrap();
+        let _repo = crate::repository::open(td.path()).unwrap();
     }
 }
