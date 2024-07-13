@@ -75,7 +75,10 @@ impl ControlDir {
             if let Some(shared) = shared {
                 kwargs.set_item("shared", shared)?;
             }
-            let repository = self.to_object(py).call_method_bound(py, "create_repository", (), Some(&kwargs))?.extract(py)?;
+            let repository = self
+                .to_object(py)
+                .call_method_bound(py, "create_repository", (), Some(&kwargs))?
+                .extract(py)?;
             Ok(Repository::new(repository))
         })
     }
@@ -87,13 +90,6 @@ impl ControlDir {
                 .call_method_bound(py, "open_branch", (branch_name,), None)?
                 .extract(py)?;
             Ok(Box::new(RegularBranch::new(branch)) as Box<dyn Branch>)
-        })
-    }
-
-    pub fn create_repository(&self) -> crate::Result<()> {
-        Python::with_gil(|py| {
-            self.to_object(py).call_method0(py, "create_repository")?;
-            Ok(())
         })
     }
 
@@ -634,6 +630,56 @@ pub fn all_probers() -> Vec<Box<dyn Prober>> {
 #[test]
 fn test_create_repository() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let controldir = create(&url::Url::from_directory_path(tmp_dir.path()).unwrap(), &ControlDirFormat::default(), None).unwrap();
+    let controldir = create(
+        &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
+        &ControlDirFormat::default(),
+        None,
+    )
+    .unwrap();
     let _repo = controldir.create_repository(None).unwrap();
+}
+
+#[test]
+fn test_create_branch() {
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let controldir = create(
+        &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
+        &ControlDirFormat::default(),
+        None,
+    )
+    .unwrap();
+    assert!(matches!(
+        controldir.create_branch(None),
+        Err(Error::NoRepositoryPresent)
+    ));
+    let _repo = controldir.create_repository(None).unwrap();
+    let _branch = controldir.create_branch(Some("foo")).unwrap();
+}
+
+#[test]
+fn test_create_workingtree() {
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let controldir = create(
+        &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
+        &ControlDirFormat::default(),
+        None,
+    )
+    .unwrap();
+    controldir.create_repository(None).unwrap();
+    controldir.create_branch(None).unwrap();
+    let _wt = controldir.create_workingtree().unwrap();
+}
+
+#[test]
+fn test_branch_names() {
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let controldir = create(
+        &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
+        &ControlDirFormat::default(),
+        None,
+    )
+    .unwrap();
+    controldir.create_repository(None).unwrap();
+    controldir.create_branch(None).unwrap();
+    assert_eq!(controldir.branch_names().unwrap(), vec!["".to_string()]);
 }

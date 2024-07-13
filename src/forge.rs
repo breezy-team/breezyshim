@@ -15,7 +15,7 @@ impl From<PyObject> for Forge {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum MergeProposalStatus {
     All,
     Open,

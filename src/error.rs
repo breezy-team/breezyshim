@@ -30,6 +30,9 @@ import_exception!(breezy.forge, ForgeLoginRequired);
 import_exception!(breezy.forge, UnsupportedForge);
 import_exception!(breezy.forge, MergeProposalExists);
 import_exception!(breezy.errors, UnsupportedOperation);
+import_exception!(breezy.errors, NoRepositoryPresent);
+import_exception!(breezy.errors, LockFailed);
+import_exception!(breezy.transport, FileExists);
 
 #[derive(Debug)]
 pub enum Error {
@@ -70,6 +73,9 @@ pub enum Error {
     MergeProposalExists(url::Url, Option<url::Url>),
     UnsupportedOperation(String, String),
     ProtectedBranchHookDeclined(String),
+    NoRepositoryPresent,
+    LockFailed(String),
+    FileExists(std::path::PathBuf, Option<String>),
 }
 
 impl From<crate::transport::Error> for Error {
@@ -163,6 +169,15 @@ impl std::fmt::Display for Error {
             Self::UnsupportedOperation(a, b) => write!(f, "Unsupported operation: {} on {}", a, b),
             Self::ProtectedBranchHookDeclined(e) => {
                 write!(f, "Protected branch hook declined: {}", e)
+            }
+            Self::NoRepositoryPresent => write!(f, "No repository present"),
+            Self::LockFailed(w) => write!(f, "Lock failed: {}", w),
+            Self::FileExists(p, r) => {
+                if let Some(r) = r {
+                    write!(f, "File exists: {}: {}", p.display(), r)
+                } else {
+                    write!(f, "File exists: {}", p.display())
+                }
             }
         }
     }
@@ -295,6 +310,23 @@ impl From<PyErr> for Error {
                 )
             } else if err.is_instance_of::<ProtectedBranchHookDeclined>(py) {
                 Error::ProtectedBranchHookDeclined(value.getattr("msg").unwrap().extract().unwrap())
+            } else if err.is_instance_of::<NoRepositoryPresent>(py) {
+                Error::NoRepositoryPresent
+            } else if err.is_instance_of::<LockFailed>(py) {
+                let why = value.getattr("why").unwrap();
+                if why.is_none() {
+                    Error::LockFailed("".to_string())
+                } else {
+                    let why = why.call_method0("__str__").unwrap();
+                    Error::LockFailed(why.extract().unwrap())
+                }
+            } else if err.is_instance_of::<FileExists>(py) {
+                Error::FileExists(
+                    std::path::PathBuf::from(
+                        value.getattr("path").unwrap().extract::<String>().unwrap(),
+                    ),
+                    value.getattr("extra").unwrap().extract().unwrap(),
+                )
             } else {
                 Self::Other(err)
             }
@@ -361,6 +393,11 @@ impl From<Error> for PyErr {
                 UnsupportedOperation::new_err((mname, tname))
             }
             Error::ProtectedBranchHookDeclined(msg) => ProtectedBranchHookDeclined::new_err((msg,)),
+            Error::NoRepositoryPresent => NoRepositoryPresent::new_err(()),
+            Error::LockFailed(why) => LockFailed::new_err((why,)),
+            Error::FileExists(p, extra) => {
+                FileExists::new_err((p.to_string_lossy().to_string(), extra))
+            }
         }
     }
 }
@@ -692,5 +729,37 @@ fn test_error_protected_branch_hook_declined() {
     // Verify that p is an instance of ProtectedBranchHookDeclined
     Python::with_gil(|py| {
         assert!(p.is_instance_of::<ProtectedBranchHookDeclined>(py), "{}", p);
+    });
+}
+
+#[test]
+#[ignore] // NoRepositoryPresent takes an argument, which is not implemented
+fn test_error_no_repository_present() {
+    let e = Error::NoRepositoryPresent;
+    let p: PyErr = e.into();
+    // Verify that p is an instance of NoRepositoryPresent
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<NoRepositoryPresent>(py), "{}", p);
+    });
+}
+
+#[test]
+#[ignore] // LockFailed takes a lockfile argument, which is not implemented
+fn test_error_lock_failed() {
+    let e = Error::LockFailed("bar".to_string());
+    let p: PyErr = e.into();
+    // Verify that p is an instance of LockFailed
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<LockFailed>(py), "{}", p);
+    });
+}
+
+#[test]
+fn test_error_file_exists() {
+    let e = Error::FileExists(std::path::PathBuf::from("foo"), Some("bar".to_string()));
+    let p: PyErr = e.into();
+    // Verify that p is an instance of FileExists
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<FileExists>(py), "{}", p);
     });
 }
