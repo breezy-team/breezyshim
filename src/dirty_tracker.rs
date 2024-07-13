@@ -1,140 +1,108 @@
 use crate::tree::WorkingTree;
-use pyo3::import_exception;
-use pyo3::prelude::*;
+use dirty_tracker::DirtyTracker;
+pub use dirty_tracker::State;
 
-pub struct DirtyTracker {
-    obj: PyObject,
-    owned: bool,
+pub struct DirtyTreeTracker {
+    tracker: DirtyTracker,
+    tree: WorkingTree,
 }
 
-impl ToPyObject for DirtyTracker {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.obj.clone_ref(py)
+impl DirtyTreeTracker {
+    /// Create a new DirtyTreeTracker for the given WorkingTree.
+    pub fn new(tree: WorkingTree) -> Self {
+        let base = tree.basedir();
+        let tracker = DirtyTracker::new(&base).unwrap();
+        Self { tracker, tree }
     }
-}
 
-impl FromPyObject<'_> for DirtyTracker {
-    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(DirtyTracker {
-            obj: ob.to_object(ob.py()),
-            owned: false,
-        })
-    }
-}
+    /// Get the current state.
+    pub fn state(&mut self) -> State {
+        let relpaths = self.relpaths();
 
-impl From<PyObject> for DirtyTracker {
-    fn from(obj: PyObject) -> Self {
-        DirtyTracker { obj, owned: false }
-    }
-}
+        if relpaths.is_none() {
+            return State::Unknown;
+        }
 
-import_exception!(breezy.dirty_tracker, TooManyOpenFiles);
-
-#[derive(Debug)]
-pub enum Error {
-    TooManyOpenFiles,
-    Python(PyErr),
-}
-
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match &self {
-            Error::TooManyOpenFiles => write!(f, "Too many open files"),
-            Error::Python(e) => write!(f, "{}", e),
+        if relpaths.unwrap().into_iter().next().is_some() {
+            State::Dirty
+        } else {
+            State::Clean
         }
     }
-}
 
-impl std::error::Error for Error {}
-
-impl From<PyErr> for Error {
-    fn from(e: PyErr) -> Self {
-        Python::with_gil(|py| {
-            if e.is_instance_of::<TooManyOpenFiles>(py) {
-                Error::TooManyOpenFiles
-            } else {
-                Error::Python(e)
-            }
+    /// Get the relative paths of the dirty files.
+    pub fn relpaths(&mut self) -> Option<std::collections::HashSet<std::path::PathBuf>> {
+        self.tracker.relpaths().map(|ps| {
+            ps.into_iter()
+                .filter(|p| !self.tree.is_control_filename(p))
+                .map(|p| p.to_path_buf())
+                .collect()
         })
+    }
+
+    /// Get the absolute paths of the dirty files.
+    pub fn paths(&mut self) -> Option<std::collections::HashSet<std::path::PathBuf>> {
+        self.relpaths()
+            .map(|ps| ps.iter().map(|p| self.tree.abspath(p).unwrap()).collect())
+    }
+
+    /// Mark the tree as clean.
+    pub fn mark_clean(&mut self) {
+        self.tracker.mark_clean()
     }
 }
 
-impl DirtyTracker {
-    fn new(obj: PyObject) -> Result<Self, Error> {
-        Python::with_gil(|py| {
-            let dt = DirtyTracker { obj, owned: true };
-            dt.to_object(py).call_method0(py, "__enter__")?;
-            Ok(dt)
-        })
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::controldir::create_standalone_workingtree;
+    use crate::controldir::ControlDirFormat;
+
+    #[test]
+    fn test_unchanged_tree() {
+        let td = tempfile::tempdir().unwrap();
+
+        let tree = create_standalone_workingtree(td.path(), &ControlDirFormat::default()).unwrap();
+        let mut tracker = DirtyTreeTracker::new(tree);
+
+        assert_eq!(tracker.state(), State::Clean);
+        assert_eq!(tracker.relpaths(), Some(std::collections::HashSet::new()));
+        assert_eq!(tracker.paths(), Some(std::collections::HashSet::new()));
     }
 
-    pub fn is_dirty(&self) -> bool {
-        Python::with_gil(|py| {
-            self.to_object(py)
-                .call_method0(py, "is_dirty")
-                .unwrap()
-                .extract(py)
-                .unwrap()
-        })
+    #[test]
+    fn test_unversioned_file() {
+        let td = tempfile::tempdir().unwrap();
+
+        let tree = create_standalone_workingtree(td.path(), &ControlDirFormat::default()).unwrap();
+        let mut tracker = DirtyTreeTracker::new(tree);
+        std::fs::write(td.path().join("foo"), "bar").unwrap();
+        assert_eq!(
+            tracker.relpaths(),
+            Some(maplit::hashset! { std::path::PathBuf::from("foo") })
+        );
+        assert_eq!(
+            tracker.paths(),
+            Some(maplit::hashset! { td.path().join("foo") })
+        );
+        assert_eq!(tracker.state(), State::Dirty);
     }
 
-    pub fn relpaths(&self) -> impl IntoIterator<Item = std::path::PathBuf> {
-        Python::with_gil(|py| {
-            let set = self
-                .to_object(py)
-                .call_method0(py, "relpaths")
-                .unwrap()
-                .extract::<std::collections::HashSet<_>>(py)
-                .unwrap();
-            set.into_iter()
-        })
-    }
+    #[test]
+    fn test_control_file_change() {
+        let td = tempfile::tempdir().unwrap();
 
-    pub fn mark_clean(&self) {
-        Python::with_gil(|py| {
-            self.to_object(py).call_method0(py, "mark_clean").unwrap();
-        })
+        let tree = create_standalone_workingtree(td.path(), &ControlDirFormat::default()).unwrap();
+        let mut tracker = DirtyTreeTracker::new(tree.clone());
+        tree.commit(
+            "Dummy",
+            Some(true),
+            Some("Joe Example <joe@example.com>"),
+            None,
+        )
+        .unwrap();
+        assert_eq!(tracker.state(), State::Clean);
+        assert_eq!(tracker.relpaths(), Some(std::collections::HashSet::new()));
+        assert_eq!(tracker.paths(), Some(std::collections::HashSet::new()));
     }
-}
-
-impl Drop for DirtyTracker {
-    fn drop(&mut self) {
-        if !self.owned {
-            return;
-        }
-        Python::with_gil(|py| {
-            self.to_object(py)
-                .call_method1(py, "__exit__", (py.None(), py.None(), py.None()))
-                .unwrap();
-        })
-    }
-}
-
-/// Create a dirty tracker object
-pub fn get_dirty_tracker(
-    local_tree: &WorkingTree,
-    subpath: Option<&std::path::Path>,
-    use_inotify: Option<bool>,
-) -> Result<Option<DirtyTracker>, Error> {
-    Python::with_gil(|py| {
-        let dt_cls = match use_inotify {
-            Some(true) => {
-                let m = py.import_bound("breezy.dirty_tracker")?;
-                m.getattr("DirtyTracker")?
-            }
-            Some(false) => return Ok(None),
-            None => match py.import_bound("breezy.dirty_tracker") {
-                Ok(m) => m.getattr("DirtyTracker")?,
-                Err(e) => {
-                    if e.is_instance_of::<pyo3::exceptions::PyImportError>(py) {
-                        return Ok(None);
-                    } else {
-                        return Err(e.into());
-                    }
-                }
-            },
-        };
-        let o = dt_cls.call1((local_tree.to_object(py), subpath))?;
-        Ok(Some(DirtyTracker::new(o.into())?))
-    })
 }

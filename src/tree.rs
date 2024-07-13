@@ -492,6 +492,16 @@ impl ToPyObject for WorkingTree {
 }
 
 impl WorkingTree {
+    pub fn is_control_filename(&self, path: &Path) -> bool {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method1(py, "is_control_filename", (path,))
+                .unwrap()
+                .extract(py)
+                .unwrap()
+        })
+    }
+
     /// Return the base path for this working tree.
     pub fn basedir(&self) -> PathBuf {
         Python::with_gil(|py| {

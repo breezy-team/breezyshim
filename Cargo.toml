@@ -19,10 +19,12 @@ ctor = { version = "0.2.6", optional = true }
 lazy-regex = "3.1.0"
 patchkit = "0.1"
 log = "0.4"
+debian-control = { version = ">=0.1", optional = true }
+dirty-tracker = "0.2.0"
 
 [features]
 default = ["debian", "auto-initialize"]
-debian = ["dep:debversion"]
+debian = ["dep:debversion", "dep:debian-control"]
 auto-initialize = ["dep:ctor"]
 
 [dependencies.debversion]
@@ -44,6 +46,9 @@ features = [ "serde",]
 
 [workspace.dependencies]
 pyo3 = { version = ">=0.20", features = ["py-clone"] }
+
+[dev-dependencies]
+maplit = "1.0.2"
 
 [dev-dependencies.pyo3]
 workspace = true

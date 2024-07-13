@@ -61,7 +61,6 @@ pub mod debian;
 
 pub use branch::Branch;
 pub use controldir::{ControlDir, Prober};
-pub use dirty_tracker::DirtyTracker;
 pub use forge::{get_forge, Forge, MergeProposal, MergeProposalStatus};
 pub use lock::Lock;
 use pyo3::exceptions::PyImportError;
