@@ -32,6 +32,7 @@ import_exception!(breezy.forge, MergeProposalExists);
 import_exception!(breezy.errors, UnsupportedOperation);
 import_exception!(breezy.errors, NoRepositoryPresent);
 import_exception!(breezy.errors, LockFailed);
+import_exception!(breezy.errors, LockContention);
 import_exception!(breezy.transport, FileExists);
 
 #[derive(Debug)]
@@ -76,6 +77,7 @@ pub enum Error {
     NoRepositoryPresent,
     LockFailed(String),
     FileExists(std::path::PathBuf, Option<String>),
+    LockContention(String, String),
 }
 
 impl From<crate::transport::Error> for Error {
@@ -179,6 +181,7 @@ impl std::fmt::Display for Error {
                     write!(f, "File exists: {}", p.display())
                 }
             }
+            Self::LockContention(a, b) => write!(f, "Lock contention: {} {}", a, b),
         }
     }
 }
@@ -327,6 +330,17 @@ impl From<PyErr> for Error {
                     ),
                     value.getattr("extra").unwrap().extract().unwrap(),
                 )
+            } else if err.is_instance_of::<LockContention>(py) {
+                Error::LockContention(
+                    value
+                        .getattr("lock")
+                        .unwrap()
+                        .call_method0("__str__")
+                        .unwrap()
+                        .extract()
+                        .unwrap(),
+                    value.getattr("msg").unwrap().extract().unwrap(),
+                )
             } else {
                 Self::Other(err)
             }
@@ -393,10 +407,15 @@ impl From<Error> for PyErr {
                 UnsupportedOperation::new_err((mname, tname))
             }
             Error::ProtectedBranchHookDeclined(msg) => ProtectedBranchHookDeclined::new_err((msg,)),
-            Error::NoRepositoryPresent => NoRepositoryPresent::new_err(()),
-            Error::LockFailed(why) => LockFailed::new_err((why,)),
+            Error::NoRepositoryPresent => {
+                Python::with_gil(|py| NoRepositoryPresent::new_err((py.None(),)))
+            }
+            Error::LockFailed(why) => Python::with_gil(|py| LockFailed::new_err((py.None(), why))),
             Error::FileExists(p, extra) => {
                 FileExists::new_err((p.to_string_lossy().to_string(), extra))
+            }
+            Error::LockContention(_lock, msg) => {
+                Python::with_gil(|py| LockContention::new_err((py.None(), msg)))
             }
         }
     }
@@ -761,5 +780,15 @@ fn test_error_file_exists() {
     // Verify that p is an instance of FileExists
     Python::with_gil(|py| {
         assert!(p.is_instance_of::<FileExists>(py), "{}", p);
+    });
+}
+
+#[test]
+fn test_error_lock_contention() {
+    let e = Error::LockContention("foo".to_string(), "bar".to_string());
+    let p: PyErr = e.into();
+    // Verify that p is an instance of LockContention
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<LockContention>(py), "{}", p);
     });
 }
