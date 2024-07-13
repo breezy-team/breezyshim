@@ -5,6 +5,7 @@ use pyo3::conversion::ToPyObject;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
+use std::hash::Hash;
 
 #[derive(Clone)]
 pub struct Forge(PyObject);
@@ -15,7 +16,7 @@ impl From<PyObject> for Forge {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum MergeProposalStatus {
     All,
     Open,
@@ -43,13 +44,13 @@ impl std::str::FromStr for MergeProposalStatus {
     }
 }
 
-impl ToString for MergeProposalStatus {
-    fn to_string(&self) -> String {
+impl std::fmt::Display for MergeProposalStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            MergeProposalStatus::All => "all".to_string(),
-            MergeProposalStatus::Open => "open".to_string(),
-            MergeProposalStatus::Merged => "merged".to_string(),
-            MergeProposalStatus::Closed => "closed".to_string(),
+            MergeProposalStatus::All => write!(f, "all"),
+            MergeProposalStatus::Open => write!(f, "open"),
+            MergeProposalStatus::Merged => write!(f, "merged"),
+            MergeProposalStatus::Closed => write!(f, "closed"),
         }
     }
 }
