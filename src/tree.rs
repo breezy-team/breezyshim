@@ -389,7 +389,7 @@ pub trait Tree: ToPyObject {
 pub trait MutableTree: Tree {
     fn lock_write(&self) -> Result<Lock, Error> {
         Python::with_gil(|py| {
-            let lock = self.to_object(py).call_method0(py, "lock_write").unwrap();
+            let lock = self.to_object(py).call_method0(py, "lock_write")?;
             Ok(Lock::from(lock))
         })
     }
