@@ -78,6 +78,7 @@ pub enum Error {
     LockFailed(String),
     FileExists(std::path::PathBuf, Option<String>),
     LockContention(String, String),
+    NotImplemented,
 }
 
 impl From<crate::transport::Error> for Error {
@@ -182,6 +183,7 @@ impl std::fmt::Display for Error {
                 }
             }
             Self::LockContention(a, b) => write!(f, "Lock contention: {} {}", a, b),
+            Self::NotImplemented => write!(f, "Not implemented"),
         }
     }
 }
@@ -341,6 +343,8 @@ impl From<PyErr> for Error {
                         .unwrap(),
                     value.getattr("msg").unwrap().extract().unwrap(),
                 )
+            } else if err.is_instance_of::<pyo3::exceptions::PyNotImplementedError>(py) {
+                Error::NotImplemented
             } else {
                 Self::Other(err)
             }
@@ -417,6 +421,7 @@ impl From<Error> for PyErr {
             Error::LockContention(_lock, msg) => {
                 Python::with_gil(|py| LockContention::new_err((py.None(), msg)))
             }
+            Error::NotImplemented => pyo3::exceptions::PyNotImplementedError::new_err(()),
         }
     }
 }
@@ -790,5 +795,15 @@ fn test_error_lock_contention() {
     // Verify that p is an instance of LockContention
     Python::with_gil(|py| {
         assert!(p.is_instance_of::<LockContention>(py), "{}", p);
+    });
+}
+
+#[cfg(test)]
+fn test_error_notimplementederror() {
+    let e = Error::NotImplemented;
+    let p: PyErr = e.into();
+    // Verify that p is an instance of PyNotImplementedError
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<pyo3::exceptions::PyNotImplementedError>(py));
     });
 }
