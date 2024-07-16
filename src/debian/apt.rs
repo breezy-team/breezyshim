@@ -1,6 +1,48 @@
 use crate::error::Error;
+use debian_control::apt::{Package, Source};
 use debversion::Version;
+use pyo3::exceptions::PyStopIteration;
 use pyo3::prelude::*;
+
+struct SourceIterator(PyObject);
+
+impl Iterator for SourceIterator {
+    type Item = Source;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        Python::with_gil(|py| {
+            let next = self.0.call_method0(py, "__next__");
+            if let Ok(o) = next.as_ref() {
+                println!("{}", o.call_method0(py, "__str__").unwrap());
+            }
+            match next {
+                Ok(next) => Some(next.extract(py).unwrap()),
+                Err(e) if e.is_instance_of::<PyStopIteration>(py) => None,
+                Err(e) => panic!("error iterating: {:?}", e),
+            }
+        })
+    }
+}
+
+struct PackageIterator(PyObject);
+
+impl Iterator for PackageIterator {
+    type Item = Package;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        Python::with_gil(|py| {
+            let next = self.0.call_method0(py, "__next__");
+            if let Ok(o) = next.as_ref() {
+                println!("{}", o.call_method0(py, "__str__").unwrap());
+            }
+            match next {
+                Ok(next) => Some(next.extract(py).unwrap()),
+                Err(e) if e.is_instance_of::<PyStopIteration>(py) => None,
+                Err(e) => panic!("error iterating: {:?}", e),
+            }
+        })
+    }
+}
 
 pub trait Apt: ToPyObject {
     fn retrieve_orig(
@@ -36,6 +78,42 @@ pub trait Apt: ToPyObject {
             Ok(())
         })
     }
+
+    fn iter_sources(&self) -> impl Iterator<Item = Source> {
+        Python::with_gil(|py| {
+            let apt = self.to_object(py);
+            let iter = apt.call_method0(py, "iter_sources").unwrap();
+            SourceIterator(iter)
+        })
+    }
+
+    fn iter_binaries(&self) -> impl Iterator<Item = Package> {
+        Python::with_gil(|py| {
+            let apt = self.to_object(py);
+            let iter = apt.call_method0(py, "iter_binaries").unwrap();
+            PackageIterator(iter)
+        })
+    }
+
+    fn iter_source_by_name(&self, name: &str) -> impl Iterator<Item = Source> {
+        Python::with_gil(|py| {
+            let apt = self.to_object(py);
+            let iter = apt
+                .call_method1(py, "iter_source_by_name", (name,))
+                .unwrap();
+            SourceIterator(iter)
+        })
+    }
+
+    fn iter_binary_by_name(&self, name: &str) -> impl Iterator<Item = Package> {
+        Python::with_gil(|py| {
+            let apt = self.to_object(py);
+            let iter = apt
+                .call_method1(py, "iter_binary_by_name", (name,))
+                .unwrap();
+            PackageIterator(iter)
+        })
+    }
 }
 
 pub struct LocalApt(PyObject);
@@ -54,6 +132,8 @@ impl LocalApt {
             let m = PyModule::import_bound(py, "breezy.plugins.debian.apt_repo")?;
             let apt = m.getattr("LocalApt")?;
             let apt = apt.call1((rootdir,))?;
+
+            apt.call_method0("__enter__")?;
             Ok(Self(apt.to_object(py)))
         })
     }
@@ -62,6 +142,16 @@ impl LocalApt {
 impl Default for LocalApt {
     fn default() -> Self {
         LocalApt::new(None).unwrap()
+    }
+}
+
+impl Drop for LocalApt {
+    fn drop(&mut self) {
+        Python::with_gil(|py| {
+            self.0
+                .call_method1(py, "__exit__", (py.None(), py.None(), py.None()))
+                .unwrap();
+        });
     }
 }
 
@@ -84,6 +174,7 @@ impl RemoteApt {
             let m = PyModule::import_bound(py, "breezy.plugins.debian.apt_repo")?;
             let apt = m.getattr("RemoteApt")?;
             let apt = apt.call1((mirror_uri.as_str(), distribution, components, key_path))?;
+            apt.call_method0("__enter__")?;
             Ok(Self(apt.to_object(py)))
         })
     }
@@ -91,11 +182,21 @@ impl RemoteApt {
 
 impl Apt for RemoteApt {}
 
+impl Drop for RemoteApt {
+    fn drop(&mut self) {
+        Python::with_gil(|py| {
+            self.0
+                .call_method1(py, "__exit__", (py.None(), py.None(), py.None()))
+                .unwrap();
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
-    fn test_local_apt() {
+    fn test_local_apt_retrieve_orig() {
         let apt = LocalApt::new(None).unwrap();
         let td = tempfile::tempdir().unwrap();
 
@@ -117,5 +218,21 @@ mod tests {
             }
             Err(e) => panic!("Unexpected error: {:?}", e),
         }
+    }
+
+    #[test]
+    fn test_local_apt() {
+        // Note that LocalApt appears to crash if initialized
+        // concurrently by other tests.
+        let apt = LocalApt::new(None).unwrap();
+        let package = apt.iter_binaries().next().unwrap();
+        assert!(package.name().is_some());
+        assert!(package.version().is_some());
+        let source = apt.iter_sources().next().unwrap();
+        assert!(source.package().is_some());
+        let source = apt.iter_source_by_name("dpkg").next().unwrap();
+        assert_eq!(source.package().unwrap(), "dpkg");
+        let package = apt.iter_binary_by_name("dpkg").next().unwrap();
+        assert_eq!(package.name().unwrap(), "dpkg");
     }
 }

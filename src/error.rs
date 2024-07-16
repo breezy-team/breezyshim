@@ -798,7 +798,7 @@ fn test_error_lock_contention() {
     });
 }
 
-#[cfg(test)]
+#[test]
 fn test_error_notimplementederror() {
     let e = Error::NotImplemented;
     let p: PyErr = e.into();

@@ -73,9 +73,9 @@ checksum = "79296716171880943b8470b5f8d03aa55eb2e645a4874bdbb28adb49162e012c"
 
 [[package]]
 name = "cc"
-version = "1.1.2"
+version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47de7e88bbbd467951ae7f5a6f34f70d1b4d9cfce53d5fd70f74ebe118b3db56"
+checksum = "324c74f2155653c90b04f25b2a47a8a631360cb908f92a772695f430c7e31052"
 
 [[package]]
 name = "cfg-if"
@@ -136,10 +136,11 @@ dependencies = [
 
 [[package]]
 name = "deb822-lossless"
-version = "0.1.12"
+version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a64fca313d8f31d56e53a9ecc400d88141e474a29aa8e36f46ab53f3db4a709e"
+checksum = "e9086252eef3fadf8ba2090c0dff8da6ff7bbfd04baf15b094f55cc12f1c9fc5"
 dependencies = [
+ "pyo3",
  "regex",
  "rowan",
  "serde",
@@ -147,12 +148,13 @@ dependencies = [
 
 [[package]]
 name = "debian-control"
-version = "0.1.12"
+version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "04937eee5d376dddb9def09bbbb67533dbc7740e43168c8fecbd797583d33209"
+checksum = "8c24d781770afb3bbfc9de716ec9a5ebbb3c03efd41056845706b99582ac7d04"
 dependencies = [
  "deb822-lossless",
  "debversion",
+ "pyo3",
  "regex",
  "rowan",
  "url",
