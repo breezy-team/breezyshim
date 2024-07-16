@@ -178,6 +178,16 @@ impl RemoteApt {
             Ok(Self(apt.to_object(py)))
         })
     }
+
+    pub fn from_string(text: &str, key_path: Option<&std::path::Path>) -> Result<Self, Error> {
+        Python::with_gil(|py| {
+            let m = PyModule::import_bound(py, "breezy.plugins.debian.apt_repo")?;
+            let apt = m.getattr("RemoteApt")?;
+            let apt = apt.call_method1("from_string", (text, key_path))?;
+            apt.call_method0("__enter__")?;
+            Ok(Self(apt.to_object(py)))
+        })
+    }
 }
 
 impl Apt for RemoteApt {}
