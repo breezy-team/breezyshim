@@ -36,6 +36,7 @@ pub fn build_helper(
     branch: &dyn Branch,
     target_dir: &std::path::Path,
     builder: &str,
+    apt_repo: Option<&impl apt::Apt>,
 ) -> Result<(), BuildError> {
     pyo3::prepare_freethreaded_python();
 
@@ -46,6 +47,10 @@ pub fn build_helper(
         locals.set_item("branch", branch)?;
         locals.set_item("target_dir", target_dir)?;
         locals.set_item("builder", builder)?;
+
+        if let Some(apt_repo) = apt_repo {
+            locals.set_item("apt_repo", apt_repo.to_object(py))?;
+        }
 
         py.import_bound("breezy.plugins.debian.cmds")?
             .call_method1("build_helper", (locals,))?;
