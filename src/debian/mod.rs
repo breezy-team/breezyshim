@@ -1,8 +1,9 @@
 pub mod apt;
 pub mod vcs_up_to_date;
 
+use crate::error::Error;
+use crate::tree::{Tree, WorkingTree};
 use crate::Branch;
-use crate::WorkingTree;
 
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
@@ -52,4 +53,30 @@ pub fn build_helper(
     })?;
 
     Ok(())
+}
+
+/// Return the name of the debian tag for the given tree and branch.
+///
+/// # Arguments
+/// * `tree` - The tree to get the debian tag name for.
+/// * `branch` - The branch to get the debian tag name for.
+/// * `subpath` - The subpath to get the debian tag name for.
+/// * `vendor` - The vendor to get the debian tag name for.
+///
+/// # Returns
+/// The name of the debian tag.
+pub fn tree_debian_tag_name(
+    tree: &dyn Tree,
+    branch: &dyn Branch,
+    subpath: Option<&std::path::Path>,
+    vendor: Option<String>,
+) -> Result<String, Error> {
+    Python::with_gil(|py| {
+        let result = py.import_bound("breezy.plugins.debian")?.call_method1(
+            "tree_debian_tag_name",
+            (tree.to_object(py), branch.to_object(py), subpath, vendor),
+        )?;
+
+        Ok(result.extract()?)
+    })
 }
