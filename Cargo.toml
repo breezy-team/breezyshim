@@ -23,7 +23,7 @@ debian-control = { version = ">= 0.1.13", optional = true, features = ["python-d
 dirty-tracker = "0.3"
 
 [features]
-default = ["debian", "auto-initialize"]
+default = ["auto-initialize"]
 debian = ["dep:debversion", "dep:debian-control"]
 auto-initialize = ["dep:ctor"]
 
