@@ -22,7 +22,7 @@ jobs:
     - uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
-    - run: python -m pip install breezy launchpadlib
+    - run: python -m pip install breezy launchpadlib "bzr+lp:brz-debian"
     - name: Build
       run: cargo build --verbose
     - name: Run tests
