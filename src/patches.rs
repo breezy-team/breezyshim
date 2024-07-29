@@ -124,6 +124,7 @@ mod applied_patches_tests {
 
     #[test]
     fn test_apply_simple() {
+        let env = crate::tests::TestEnv::new();
         let td = tempfile::tempdir().unwrap();
         let tree = crate::controldir::create_standalone_workingtree(
             td.path(),
@@ -149,10 +150,12 @@ mod applied_patches_tests {
             newtree.get_file_text(std::path::Path::new("a")).unwrap()
         );
         std::mem::drop(newtree);
+        std::mem::drop(env);
     }
 
     #[test]
     fn test_apply_delete() {
+        let env = crate::tests::TestEnv::new();
         let td = tempfile::tempdir().unwrap();
         let tree = crate::controldir::create_standalone_workingtree(
             td.path(),
@@ -172,10 +175,12 @@ mod applied_patches_tests {
         .unwrap();
         let newtree = crate::patches::AppliedPatches::new(&tree, vec![patch], None).unwrap();
         assert!(!newtree.has_filename(std::path::Path::new("a")));
+        std::mem::drop(env);
     }
 
     #[test]
     fn test_apply_add() {
+        let env = crate::tests::TestEnv::new();
         let td = tempfile::tempdir().unwrap();
         let tree = crate::controldir::create_standalone_workingtree(
             td.path(),
@@ -198,5 +203,6 @@ mod applied_patches_tests {
             b"b\n".to_vec(),
             newtree.get_file_text(std::path::Path::new("b")).unwrap()
         );
+        std::mem::drop(env);
     }
 }

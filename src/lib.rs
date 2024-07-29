@@ -49,6 +49,7 @@ pub mod revisionid;
 pub mod status;
 pub mod subversion;
 pub mod tags;
+pub mod tests;
 pub mod transform;
 pub mod transport;
 pub mod tree;
