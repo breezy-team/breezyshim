@@ -1,3 +1,8 @@
+/// Debian specific functionality.
+///
+/// This module provides functionality for working with Debian packages.
+///
+/// It mostly wraps the `breezy.plugins.debian` module from the Breezy VCS.
 pub mod apt;
 pub mod release;
 pub mod vcs_up_to_date;
@@ -36,6 +41,7 @@ pub fn build_helper(
     branch: &dyn Branch,
     target_dir: &std::path::Path,
     builder: &str,
+    guess_upstream_branch_url: bool,
     apt_repo: Option<&impl apt::Apt>,
 ) -> Result<(), BuildError> {
     pyo3::prepare_freethreaded_python();
@@ -47,13 +53,14 @@ pub fn build_helper(
         locals.set_item("branch", branch)?;
         locals.set_item("target_dir", target_dir)?;
         locals.set_item("builder", builder)?;
+        locals.set_item("guess_upstream_branch_url", guess_upstream_branch_url)?;
 
         if let Some(apt_repo) = apt_repo {
-            locals.set_item("apt_repo", apt_repo.to_object(py))?;
+            locals.set_item("apt", apt_repo.to_object(py))?;
         }
 
         py.import_bound("breezy.plugins.debian.cmds")?
-            .call_method1("build_helper", (locals,))?;
+            .call_method1("_build_helper", (locals,))?;
 
         Ok(())
     })?;
