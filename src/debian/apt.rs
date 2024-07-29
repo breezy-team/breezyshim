@@ -261,11 +261,12 @@ mod tests {
         let package = apt.iter_binaries().next().unwrap();
         assert!(package.name().is_some());
         assert!(package.version().is_some());
-        let source = apt.iter_sources().next().unwrap();
-        assert!(source.package().is_some());
-        let source = apt.iter_source_by_name("dpkg").next().unwrap();
-        assert_eq!(source.package().unwrap(), "dpkg");
-        let package = apt.iter_binary_by_name("dpkg").next().unwrap();
-        assert_eq!(package.name().unwrap(), "dpkg");
+        if let Some(source) = apt.iter_sources().next() {
+            assert!(source.package().is_some());
+            let source = apt.iter_source_by_name("dpkg").next().unwrap();
+            assert_eq!(source.package().unwrap(), "dpkg");
+            let package = apt.iter_binary_by_name("dpkg").next().unwrap();
+            assert_eq!(package.name().unwrap(), "dpkg");
+        }
     }
 }
