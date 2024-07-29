@@ -1,6 +1,6 @@
 [package]
 name = "breezyshim"
-version = "0.1.133"
+version = "0.1.134"
 edition = "2021"
 license = "GPL-2.0+"
 description = "Rust shim around the Breezy Python API"
@@ -45,7 +45,7 @@ workspace = true
 features = [ "serde",]
 
 [workspace.dependencies]
-pyo3 = { version = ">=0.20", features = ["py-clone"] }
+pyo3 = { version = ">=0.22", features = ["py-clone"] }
 
 [dev-dependencies]
 maplit = "1"
