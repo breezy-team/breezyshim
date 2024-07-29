@@ -61,11 +61,11 @@ email = Joe Tester <joe@example.com>
 
 impl Drop for TestEnv {
     fn drop(&mut self) {
-        for (key, value) in self.old_env.iter() {
-            if let Some(value) = value {
-                std::env::set_var(key, value);
+        for (key, value) in self.old_env.drain() {
+            if let Some(value) = value.as_ref() {
+                std::env::set_var(&key, value);
             } else {
-                std::env::remove_var(key);
+                std::env::remove_var(&key);
             }
             Python::with_gil(|py| {
                 let os = py.import_bound("os").unwrap();

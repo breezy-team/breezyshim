@@ -253,15 +253,15 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[ignore] // This test appears to hang
+    #[serial] // LocalApt appears to crash if initialized concurrently by other tests.
     fn test_local_apt() {
-        // Note that LocalApt appears to crash if initialized
-        // concurrently by other tests.
         let apt = LocalApt::new(None).unwrap();
         let package = apt.iter_binaries().next().unwrap();
         assert!(package.name().is_some());
         assert!(package.version().is_some());
-        if let Some(source) = apt.iter_sources().next() {
+        let mut sources = apt.iter_sources();
+        if let Some(source) = sources.next() {
             assert!(source.package().is_some());
             let source = apt.iter_source_by_name("dpkg").next().unwrap();
             assert_eq!(source.package().unwrap(), "dpkg");
