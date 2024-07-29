@@ -68,6 +68,21 @@ impl Drop for TestEnv {
             std::env::remove_var("BRZ_EMAIL");
         }
         let _ = std::env::set_current_dir(&self.old_cwd);
+        pyo3::Python::with_gil(|py| {
+            let os = py.import_bound("os").unwrap();
+            os.call_method1("chdir", (self.old_cwd.to_str().unwrap(),))
+                .unwrap();
+            if let Some(dir) = self.old_home.as_ref() {
+                os.call_method1("putenv", ("HOME", dir)).unwrap();
+            } else {
+                os.call_method1("unsetenv", ("HOME",)).unwrap();
+            }
+            if let Some(email) = self.old_email.as_ref() {
+                os.call_method1("putenv", ("BRZ_EMAIL", email)).unwrap();
+            } else {
+                os.call_method1("unsetenv", ("BRZ_EMAIL",)).unwrap();
+            }
+        });
     }
 }
 
