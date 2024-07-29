@@ -10,6 +10,7 @@ pub struct TestEnv {
     pub old_cwd: PathBuf,
     pub old_home: Option<String>,
     pub old_email: Option<String>,
+    pub old_brz_home: Option<String>,
 }
 
 impl TestEnv {
@@ -22,10 +23,13 @@ impl TestEnv {
         let old_cwd = std::env::current_dir().unwrap();
         let old_home = std::env::var("HOME").ok();
         let old_email = std::env::var("BRZ_EMAIL").ok();
+        let old_brz_home = std::env::var("BRZ_HOME").ok();
+        let brz_email = "Joe Tester <joe@example.com>";
+        let breezy_home = home_dir.join(".config/breezy");
         std::env::set_current_dir(&working_dir).unwrap();
         std::env::set_var("HOME", &home_dir);
-        let brz_email = "Joe Tester <joe@example.com>";
         std::env::set_var("BRZ_EMAIL", brz_email);
+        std::env::set_var("BRZ_HOME", &breezy_home);
         pyo3::Python::with_gil(|py| {
             let os = py.import_bound("os").unwrap();
             os.call_method1("chdir", (working_dir.to_str().unwrap(),))
@@ -33,8 +37,9 @@ impl TestEnv {
             os.call_method1("putenv", ("HOME", home_dir.to_str().unwrap()))
                 .unwrap();
             os.call_method1("putenv", ("BRZ_EMAIL", brz_email)).unwrap();
+            os.call_method1("putenv", ("BRZ_HOME", breezy_home.to_str().unwrap()))
+                .unwrap();
         });
-        let breezy_home = home_dir.join(".config/breezy");
         fs::create_dir_all(&breezy_home).unwrap();
         fs::write(
             breezy_home.join("breezy.conf"),
@@ -51,6 +56,7 @@ email = Joe Tester <joe@example.com>
             old_cwd,
             old_home,
             old_email,
+            old_brz_home,
         }
     }
 }
@@ -67,6 +73,11 @@ impl Drop for TestEnv {
         } else {
             std::env::remove_var("BRZ_EMAIL");
         }
+        if let Some(dir) = self.old_brz_home.as_ref() {
+            std::env::set_var("BRZ_HOME", dir);
+        } else {
+            std::env::remove_var("BRZ_HOME");
+        }
         let _ = std::env::set_current_dir(&self.old_cwd);
         pyo3::Python::with_gil(|py| {
             let os = py.import_bound("os").unwrap();
@@ -81,6 +92,11 @@ impl Drop for TestEnv {
                 os.call_method1("putenv", ("BRZ_EMAIL", email)).unwrap();
             } else {
                 os.call_method1("unsetenv", ("BRZ_EMAIL",)).unwrap();
+            }
+            if let Some(dir) = self.old_brz_home.as_ref() {
+                os.call_method1("putenv", ("BRZ_HOME", dir)).unwrap();
+            } else {
+                os.call_method1("unsetenv", ("BRZ_HOME",)).unwrap();
             }
         });
     }
