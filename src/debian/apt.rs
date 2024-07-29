@@ -253,7 +253,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // This test appears to hang
     #[serial] // LocalApt appears to crash if initialized concurrently by other tests.
     fn test_local_apt() {
         let apt = LocalApt::new(None).unwrap();

@@ -34,10 +34,13 @@ impl TestEnv {
             let os = py.import_bound("os").unwrap();
             os.call_method1("chdir", (working_dir.to_str().unwrap(),))
                 .unwrap();
-            os.call_method1("putenv", ("HOME", home_dir.to_str().unwrap()))
+            let environ = os.getattr("environ").unwrap();
+            environ
+                .set_item("HOME", home_dir.to_str().unwrap())
                 .unwrap();
-            os.call_method1("putenv", ("BRZ_EMAIL", brz_email)).unwrap();
-            os.call_method1("putenv", ("BRZ_HOME", breezy_home.to_str().unwrap()))
+            environ.set_item("BRZ_EMAIL", brz_email).unwrap();
+            environ
+                .set_item("BRZ_HOME", breezy_home.to_str().unwrap())
                 .unwrap();
         });
         fs::create_dir_all(&breezy_home).unwrap();
@@ -69,10 +72,11 @@ impl Drop for TestEnv {
             }
             Python::with_gil(|py| {
                 let os = py.import_bound("os").unwrap();
+                let environ = os.getattr("environ").unwrap();
                 if let Some(value) = value {
-                    os.call_method1("putenv", (key, value)).unwrap();
+                    environ.set_item(key, value).unwrap();
                 } else {
-                    os.call_method1("unsetenv", (key,)).unwrap();
+                    environ.del_item(key).unwrap();
                 }
             });
         }
@@ -83,5 +87,51 @@ impl Drop for TestEnv {
 impl Default for TestEnv {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_testenv() {
+        let env = TestEnv::new();
+        assert_eq!(env.home_dir, env.temp_dir.path().join("home"));
+        assert_eq!(env.working_dir, env.temp_dir.path().join("test"));
+        assert_eq!(std::env::current_dir().unwrap(), env.working_dir);
+        assert_eq!(
+            std::env::var("HOME").unwrap(),
+            env.home_dir.to_str().unwrap()
+        );
+        assert_eq!(
+            std::env::var("BRZ_EMAIL").unwrap(),
+            "Joe Tester <joe@example.com>"
+        );
+
+        Python::with_gil(|py| {
+            let os = py.import_bound("os").unwrap();
+            assert_eq!(
+                os.call_method0("getcwd")
+                    .unwrap()
+                    .extract::<String>()
+                    .unwrap(),
+                env.working_dir.to_str().unwrap()
+            );
+            assert_eq!(
+                os.call_method1("getenv", ("HOME",))
+                    .unwrap()
+                    .extract::<String>()
+                    .unwrap(),
+                env.home_dir.to_str().unwrap()
+            );
+            assert_eq!(
+                os.call_method1("getenv", ("BRZ_EMAIL",))
+                    .unwrap()
+                    .extract::<String>()
+                    .unwrap(),
+                "Joe Tester <joe@example.com>"
+            );
+        });
     }
 }

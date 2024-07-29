@@ -50,7 +50,7 @@ pub mod status;
 pub mod subversion;
 pub mod tags;
 #[cfg(test)]
-pub mod tests;
+pub mod testing;
 pub mod transform;
 pub mod transport;
 pub mod tree;

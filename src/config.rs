@@ -102,7 +102,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_config_stack() {
-        let env = crate::tests::TestEnv::new();
+        let env = crate::testing::TestEnv::new();
         let stack = global_stack().unwrap();
         stack.get("email").unwrap();
         std::mem::drop(env);

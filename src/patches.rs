@@ -126,7 +126,7 @@ mod applied_patches_tests {
     #[test]
     #[serial]
     fn test_apply_simple() {
-        let env = crate::tests::TestEnv::new();
+        let env = crate::testing::TestEnv::new();
         let td = tempfile::tempdir().unwrap();
         let tree = crate::controldir::create_standalone_workingtree(
             td.path(),
@@ -158,7 +158,7 @@ mod applied_patches_tests {
     #[test]
     #[serial]
     fn test_apply_delete() {
-        let env = crate::tests::TestEnv::new();
+        let env = crate::testing::TestEnv::new();
         let td = tempfile::tempdir().unwrap();
         let tree = crate::controldir::create_standalone_workingtree(
             td.path(),
@@ -184,7 +184,7 @@ mod applied_patches_tests {
     #[test]
     #[serial]
     fn test_apply_add() {
-        let env = crate::tests::TestEnv::new();
+        let env = crate::testing::TestEnv::new();
         let td = tempfile::tempdir().unwrap();
         let tree = crate::controldir::create_standalone_workingtree(
             td.path(),
