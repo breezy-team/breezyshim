@@ -1,3 +1,4 @@
+use pyo3::prelude::*;
 use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
@@ -23,7 +24,16 @@ impl TestEnv {
         let old_email = std::env::var("BRZ_EMAIL").ok();
         std::env::set_current_dir(&working_dir).unwrap();
         std::env::set_var("HOME", &home_dir);
-        std::env::set_var("BRZ_EMAIL", "Joe Tester <joe@example.com>");
+        let brz_email = "Joe Tester <joe@example.com>";
+        std::env::set_var("BRZ_EMAIL", brz_email);
+        pyo3::Python::with_gil(|py| {
+            let os = py.import_bound("os").unwrap();
+            os.call_method1("chdir", (working_dir.to_str().unwrap(),))
+                .unwrap();
+            os.call_method1("putenv", ("HOME", home_dir.to_str().unwrap()))
+                .unwrap();
+            os.call_method1("putenv", ("BRZ_EMAIL", brz_email)).unwrap();
+        });
         let breezy_home = home_dir.join(".config/breezy");
         fs::create_dir_all(&breezy_home).unwrap();
         fs::write(
