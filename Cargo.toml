@@ -48,7 +48,8 @@ features = [ "serde",]
 pyo3 = { version = ">=0.20", features = ["py-clone"] }
 
 [dev-dependencies]
-maplit = "1.0.2"
+maplit = "1"
+serial_test = { version = "3", default-features = false }
 
 [dev-dependencies.pyo3]
 workspace = true

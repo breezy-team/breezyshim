@@ -121,8 +121,10 @@ mod applied_patches_tests {
     use crate::controldir::ControlDirFormat;
     use crate::tree::Tree;
     use patchkit::patch::UnifiedPatch;
+    use serial_test::serial;
 
     #[test]
+    #[serial]
     fn test_apply_simple() {
         let env = crate::tests::TestEnv::new();
         let td = tempfile::tempdir().unwrap();
@@ -154,6 +156,7 @@ mod applied_patches_tests {
     }
 
     #[test]
+    #[serial]
     fn test_apply_delete() {
         let env = crate::tests::TestEnv::new();
         let td = tempfile::tempdir().unwrap();
@@ -179,6 +182,7 @@ mod applied_patches_tests {
     }
 
     #[test]
+    #[serial]
     fn test_apply_add() {
         let env = crate::tests::TestEnv::new();
         let td = tempfile::tempdir().unwrap();

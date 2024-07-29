@@ -24,6 +24,16 @@ impl TestEnv {
         std::env::set_current_dir(&working_dir).unwrap();
         std::env::set_var("HOME", &home_dir);
         std::env::set_var("EMAIL", "Joe Tester <joe@example.com>");
+        let breezy_home = home_dir.join(".config/breezy");
+        fs::create_dir_all(&breezy_home).unwrap();
+        fs::write(
+            breezy_home.join("breezy.conf"),
+            r#"
+[DEFAULT]
+email = Joe Tester <joe@example.com>
+"#,
+        )
+        .unwrap();
         Self {
             temp_dir,
             home_dir,
@@ -47,7 +57,7 @@ impl Drop for TestEnv {
         } else {
             std::env::remove_var("EMAIL");
         }
-        std::env::set_current_dir(&self.old_cwd).unwrap();
+        let _ = std::env::set_current_dir(&self.old_cwd);
     }
 }
 
