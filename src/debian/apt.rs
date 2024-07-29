@@ -4,6 +4,8 @@ use debversion::Version;
 use pyo3::exceptions::PyStopIteration;
 use pyo3::prelude::*;
 
+pyo3::import_exception!(breezy.plugins.debian.apt_repo, NoAptSources);
+
 struct SourceIterator(PyObject);
 
 impl Iterator for SourceIterator {
@@ -12,12 +14,10 @@ impl Iterator for SourceIterator {
     fn next(&mut self) -> Option<Self::Item> {
         Python::with_gil(|py| {
             let next = self.0.call_method0(py, "__next__");
-            if let Ok(o) = next.as_ref() {
-                println!("{}", o.call_method0(py, "__str__").unwrap());
-            }
             match next {
                 Ok(next) => Some(next.extract(py).unwrap()),
                 Err(e) if e.is_instance_of::<PyStopIteration>(py) => None,
+                Err(e) if e.is_instance_of::<NoAptSources>(py) => None,
                 Err(e) => panic!("error iterating: {:?}", e),
             }
         })
@@ -32,9 +32,6 @@ impl Iterator for PackageIterator {
     fn next(&mut self) -> Option<Self::Item> {
         Python::with_gil(|py| {
             let next = self.0.call_method0(py, "__next__");
-            if let Ok(o) = next.as_ref() {
-                println!("{}", o.call_method0(py, "__str__").unwrap());
-            }
             match next {
                 Ok(next) => Some(next.extract(py).unwrap()),
                 Err(e) if e.is_instance_of::<PyStopIteration>(py) => None,
@@ -45,6 +42,15 @@ impl Iterator for PackageIterator {
 }
 
 pub trait Apt: ToPyObject {
+    // Retrieve the orig tarball from the repository.
+    //
+    // # Arguments
+    // * `source_name` - The name of the source package to retrieve.
+    // * `target_directory` - The directory to store the orig tarball in.
+    // * `orig_version` - The version of the orig tarball to retrieve.
+    //
+    // # Returns
+    // * `Ok(())` - If the orig tarball was successfully retrieved.
     fn retrieve_orig(
         &self,
         source_name: &str,
@@ -62,6 +68,15 @@ pub trait Apt: ToPyObject {
         })
     }
 
+    /// Retrieve the source package from the repository.
+    ///
+    /// # Arguments
+    /// * `source_name` - The name of the source package to retrieve.
+    /// * `target_directory` - The directory to store the source package in.
+    /// * `source_version` - The version of the source package to retrieve.
+    ///
+    /// # Returns
+    /// * `Ok(())` - If the source package was successfully retrieved.
     fn retrieve_source(
         &self,
         source_name: &str,
@@ -79,6 +94,7 @@ pub trait Apt: ToPyObject {
         })
     }
 
+    /// Retrieve the binary package from the repository.
     fn iter_sources(&self) -> impl Iterator<Item = Source> {
         Python::with_gil(|py| {
             let apt = self.to_object(py);
@@ -87,6 +103,7 @@ pub trait Apt: ToPyObject {
         })
     }
 
+    /// Retrieve the binary package from the repository.
     fn iter_binaries(&self) -> impl Iterator<Item = Package> {
         Python::with_gil(|py| {
             let apt = self.to_object(py);
@@ -95,6 +112,7 @@ pub trait Apt: ToPyObject {
         })
     }
 
+    /// Retrieve source package by name.
     fn iter_source_by_name(&self, name: &str) -> impl Iterator<Item = Source> {
         Python::with_gil(|py| {
             let apt = self.to_object(py);
@@ -105,6 +123,7 @@ pub trait Apt: ToPyObject {
         })
     }
 
+    /// Retrieve binary package by name.
     fn iter_binary_by_name(&self, name: &str) -> impl Iterator<Item = Package> {
         Python::with_gil(|py| {
             let apt = self.to_object(py);
@@ -205,7 +224,10 @@ impl Drop for RemoteApt {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
+
     #[test]
+    #[serial]
     fn test_local_apt_retrieve_orig() {
         let apt = LocalApt::new(None).unwrap();
         let td = tempfile::tempdir().unwrap();
@@ -231,6 +253,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_local_apt() {
         // Note that LocalApt appears to crash if initialized
         // concurrently by other tests.

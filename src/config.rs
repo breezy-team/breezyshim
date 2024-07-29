@@ -97,10 +97,14 @@ pub fn global_stack() -> Result<ConfigStack> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
+    #[serial]
     fn test_config_stack() {
+        let env = crate::tests::TestEnv::new();
         let stack = global_stack().unwrap();
         stack.get("email").unwrap();
+        std::mem::drop(env);
     }
 }
