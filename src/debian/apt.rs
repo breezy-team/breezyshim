@@ -113,24 +113,24 @@ pub trait Apt: ToPyObject {
     }
 
     /// Retrieve source package by name.
-    fn iter_source_by_name(&self, name: &str) -> impl Iterator<Item = Source> {
+    fn iter_source_by_name(&self, name: &str) -> Box<dyn Iterator<Item = Source>> {
         Python::with_gil(|py| {
             let apt = self.to_object(py);
             let iter = apt
                 .call_method1(py, "iter_source_by_name", (name,))
                 .unwrap();
-            SourceIterator(iter)
+            Box::new(SourceIterator(iter))
         })
     }
 
     /// Retrieve binary package by name.
-    fn iter_binary_by_name(&self, name: &str) -> impl Iterator<Item = Package> {
+    fn iter_binary_by_name(&self, name: &str) -> Box<dyn Iterator<Item = Package>> {
         Python::with_gil(|py| {
             let apt = self.to_object(py);
             let iter = apt
                 .call_method1(py, "iter_binary_by_name", (name,))
                 .unwrap();
-            PackageIterator(iter)
+            Box::new(PackageIterator(iter))
         })
     }
 }
