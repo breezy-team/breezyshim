@@ -52,6 +52,12 @@ impl ConfigValue for bool {}
 #[derive(Clone)]
 pub struct BranchConfig(PyObject);
 
+impl ToPyObject for BranchConfig {
+    fn to_object(&self, py: Python) -> PyObject {
+        self.0.clone_ref(py)
+    }
+}
+
 impl BranchConfig {
     pub fn new(o: PyObject) -> Self {
         Self(o)

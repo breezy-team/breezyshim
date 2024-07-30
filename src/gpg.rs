@@ -41,6 +41,26 @@ impl From<PyErr> for Error {
 
 pub struct GPGStrategy(PyObject);
 
+impl GPGStrategy {
+    pub fn new(branch_config: &crate::config::BranchConfig) -> Self {
+        Python::with_gil(|py| {
+            let gpg = PyModule::import_bound(py, "breezy.gpg").unwrap();
+            let gpg_strategy = gpg.getattr("GPGStrategy").unwrap();
+            let branch_config = branch_config.to_object(py);
+            let strategy = gpg_strategy.call1((branch_config,)).unwrap();
+            GPGStrategy(strategy.to_object(py))
+        })
+    }
+
+    pub fn set_acceptable_keys(&self, keys: &[String]) {
+        Python::with_gil(|py| {
+            self.0
+                .call_method1(py, "set_acceptable_keys", (keys.join(","),))
+                .unwrap();
+        })
+    }
+}
+
 impl ToPyObject for GPGStrategy {
     fn to_object(&self, py: Python) -> PyObject {
         self.0.to_object(py)
