@@ -23,6 +23,7 @@ pub mod cvs;
 pub mod darcs;
 pub mod delta;
 pub mod diff;
+#[cfg(feature = "dirty-tracker")]
 pub mod dirty_tracker;
 pub mod error;
 pub mod export;

@@ -20,11 +20,12 @@ lazy-regex = ">=2"
 patchkit = "0.1"
 log = "0.4"
 debian-control = { version = ">= 0.1.13", optional = true, features = ["python-debian"] }
-dirty-tracker = "0.3"
+dirty-tracker = { version = "0.3", optional = true }
 
 [features]
 default = ["auto-initialize"]
 debian = ["dep:debversion", "dep:debian-control"]
+dirty-tracker = ["dep:dirty-tracker"]
 auto-initialize = ["dep:ctor"]
 
 [dependencies.debversion]

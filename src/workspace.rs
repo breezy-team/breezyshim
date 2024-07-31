@@ -1,9 +1,11 @@
+#[cfg(feature = "dirty-tracker")]
 use crate::dirty_tracker::{DirtyTreeTracker, State as DirtyTrackerState};
 use crate::error::Error;
 use crate::tree::{Tree, WorkingTree};
 use pyo3::prelude::*;
 
-pub fn reset_tree(
+#[cfg(feature = "dirty-tracker")]
+pub fn reset_tree_with_dirty_tracker(
     local_tree: &WorkingTree,
     basis_tree: Option<&dyn Tree>,
     subpath: Option<&std::path::Path>,
@@ -13,7 +15,16 @@ pub fn reset_tree(
         if dirty_tracker.state() == DirtyTrackerState::Clean {
             return Ok(());
         }
+        // TODO: Only reset those files that are dirty
     }
+    reset_tree(local_tree, basis_tree, subpath)
+}
+
+pub fn reset_tree(
+    local_tree: &WorkingTree,
+    basis_tree: Option<&dyn Tree>,
+    subpath: Option<&std::path::Path>,
+) -> Result<(), Error> {
     Python::with_gil(|py| {
         let workspace_m = py.import_bound("breezy.workspace")?;
         let reset_tree = workspace_m.getattr("reset_tree")?;
