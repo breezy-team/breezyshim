@@ -180,6 +180,15 @@ pub trait Tree: ToPyObject {
         })
     }
 
+    fn get_symlink_target(&self, path: &Path) -> Result<PathBuf, Error> {
+        Python::with_gil(|py| {
+            let target = self
+                .to_object(py)
+                .call_method1(py, "get_symlink_target", (path,))?;
+            target.extract(py).map_err(|e| e.into())
+        })
+    }
+
     fn get_parent_ids(&self) -> Result<Vec<RevisionId>, Error> {
         Python::with_gil(|py| {
             Ok(self
@@ -197,6 +206,16 @@ pub trait Tree: ToPyObject {
                 .unwrap()
                 .extract(py)
                 .unwrap()
+        })
+    }
+
+    fn kind(&self, path: &Path) -> Result<Kind, Error> {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method1(py, "kind", (path,))
+                .unwrap()
+                .extract(py)
+                .map_err(|e| e.into())
         })
     }
 
