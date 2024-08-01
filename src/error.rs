@@ -80,7 +80,7 @@ pub enum Error {
     FileExists(std::path::PathBuf, Option<String>),
     LockContention(String, String),
     NotImplemented,
-    NoSuchRevisionInTree(RevisionId),
+    NoSuchRevisionInTree(crate::RevisionId),
 }
 
 impl From<crate::transport::Error> for Error {
