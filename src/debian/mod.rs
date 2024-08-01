@@ -17,6 +17,9 @@ use pyo3::types::PyDict;
 
 #[derive(Debug)]
 pub enum BuildError {
+    BuildFailed,
+    PackageVersionNotPresent(String, debversion::Version),
+    MissingUpstreamTarball(String, debversion::Version),
     Other(pyo3::PyErr),
 }
 
@@ -24,6 +27,17 @@ impl std::fmt::Display for BuildError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
             BuildError::Other(e) => write!(f, "Python error: {}", e),
+            BuildError::BuildFailed => write!(f, "Build failed"),
+            BuildError::PackageVersionNotPresent(package, version) => {
+                write!(f, "Version {} of package {} not present", version, package)
+            }
+            BuildError::MissingUpstreamTarball(package, version) => {
+                write!(
+                    f,
+                    "Upstream tarball for version {} of package {} not present",
+                    version, package
+                )
+            }
         }
     }
 }
@@ -32,7 +46,43 @@ impl std::error::Error for BuildError {}
 
 impl From<pyo3::PyErr> for BuildError {
     fn from(e: pyo3::PyErr) -> Self {
-        BuildError::Other(e)
+        pyo3::import_exception!(breezy.plugins.debian.builder, BuildFailedError);
+        pyo3::import_exception!(breezy.plugins.debian.upstream, PackageVersionNotPresent);
+        pyo3::import_exception!(breezy.plugins.debian.upstream, MissingUpstreamTarball);
+
+        pyo3::Python::with_gil(|py| {
+            if e.is_instance_of::<BuildFailedError>(py) {
+                BuildError::BuildFailed
+            } else if e.is_instance_of::<PackageVersionNotPresent>(py) {
+                let args = e.value_bound(py);
+                let package_name = args
+                    .getattr("package")
+                    .unwrap()
+                    .extract::<String>()
+                    .unwrap();
+                let version = args
+                    .getattr("version")
+                    .unwrap()
+                    .extract::<debversion::Version>()
+                    .unwrap();
+                BuildError::PackageVersionNotPresent(package_name, version)
+            } else if e.is_instance_of::<MissingUpstreamTarball>(py) {
+                let args = e.value_bound(py);
+                let package_name = args
+                    .getattr("package")
+                    .unwrap()
+                    .extract::<String>()
+                    .unwrap();
+                let version = args
+                    .getattr("version")
+                    .unwrap()
+                    .extract::<debversion::Version>()
+                    .unwrap();
+                BuildError::MissingUpstreamTarball(package_name, version)
+            } else {
+                BuildError::Other(e)
+            }
+        })
     }
 }
 
@@ -43,7 +93,7 @@ pub fn build_helper(
     target_dir: &std::path::Path,
     builder: &str,
     guess_upstream_branch_url: bool,
-    apt_repo: Option<&impl apt::Apt>,
+    apt_repo: Option<&dyn apt::Apt>,
 ) -> Result<Changes, BuildError> {
     pyo3::prepare_freethreaded_python();
 
