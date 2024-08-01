@@ -234,14 +234,19 @@ pub trait Branch: ToPyObject + Send {
         })
     }
 
-    fn create_checkout(&self, to_location: &std::path::Path) -> Result<(), Error> {
+    fn create_checkout(
+        &self,
+        to_location: &std::path::Path,
+    ) -> Result<crate::tree::WorkingTree, Error> {
         Python::with_gil(|py| {
-            self.to_object(py).call_method1(
-                py,
-                "create_checkout",
-                (to_location.to_string_lossy().to_string(),),
-            )?;
-            Ok(())
+            self.to_object(py)
+                .call_method1(
+                    py,
+                    "create_checkout",
+                    (to_location.to_string_lossy().to_string(),),
+                )
+                .map(crate::tree::WorkingTree)
+                .map_err(|e| e.into())
         })
     }
 }
