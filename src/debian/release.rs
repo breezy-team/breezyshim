@@ -35,7 +35,7 @@ pub fn release(
         let release = m.getattr("release").unwrap();
         match release.call1((local_tree.to_object(py), subpath)) {
             Ok(result) => Ok(result.extract().unwrap()),
-            Err(err) if err.is_instance_of<GeneratedFile>() => Err(ReleaseError::GeneratedFile),
+            Err(err) if err.is_instance_of::<GeneratedFile>(py) => Err(ReleaseError::GeneratedFile),
             Err(err) => Err(ReleaseError::BrzError(err.into())),
         }
     })
