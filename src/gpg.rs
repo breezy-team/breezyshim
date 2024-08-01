@@ -73,17 +73,44 @@ impl FromPyObject<'_> for GPGStrategy {
     }
 }
 
-pub struct VerificationResult {}
-
-impl FromPyObject<'_> for VerificationResult {
-    fn extract_bound(_ob: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(VerificationResult {})
-    }
+#[derive(Debug)]
+pub enum VerificationResult {
+    Valid(String),
+    KeyMissing(String),
+    NotValid(String),
+    NotSigned,
+    Expired(String),
 }
 
-impl ToPyObject for VerificationResult {
-    fn to_object(&self, py: Python) -> PyObject {
-        py.None()
+impl VerificationResult {
+    pub fn key(&self) -> Option<&str> {
+        match self {
+            VerificationResult::Valid(key) => Some(key),
+            VerificationResult::KeyMissing(key) => Some(key),
+            VerificationResult::NotValid(key) => Some(key),
+            VerificationResult::Expired(key) => Some(key),
+            _ => None,
+        }
+    }
+
+    pub fn is_valid(&self) -> bool {
+        matches!(self, VerificationResult::Valid(_))
+    }
+
+    pub fn is_key_missing(&self) -> bool {
+        matches!(self, VerificationResult::KeyMissing(_))
+    }
+
+    pub fn is_not_valid(&self) -> bool {
+        matches!(self, VerificationResult::NotValid(_))
+    }
+
+    pub fn is_not_signed(&self) -> bool {
+        matches!(self, VerificationResult::NotSigned)
+    }
+
+    pub fn is_expired(&self) -> bool {
+        matches!(self, VerificationResult::Expired(_))
     }
 }
 
@@ -91,14 +118,7 @@ pub fn bulk_verify_signatures(
     repository: &Repository,
     revids: &[&RevisionId],
     strategy: &GPGStrategy,
-) -> Result<
-    (
-        HashMap<String, usize>,
-        Vec<(RevisionId, VerificationResult, String)>,
-        bool,
-    ),
-    Error,
-> {
+) -> Result<Vec<(RevisionId, VerificationResult)>, Error> {
     Python::with_gil(|py| {
         let gpg = PyModule::import_bound(py, "breezy.gpg").unwrap();
         let bulk_verify_signatures = gpg.getattr("bulk_verify_signatures").unwrap();
@@ -108,13 +128,28 @@ pub fn bulk_verify_signatures(
                 revids.iter().map(|r| r.to_object(py)).collect::<Vec<_>>(),
                 strategy.to_object(py),
             ))
-            .map_err(|e| -> Error { e.into() })?;
+            .map_err(|e| -> Error { e.into() })
+            .unwrap();
 
-        Ok(r.extract::<(
-            HashMap<String, usize>,
-            Vec<(RevisionId, VerificationResult, String)>,
-            bool,
-        )>()
-        .unwrap())
+        let (_count, result, _all_verifiable) = r
+            .extract::<(PyObject, Vec<(RevisionId, isize, String)>, bool)>()
+            .unwrap();
+
+        let result: Vec<(RevisionId, VerificationResult)> = result
+            .into_iter()
+            .map(|(revid, status, key)| {
+                let status = match status {
+                    0 => VerificationResult::Valid(key),
+                    1 => VerificationResult::KeyMissing(key),
+                    2 => VerificationResult::NotValid(key),
+                    3 => VerificationResult::NotSigned,
+                    4 => VerificationResult::Expired(key),
+                    _ => panic!("unexpected status: {}", status),
+                };
+                (revid, status)
+            })
+            .collect::<Vec<_>>();
+
+        Ok(result)
     })
 }
