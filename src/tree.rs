@@ -567,19 +567,20 @@ impl WorkingTree {
         })
     }
 
-    pub fn basis_tree(&self) -> crate::tree::RevisionTree {
+    pub fn basis_tree(&self) -> Result<crate::tree::RevisionTree, Error> {
         Python::with_gil(|py| {
-            let tree = self.to_object(py).call_method0(py, "basis_tree").unwrap();
-            RevisionTree(tree)
+            let tree = self.to_object(py).call_method0(py, "basis_tree")?;
+            Ok(RevisionTree(tree))
         })
     }
 
     pub fn revision_tree(&self, revision_id: &RevisionId) -> Result<Box<RevisionTree>, Error> {
         Python::with_gil(|py| {
-            let tree = self
-                .to_object(py)
-                .call_method1(py, "revision_tree", (revision_id.to_object(py),))
-                .unwrap();
+            let tree = self.to_object(py).call_method1(
+                py,
+                "revision_tree",
+                (revision_id.to_object(py),),
+            )?;
             Ok(Box::new(RevisionTree(tree)))
         })
     }
