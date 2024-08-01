@@ -35,6 +35,7 @@ import_exception!(breezy.errors, LockFailed);
 import_exception!(breezy.errors, LockContention);
 import_exception!(breezy.transport, FileExists);
 import_exception!(breezy.errors, NoSuchRevisionInTree);
+import_exception!(breezy.tree, MissingNestedTree);
 
 #[derive(Debug)]
 pub enum Error {
@@ -81,6 +82,7 @@ pub enum Error {
     LockContention(String, String),
     NotImplemented,
     NoSuchRevisionInTree(crate::RevisionId),
+    MissingNestedTree(std::path::PathBuf),
 }
 
 impl From<crate::transport::Error> for Error {
@@ -187,6 +189,7 @@ impl std::fmt::Display for Error {
             Self::LockContention(a, b) => write!(f, "Lock contention: {} {}", a, b),
             Self::NotImplemented => write!(f, "Not implemented"),
             Self::NoSuchRevisionInTree(rev) => write!(f, "No such revision in tree: {}", rev),
+            Self::MissingNestedTree(p) => write!(f, "Missing nested tree: {}", p.display()),
         }
     }
 }
@@ -352,6 +355,10 @@ impl From<PyErr> for Error {
                 Error::NoSuchRevisionInTree(
                     value.getattr("revision_id").unwrap().extract().unwrap(),
                 )
+            } else if err.is_instance_of::<MissingNestedTree>(py) {
+                Error::MissingNestedTree(std::path::PathBuf::from(
+                    value.getattr("path").unwrap().extract::<String>().unwrap(),
+                ))
             } else {
                 Self::Other(err)
             }
@@ -431,6 +438,9 @@ impl From<Error> for PyErr {
             Error::NotImplemented => pyo3::exceptions::PyNotImplementedError::new_err(()),
             Error::NoSuchRevisionInTree(rev) => {
                 Python::with_gil(|py| NoSuchRevisionInTree::new_err((py.None(), rev.to_string())))
+            }
+            Error::MissingNestedTree(p) => {
+                MissingNestedTree::new_err((p.to_string_lossy().to_string(),))
             }
         }
     }
@@ -815,5 +825,15 @@ fn test_error_notimplementederror() {
     // Verify that p is an instance of PyNotImplementedError
     Python::with_gil(|py| {
         assert!(p.is_instance_of::<pyo3::exceptions::PyNotImplementedError>(py));
+    });
+}
+
+#[test]
+fn test_missing_nested_tree() {
+    let e = Error::MissingNestedTree(std::path::PathBuf::from("foo"));
+    let p: PyErr = e.into();
+    // Verify that p is an instance of MissingNestedTree
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<MissingNestedTree>(py), "{}", p);
     });
 }
