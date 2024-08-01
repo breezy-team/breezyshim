@@ -219,6 +219,31 @@ pub trait Branch: ToPyObject + Send {
             )
         })
     }
+
+    fn sprout(&self, to_controldir: &ControlDir, to_branch_name: &str) -> Result<(), Error> {
+        Python::with_gil(|py| {
+            let kwargs = PyDict::new_bound(py);
+            kwargs.set_item("name", to_branch_name)?;
+            self.to_object(py).call_method_bound(
+                py,
+                "sprout",
+                (to_controldir.to_object(py),),
+                Some(&kwargs),
+            )?;
+            Ok(())
+        })
+    }
+
+    fn create_checkout(&self, to_location: &std::path::Path) -> Result<(), Error> {
+        Python::with_gil(|py| {
+            self.to_object(py).call_method1(
+                py,
+                "create_checkout",
+                (to_location.to_string_lossy().to_string(),),
+            )?;
+            Ok(())
+        })
+    }
 }
 
 #[derive(Clone)]

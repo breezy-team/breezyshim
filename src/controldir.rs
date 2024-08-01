@@ -160,7 +160,7 @@ impl ControlDir {
         create_tree_if_local: Option<bool>,
         stacked: Option<bool>,
         revision_id: Option<&crate::RevisionId>,
-    ) -> ControlDir {
+    ) -> Result<ControlDir, Error> {
         Python::with_gil(|py| {
             let kwargs = PyDict::new_bound(py);
             if let Some(create_tree_if_local) = create_tree_if_local {
@@ -182,11 +182,10 @@ impl ControlDir {
                     .unwrap();
             }
 
-            let cd = self
-                .0
-                .call_method_bound(py, "sprout", (target.to_string(),), Some(&kwargs))
-                .unwrap();
-            ControlDir(cd)
+            let cd =
+                self.0
+                    .call_method_bound(py, "sprout", (target.to_string(),), Some(&kwargs))?;
+            Ok(ControlDir(cd))
         })
     }
 
