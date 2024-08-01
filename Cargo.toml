@@ -19,7 +19,7 @@ ctor = { version = "0.2.6", optional = true }
 lazy-regex = ">=2"
 patchkit = "0.1"
 log = "0.4"
-debian-control = { version = ">= 0.1.13", optional = true, features = ["python-debian"] }
+debian-control = { version = ">= 0.1.14", optional = true, features = ["python-debian"] }
 dirty-tracker = { version = "0.3", optional = true }
 
 [features]

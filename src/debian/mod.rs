@@ -1,8 +1,8 @@
-/// Debian specific functionality.
-///
-/// This module provides functionality for working with Debian packages.
-///
-/// It mostly wraps the `breezy.plugins.debian` module from the Breezy VCS.
+//! Debian specific functionality.
+//!
+//! This module provides functionality for working with Debian packages.
+//!
+//! It mostly wraps the `breezy.plugins.debian` module from the Breezy VCS.
 pub mod apt;
 pub mod release;
 pub mod vcs_up_to_date;
@@ -10,6 +10,7 @@ pub mod vcs_up_to_date;
 use crate::error::Error;
 use crate::tree::{Tree, WorkingTree};
 use crate::Branch;
+use debian_control::changes::Changes;
 
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
@@ -43,10 +44,10 @@ pub fn build_helper(
     builder: &str,
     guess_upstream_branch_url: bool,
     apt_repo: Option<&impl apt::Apt>,
-) -> Result<(), BuildError> {
+) -> Result<Changes, BuildError> {
     pyo3::prepare_freethreaded_python();
 
-    Python::with_gil(|py| -> PyResult<()> {
+    Python::with_gil(|py| -> PyResult<Changes> {
         let locals = PyDict::new_bound(py);
         locals.set_item("local_tree", local_tree)?;
         locals.set_item("subpath", subpath)?;
@@ -60,12 +61,10 @@ pub fn build_helper(
         }
 
         py.import_bound("breezy.plugins.debian.cmds")?
-            .call_method1("_build_helper", (locals,))?;
-
-        Ok(())
-    })?;
-
-    Ok(())
+            .call_method1("_build_helper", (locals,))?
+            .extract()
+    })
+    .map_err(BuildError::from)
 }
 
 /// Return the name of the debian tag for the given tree and branch.
