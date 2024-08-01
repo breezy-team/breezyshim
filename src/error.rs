@@ -34,6 +34,7 @@ import_exception!(breezy.errors, NoRepositoryPresent);
 import_exception!(breezy.errors, LockFailed);
 import_exception!(breezy.errors, LockContention);
 import_exception!(breezy.transport, FileExists);
+import_exception!(breezy.errors, NoSuchRevisionInTree);
 
 #[derive(Debug)]
 pub enum Error {
@@ -79,6 +80,7 @@ pub enum Error {
     FileExists(std::path::PathBuf, Option<String>),
     LockContention(String, String),
     NotImplemented,
+    NoSuchRevisionInTree(RevisionId),
 }
 
 impl From<crate::transport::Error> for Error {
@@ -184,6 +186,7 @@ impl std::fmt::Display for Error {
             }
             Self::LockContention(a, b) => write!(f, "Lock contention: {} {}", a, b),
             Self::NotImplemented => write!(f, "Not implemented"),
+            Self::NoSuchRevisionInTree(rev) => write!(f, "No such revision in tree: {}", rev),
         }
     }
 }
@@ -345,6 +348,10 @@ impl From<PyErr> for Error {
                 )
             } else if err.is_instance_of::<pyo3::exceptions::PyNotImplementedError>(py) {
                 Error::NotImplemented
+            } else if err.is_instance_of::<NoSuchRevisionInTree>(py) {
+                Error::NoSuchRevisionInTree(
+                    value.getattr("revision_id").unwrap().extract().unwrap(),
+                )
             } else {
                 Self::Other(err)
             }
@@ -422,6 +429,9 @@ impl From<Error> for PyErr {
                 Python::with_gil(|py| LockContention::new_err((py.None(), msg)))
             }
             Error::NotImplemented => pyo3::exceptions::PyNotImplementedError::new_err(()),
+            Error::NoSuchRevisionInTree(rev) => {
+                Python::with_gil(|py| NoSuchRevisionInTree::new_err((py.None(), rev.to_string())))
+            }
         }
     }
 }
