@@ -108,14 +108,6 @@ pub enum Error {
     BadHttpRequest(Url, String),
 }
 
-impl From<crate::transport::Error> for Error {
-    fn from(e: crate::transport::Error) -> Self {
-        match e {
-            crate::transport::Error::Python(e) => e.into(),
-        }
-    }
-}
-
 impl From<url::ParseError> for Error {
     fn from(e: url::ParseError) -> Self {
         Error::InvalidURL(e.to_string(), None)

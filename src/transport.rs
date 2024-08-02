@@ -75,35 +75,6 @@ impl ToPyObject for Transport {
     }
 }
 
-#[derive(Debug)]
-pub enum Error {
-    Python(PyErr),
-}
-
-impl From<PyErr> for Error {
-    fn from(e: PyErr) -> Self {
-        Error::Python(e)
-    }
-}
-
-impl From<Error> for PyErr {
-    fn from(e: Error) -> Self {
-        match e {
-            Error::Python(e) => e,
-        }
-    }
-}
-
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Error::Python(e) => e.fmt(f),
-        }
-    }
-}
-
-impl std::error::Error for Error {}
-
 pub fn get_transport(
     url: &url::Url,
     possible_transports: Option<&mut Vec<Transport>>,
