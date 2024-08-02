@@ -11,6 +11,8 @@ use crate::error::Error;
 use crate::tree::{Tree, WorkingTree};
 use crate::Branch;
 use debian_control::changes::Changes;
+use std::collections::HashMap;
+use std::path::PathBuf;
 
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
@@ -94,10 +96,10 @@ pub fn build_helper(
     builder: &str,
     guess_upstream_branch_url: bool,
     apt_repo: Option<&dyn apt::Apt>,
-) -> Result<Changes, BuildError> {
+) -> Result<HashMap<String, PathBuf>, BuildError> {
     pyo3::prepare_freethreaded_python();
 
-    Python::with_gil(|py| -> PyResult<Changes> {
+    Python::with_gil(|py| -> PyResult<HashMap<String, PathBuf>> {
         let locals = PyDict::new_bound(py);
         locals.set_item("local_tree", local_tree)?;
         locals.set_item("subpath", subpath)?;
