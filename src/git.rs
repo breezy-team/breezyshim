@@ -39,3 +39,37 @@ impl ToPyObject for RemoteGitProber {
 }
 
 impl Prober for RemoteGitProber {}
+
+pub struct BareLocalGitControlDirFormat(PyObject);
+
+impl BareLocalGitControlDirFormat {
+    pub fn new() -> Self {
+        Python::with_gil(|py| {
+            let m = py
+                .import_bound("breezy.git")
+                .expect("Failed to import breezy.git");
+            let format = m
+                .getattr("BareLocalGitControlDirFormat")
+                .expect("Failed to get BareLocalGitControlDirFormat");
+
+            Self(
+                format
+                    .call0()
+                    .expect("Failed to create BareLocalGitControlDirFormat")
+                    .to_object(py),
+            )
+        })
+    }
+}
+
+impl ToPyObject for BareLocalGitControlDirFormat {
+    fn to_object(&self, py: Python) -> PyObject {
+        self.0.to_object(py)
+    }
+}
+
+impl crate::controldir::AsFormat for BareLocalGitControlDirFormat {
+    fn as_format(&self) -> Option<crate::controldir::ControlDirFormat> {
+        Some(crate::controldir::ControlDirFormat::from(self.0.clone()))
+    }
+}

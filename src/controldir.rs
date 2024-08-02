@@ -712,3 +712,35 @@ fn test_branch_names() {
     controldir.create_branch(None).unwrap();
     assert_eq!(controldir.branch_names().unwrap(), vec!["".to_string()]);
 }
+
+pub struct ControlDirFormatRegistry(PyObject);
+
+impl ControlDirFormatRegistry {
+    pub fn new() -> Self {
+        Python::with_gil(|py| {
+            let m = py.import_bound("breezy.controldir").unwrap();
+            let obj = m.getattr("format_registry").unwrap();
+            ControlDirFormatRegistry(obj.into())
+        })
+    }
+
+    pub fn make_controldir(&self, format: &str) -> ControlDirFormat {
+        Python::with_gil(|py| {
+            let format = self
+                .0
+                .call_method1(py, "make_controldir", (format,))
+                .unwrap();
+            ControlDirFormat(format.to_object(py))
+        })
+    }
+}
+
+impl Default for ControlDirFormatRegistry {
+    fn default() -> Self {
+        ControlDirFormatRegistry::new()
+    }
+}
+
+lazy_static::lazy_static! {
+    pub static ref FORMAT_REGISTRY: ControlDirFormatRegistry = ControlDirFormatRegistry::new();
+}

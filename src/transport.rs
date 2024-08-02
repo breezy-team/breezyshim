@@ -61,6 +61,13 @@ impl Transport {
             Ok(())
         })
     }
+
+    pub fn clone(&self, path: &str) -> Result<Transport, Error> {
+        pyo3::Python::with_gil(|py| {
+            let o = self.0.call_method1(py, "clone", (path,))?;
+            Ok(Transport(o.to_object(py)))
+        })
+    }
 }
 
 impl FromPyObject<'_> for Transport {

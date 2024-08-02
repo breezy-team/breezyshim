@@ -40,7 +40,7 @@ pub struct Revision {
 
 impl Revision {
     pub fn datetime(&self) -> DateTime<chrono::FixedOffset> {
-        let tz = chrono::FixedOffset::east(self.timezone);
+        let tz = chrono::FixedOffset::east_opt(self.timezone).unwrap();
         tz.timestamp_opt(self.timestamp as i64, 0).unwrap()
     }
 }

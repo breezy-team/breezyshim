@@ -42,6 +42,7 @@ import_exception!(breezy.transform, MalformedTransform);
 import_exception!(breezy.transform, TransformRenameFailed);
 import_exception!(breezy.errors, UnexpectedHttpStatus);
 import_exception!(breezy.errors, BadHttpRequest);
+import_exception!(breezy.errors, TransportNotPossible);
 
 #[derive(Debug)]
 pub enum Error {
@@ -106,6 +107,7 @@ pub enum Error {
     },
     Timeout,
     BadHttpRequest(Url, String),
+    TransportNotPossible(String),
 }
 
 impl From<url::ParseError> for Error {
@@ -233,6 +235,7 @@ impl std::fmt::Display for Error {
             }
             Self::Timeout => write!(f, "Timeout"),
             Self::BadHttpRequest(url, msg) => write!(f, "Bad HTTP request: {} {}", url, msg),
+            Self::TransportNotPossible(e) => write!(f, "Transport not possible: {}", e),
         }
     }
 }
@@ -459,6 +462,8 @@ impl From<PyErr> for Error {
                         .unwrap(),
                     value.getattr("reason").unwrap().extract().unwrap(),
                 )
+            } else if err.is_instance_of::<TransportNotPossible>(py) {
+                Error::TransportNotPossible(value.getattr("msg").unwrap().extract().unwrap())
             } else {
                 Self::Other(err)
             }
@@ -562,6 +567,7 @@ impl From<Error> for PyErr {
             Error::BadHttpRequest(url, reason) => {
                 BadHttpRequest::new_err((url.to_string(), reason))
             }
+            Error::TransportNotPossible(e) => TransportNotPossible::new_err((e,)),
         }
     }
 }
@@ -1025,5 +1031,15 @@ fn test_bad_http_request() {
     // Verify that p is an instance of BadHttpRequest
     Python::with_gil(|py| {
         assert!(p.is_instance_of::<BadHttpRequest>(py), "{}", p);
+    });
+}
+
+#[test]
+fn test_transport_not_possible() {
+    let e = Error::TransportNotPossible("foo".to_string());
+    let p: PyErr = e.into();
+    // Verify that p is an instance of TransportNotPossible
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<TransportNotPossible>(py), "{}", p);
     });
 }
