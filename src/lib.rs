@@ -35,6 +35,7 @@ pub mod gitlab;
 pub mod gpg;
 pub mod graph;
 pub mod hooks;
+pub mod interrepository;
 pub mod intertree;
 pub mod launchpad;
 pub mod location;

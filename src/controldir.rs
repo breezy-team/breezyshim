@@ -321,6 +321,24 @@ impl ControlDirFormat {
                 .unwrap()
         })
     }
+
+    pub fn initialize_on_transport(&self, transport: &Transport) -> Result<ControlDir, Error> {
+        Python::with_gil(|py| {
+            let cd =
+                self.0
+                    .call_method1(py, "initialize_on_transport", (&transport.to_object(py),))?;
+            Ok(ControlDir(cd))
+        })
+    }
+
+    pub fn initialize(&self, location: impl AsLocation) -> Result<ControlDir, Error> {
+        Python::with_gil(|py| {
+            let cd = self
+                .0
+                .call_method1(py, "initialize", (location.as_location(),))?;
+            Ok(ControlDir(cd))
+        })
+    }
 }
 
 pub fn open_tree_or_branch(
@@ -724,14 +742,14 @@ impl ControlDirFormatRegistry {
         })
     }
 
-    pub fn make_controldir(&self, format: &str) -> ControlDirFormat {
-        Python::with_gil(|py| {
-            let format = self
-                .0
-                .call_method1(py, "make_controldir", (format,))
-                .unwrap();
-            ControlDirFormat(format.to_object(py))
-        })
+    pub fn make_controldir(&self, format: &str) -> Option<ControlDirFormat> {
+        Python::with_gil(
+            |py| match self.0.call_method1(py, "make_controldir", (format,)) {
+                Ok(format) => Some(ControlDirFormat(format.to_object(py))),
+                Err(e) if e.is_instance_of::<pyo3::exceptions::PyKeyError>(py) => None,
+                Err(e) => panic!("{}", e),
+            },
+        )
     }
 }
 

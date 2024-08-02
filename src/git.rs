@@ -73,3 +73,5 @@ impl crate::controldir::AsFormat for BareLocalGitControlDirFormat {
         Some(crate::controldir::ControlDirFormat::from(self.0.clone()))
     }
 }
+
+pub static ZERO_SHA: &[u8; 40] = b"0000000000000000000000000000000000000000";
