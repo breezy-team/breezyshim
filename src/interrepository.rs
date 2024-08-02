@@ -1,5 +1,6 @@
 use crate::error::Error;
 use crate::repository::Repository;
+use crate::RevisionId;
 use pyo3::prelude::*;
 use std::collections::HashMap;
 
@@ -46,7 +47,12 @@ pub trait InterRepository: ToPyObject {
     fn fetch_refs(
         &self,
         get_changed_refs: std::sync::Mutex<
-            Box<dyn FnMut(&HashMap<String, Vec<u8>>) -> HashMap<String, Vec<u8>> + Send>,
+            Box<
+                dyn FnMut(
+                        &HashMap<String, (Vec<u8>, Option<RevisionId>)>,
+                    ) -> HashMap<String, (Vec<u8>, Option<RevisionId>)>
+                    + Send,
+            >,
         >,
         lossy: bool,
         overwrite: bool,
@@ -57,7 +63,10 @@ pub trait InterRepository: ToPyObject {
                 None,
                 None,
                 move |args, _kwargs| {
-                    let refs = args.extract::<(HashMap<String, Vec<u8>>,)>().unwrap().0;
+                    let refs = args
+                        .extract::<(HashMap<String, (Vec<u8>, Option<RevisionId>)>,)>()
+                        .unwrap()
+                        .0;
                     // Call get_changed_refs
                     if let Ok(mut get_changed_refs) = get_changed_refs.lock() {
                         get_changed_refs(&refs)
