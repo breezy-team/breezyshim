@@ -46,7 +46,7 @@ checksum = "b048fb63fd8b5923fc5aa7b340d8e156aec7ec02f0c78fa8a6ddc2613f6f71de"
 
 [[package]]
 name = "breezyshim"
-version = "0.1.146"
+version = "0.1.147"
 dependencies = [
  "chrono",
  "ctor",
@@ -149,9 +149,9 @@ dependencies = [
 
 [[package]]
 name = "debian-control"
-version = "0.1.14"
+version = "0.1.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a8d34cfedc7dee6daa33edc2c9966e5170741eb0b6ed98b050c0e8a55c92d1e"
+checksum = "b974e83275b391be6019b97b9b334663308c925d86c03e3d27e0e9a64294fe57"
 dependencies = [
  "deb822-lossless",
  "debversion",
