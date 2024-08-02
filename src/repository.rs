@@ -195,6 +195,20 @@ impl Repository {
         })
         .map_err(|e| e.into())
     }
+
+    // TODO: This should really be on ForeignRepository
+    pub fn lookup_bzr_revision_id(
+        &self,
+        revision_id: &RevisionId,
+    ) -> Result<(Vec<u8>,), crate::error::Error> {
+        Python::with_gil(|py| {
+            self.0
+                .call_method1(py, "lookup_bzr_revision_id", (revision_id.clone(),))?
+                .extract::<(Vec<u8>, PyObject)>(py)
+        })
+        .map_err(|e| e.into())
+        .map(|(v,m)| (v,))
+    }
 }
 
 pub fn open(base: impl AsLocation) -> Result<Repository, crate::error::Error> {
