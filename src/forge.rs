@@ -455,8 +455,8 @@ impl Forge {
     ) -> Result<(Box<dyn Branch>, url::Url), crate::error::Error> {
         Python::with_gil(|py| {
             let kwargs = PyDict::new_bound(py);
-            kwargs.set_item("local_branch", &local_branch.to_object(py))?;
-            kwargs.set_item("main_branch", &main_branch.to_object(py))?;
+            kwargs.set_item("local_branch", local_branch.to_object(py))?;
+            kwargs.set_item("main_branch", main_branch.to_object(py))?;
             kwargs.set_item("name", name)?;
             if let Some(overwrite_existing) = overwrite_existing {
                 kwargs.set_item("overwrite_existing", overwrite_existing)?;

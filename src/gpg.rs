@@ -2,7 +2,6 @@ use crate::repository::Repository;
 use crate::RevisionId;
 use pyo3::import_exception;
 use pyo3::prelude::*;
-use std::collections::HashMap;
 
 #[derive(Debug)]
 pub enum Error {

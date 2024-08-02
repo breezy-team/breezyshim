@@ -819,7 +819,7 @@ mod tests {
         let wt = create_standalone_workingtree(td.path(), &ControlDirFormat::default()).unwrap();
         let path = td.path().join("foo");
         std::fs::write(&path, b"").unwrap();
-        wt.add(&[&std::path::Path::new("foo")]).unwrap();
+        wt.add(&[(std::path::Path::new("foo"))]).unwrap();
         wt.commit("Initial commit", None, None, None).unwrap();
         assert!(wt.has_filename(&path));
         wt.remove(&[&path]).unwrap();

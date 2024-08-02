@@ -39,6 +39,7 @@ import_exception!(breezy.tree, MissingNestedTree);
 import_exception!(breezy.transform, ImmortalLimbo);
 import_exception!(breezy.transform, MalformedTransform);
 import_exception!(breezy.transform, TransformRenameFailed);
+import_exception!(breezy.errors, UnexpectedHttpStatus);
 
 #[derive(Debug)]
 pub enum Error {
@@ -94,6 +95,12 @@ pub enum Error {
         std::path::PathBuf,
         String,
         std::io::Error,
+    ),
+    UnexpectedHttpStatus(
+        std::path::PathBuf,
+        u16,
+        Option<String>,
+        std::collections::HashMap<String, String>,
     ),
 }
 
@@ -216,6 +223,13 @@ impl std::fmt::Display for Error {
                 c,
                 d
             ),
+            Self::UnexpectedHttpStatus(p, s, b, _hs) => {
+                if let Some(b) = b {
+                    write!(f, "Unexpected HTTP status: {} {}: {}", s, p.display(), b)
+                } else {
+                    write!(f, "Unexpected HTTP status: {} {}", s, p.display())
+                }
+            }
         }
     }
 }
@@ -416,6 +430,15 @@ impl From<PyErr> for Error {
                         value.getattr("errno").unwrap().extract::<i32>().unwrap(),
                     ),
                 )
+            } else if err.is_instance_of::<UnexpectedHttpStatus>(py) {
+                Error::UnexpectedHttpStatus(
+                    std::path::PathBuf::from(
+                        value.getattr("path").unwrap().extract::<String>().unwrap(),
+                    ),
+                    value.getattr("code").unwrap().extract().unwrap(),
+                    value.getattr("extra").unwrap().extract().unwrap(),
+                    value.getattr("headers").unwrap().extract().unwrap(),
+                )
             } else {
                 Self::Other(err)
             }
@@ -507,6 +530,14 @@ impl From<Error> for PyErr {
                     to_path.to_string_lossy().to_string(),
                     why,
                     PyErr::from(error),
+                ))
+            }
+            Error::UnexpectedHttpStatus(path, code, extra, headers) => {
+                UnexpectedHttpStatus::new_err((
+                    path.to_string_lossy().to_string(),
+                    code,
+                    extra,
+                    headers,
                 ))
             }
         }
@@ -931,11 +962,26 @@ fn test_transform_rename_failed() {
         std::path::PathBuf::from("foo"),
         std::path::PathBuf::from("bar"),
         "baz".to_string(),
-        std::io::Error::new(std::io::ErrorKind::NotFound, "foo").into(),
+        std::io::Error::new(std::io::ErrorKind::NotFound, "foo"),
     );
     let p: PyErr = e.into();
     // Verify that p is an instance of TransformRenameFailed
     Python::with_gil(|py| {
         assert!(p.is_instance_of::<TransformRenameFailed>(py), "{}", p,);
+    });
+}
+
+#[test]
+fn test_unexpected_http_status() {
+    let e = Error::UnexpectedHttpStatus(
+        std::path::PathBuf::from("foo"),
+        404,
+        Some("bar".to_string()),
+        std::collections::HashMap::new(),
+    );
+    let p: PyErr = e.into();
+    // Verify that p is an instance of UnexpectedHttpStatus
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<UnexpectedHttpStatus>(py), "{}", p);
     });
 }

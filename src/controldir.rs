@@ -173,7 +173,7 @@ impl ControlDir {
             }
             if let Some(source_branch) = source_branch {
                 kwargs
-                    .set_item("source_branch", &source_branch.to_object(py))
+                    .set_item("source_branch", source_branch.to_object(py))
                     .unwrap();
             }
             if let Some(revision_id) = revision_id {
