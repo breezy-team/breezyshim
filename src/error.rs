@@ -36,6 +36,9 @@ import_exception!(breezy.errors, LockContention);
 import_exception!(breezy.transport, FileExists);
 import_exception!(breezy.errors, NoSuchRevisionInTree);
 import_exception!(breezy.tree, MissingNestedTree);
+import_exception!(breezy.transform, ImmortalLimbo);
+import_exception!(breezy.transform, MalformedTransform);
+import_exception!(breezy.transform, TransformRenameFailed);
 
 #[derive(Debug)]
 pub enum Error {
@@ -83,6 +86,15 @@ pub enum Error {
     NotImplemented,
     NoSuchRevisionInTree(crate::RevisionId),
     MissingNestedTree(std::path::PathBuf),
+    /// Failed to delete transform temporary directory
+    ImmortalLimbo(std::path::PathBuf),
+    MalformedTransform(String),
+    TransformRenameFailed(
+        std::path::PathBuf,
+        std::path::PathBuf,
+        String,
+        std::io::Error,
+    ),
 }
 
 impl From<crate::transport::Error> for Error {
@@ -190,6 +202,20 @@ impl std::fmt::Display for Error {
             Self::NotImplemented => write!(f, "Not implemented"),
             Self::NoSuchRevisionInTree(rev) => write!(f, "No such revision in tree: {}", rev),
             Self::MissingNestedTree(p) => write!(f, "Missing nested tree: {}", p.display()),
+            Self::ImmortalLimbo(p) => write!(
+                f,
+                "Failed to delete transform temporary directory: {}",
+                p.display()
+            ),
+            Self::MalformedTransform(e) => write!(f, "Malformed transform: {}", e),
+            Self::TransformRenameFailed(a, b, c, d) => write!(
+                f,
+                "Transform rename failed: {} -> {}: {}: {}",
+                a.display(),
+                b.display(),
+                c,
+                d
+            ),
         }
     }
 }
@@ -359,6 +385,37 @@ impl From<PyErr> for Error {
                 Error::MissingNestedTree(std::path::PathBuf::from(
                     value.getattr("path").unwrap().extract::<String>().unwrap(),
                 ))
+            } else if err.is_instance_of::<ImmortalLimbo>(py) {
+                Error::ImmortalLimbo(std::path::PathBuf::from(
+                    value
+                        .getattr("limbo_dir")
+                        .unwrap()
+                        .extract::<String>()
+                        .unwrap(),
+                ))
+            } else if err.is_instance_of::<MalformedTransform>(py) {
+                Error::MalformedTransform(value.getattr("conflicts").unwrap().extract().unwrap())
+            } else if err.is_instance_of::<TransformRenameFailed>(py) {
+                Error::TransformRenameFailed(
+                    std::path::PathBuf::from(
+                        value
+                            .getattr("from_path")
+                            .unwrap()
+                            .extract::<String>()
+                            .unwrap(),
+                    ),
+                    std::path::PathBuf::from(
+                        value
+                            .getattr("to_path")
+                            .unwrap()
+                            .extract::<String>()
+                            .unwrap(),
+                    ),
+                    value.getattr("why").unwrap().extract().unwrap(),
+                    std::io::Error::from_raw_os_error(
+                        value.getattr("errno").unwrap().extract::<i32>().unwrap(),
+                    ),
+                )
             } else {
                 Self::Other(err)
             }
@@ -441,6 +498,16 @@ impl From<Error> for PyErr {
             }
             Error::MissingNestedTree(p) => {
                 MissingNestedTree::new_err((p.to_string_lossy().to_string(),))
+            }
+            Error::ImmortalLimbo(p) => ImmortalLimbo::new_err((p.to_string_lossy().to_string(),)),
+            Error::MalformedTransform(conflicts) => MalformedTransform::new_err((conflicts,)),
+            Error::TransformRenameFailed(from_path, to_path, why, error) => {
+                TransformRenameFailed::new_err((
+                    from_path.to_string_lossy().to_string(),
+                    to_path.to_string_lossy().to_string(),
+                    why,
+                    PyErr::from(error),
+                ))
             }
         }
     }
@@ -835,5 +902,40 @@ fn test_missing_nested_tree() {
     // Verify that p is an instance of MissingNestedTree
     Python::with_gil(|py| {
         assert!(p.is_instance_of::<MissingNestedTree>(py), "{}", p);
+    });
+}
+
+#[test]
+fn test_immortal_limbo() {
+    let e = Error::ImmortalLimbo(std::path::PathBuf::from("foo"));
+    let p: PyErr = e.into();
+    // Verify that p is an instance of ImmortalLimbo
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<ImmortalLimbo>(py), "{}", p);
+    });
+}
+
+#[test]
+fn test_malformed_transform() {
+    let e = Error::MalformedTransform("foo".to_string());
+    let p: PyErr = e.into();
+    // Verify that p is an instance of MalformedTransform
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<MalformedTransform>(py), "{}", p);
+    });
+}
+
+#[test]
+fn test_transform_rename_failed() {
+    let e = Error::TransformRenameFailed(
+        std::path::PathBuf::from("foo"),
+        std::path::PathBuf::from("bar"),
+        "baz".to_string(),
+        std::io::Error::new(std::io::ErrorKind::NotFound, "foo").into(),
+    );
+    let p: PyErr = e.into();
+    // Verify that p is an instance of TransformRenameFailed
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<TransformRenameFailed>(py), "{}", p,);
     });
 }
