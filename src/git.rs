@@ -1,6 +1,8 @@
 use crate::controldir::Prober;
+use crate::error::Error;
 use pyo3::exceptions::PyModuleNotFoundError;
 use pyo3::prelude::*;
+use std::collections::HashMap;
 
 pub struct RemoteGitProber(PyObject);
 
@@ -75,3 +77,38 @@ impl crate::controldir::AsFormat for BareLocalGitControlDirFormat {
 }
 
 pub static ZERO_SHA: &[u8; 40] = b"0000000000000000000000000000000000000000";
+
+pub trait InterGitRepository: crate::interrepository::InterRepository {
+    fn fetch_refs(
+        &self,
+        get_changed_refs: std::sync::Mutex<
+            Box<dyn FnMut(&HashMap<String, Vec<u8>>) -> HashMap<String, Vec<u8>> + Send>,
+        >,
+        lossy: bool,
+        overwrite: bool,
+    ) -> Result<(), Error> {
+        Python::with_gil(|py| {
+            let get_changed_refs = pyo3::types::PyCFunction::new_closure_bound(
+                py,
+                None,
+                None,
+                move |args, _kwargs| {
+                    let refs = args.extract::<(HashMap<String, Vec<u8>>,)>().unwrap().0;
+                    // Call get_changed_refs
+                    if let Ok(mut get_changed_refs) = get_changed_refs.lock() {
+                        get_changed_refs(&refs)
+                    } else {
+                        refs
+                    }
+                },
+            )
+            .unwrap();
+            self.to_object(py).call_method1(
+                py,
+                "fetch_refs",
+                (get_changed_refs, lossy, overwrite),
+            )?;
+            Ok(())
+        })
+    }
+}
