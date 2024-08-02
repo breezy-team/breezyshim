@@ -1,6 +1,7 @@
 use pyo3::import_exception;
 use pyo3::prelude::*;
 use pyo3::PyErr;
+use url::Url;
 
 import_exception!(breezy.errors, UnknownFormatError);
 import_exception!(breezy.errors, NotBranchError);
@@ -40,6 +41,7 @@ import_exception!(breezy.transform, ImmortalLimbo);
 import_exception!(breezy.transform, MalformedTransform);
 import_exception!(breezy.transform, TransformRenameFailed);
 import_exception!(breezy.errors, UnexpectedHttpStatus);
+import_exception!(breezy.errors, BadHttpRequest);
 
 #[derive(Debug)]
 pub enum Error {
@@ -96,13 +98,14 @@ pub enum Error {
         String,
         std::io::Error,
     ),
-    UnexpectedHttpStatus(
-        url::Url,
-        u16,
-        Option<String>,
-        std::collections::HashMap<String, String>,
-    ),
+    UnexpectedHttpStatus {
+        url: url::Url,
+        code: u16,
+        extra: Option<String>,
+        headers: std::collections::HashMap<String, String>,
+    },
     Timeout,
+    BadHttpRequest(Url, String),
 }
 
 impl From<crate::transport::Error> for Error {
@@ -224,14 +227,20 @@ impl std::fmt::Display for Error {
                 c,
                 d
             ),
-            Self::UnexpectedHttpStatus(p, s, b, _hs) => {
-                if let Some(b) = b {
-                    write!(f, "Unexpected HTTP status: {} {}: {}", s, p, b)
+            Self::UnexpectedHttpStatus {
+                url,
+                code,
+                extra,
+                headers: _,
+            } => {
+                if let Some(extra) = extra {
+                    write!(f, "Unexpected HTTP status: {} {}: {}", url, code, extra)
                 } else {
-                    write!(f, "Unexpected HTTP status: {} {}", s, p)
+                    write!(f, "Unexpected HTTP status: {} {}", url, code)
                 }
             }
             Self::Timeout => write!(f, "Timeout"),
+            Self::BadHttpRequest(url, msg) => write!(f, "Bad HTTP request: {} {}", url, msg),
         }
     }
 }
@@ -433,7 +442,22 @@ impl From<PyErr> for Error {
                     ),
                 )
             } else if err.is_instance_of::<UnexpectedHttpStatus>(py) {
-                Error::UnexpectedHttpStatus(
+                Error::UnexpectedHttpStatus {
+                    url: value
+                        .getattr("path")
+                        .unwrap()
+                        .extract::<String>()
+                        .unwrap()
+                        .parse()
+                        .unwrap(),
+                    code: value.getattr("code").unwrap().extract().unwrap(),
+                    extra: value.getattr("extra").unwrap().extract().unwrap(),
+                    headers: value.getattr("headers").unwrap().extract().unwrap(),
+                }
+            } else if err.is_instance_of::<pyo3::exceptions::PyTimeoutError>(py) {
+                Error::Timeout
+            } else if err.is_instance_of::<BadHttpRequest>(py) {
+                Error::BadHttpRequest(
                     value
                         .getattr("path")
                         .unwrap()
@@ -441,12 +465,8 @@ impl From<PyErr> for Error {
                         .unwrap()
                         .parse()
                         .unwrap(),
-                    value.getattr("code").unwrap().extract().unwrap(),
-                    value.getattr("extra").unwrap().extract().unwrap(),
-                    value.getattr("headers").unwrap().extract().unwrap(),
+                    value.getattr("reason").unwrap().extract().unwrap(),
                 )
-            } else if err.is_instance_of::<pyo3::exceptions::PyTimeoutError>(py) {
-                Error::Timeout
             } else {
                 Self::Other(err)
             }
@@ -540,10 +560,16 @@ impl From<Error> for PyErr {
                     PyErr::from(error),
                 ))
             }
-            Error::UnexpectedHttpStatus(path, code, extra, headers) => {
-                UnexpectedHttpStatus::new_err((path.to_string(), code, extra, headers))
-            }
+            Error::UnexpectedHttpStatus {
+                url,
+                code,
+                extra,
+                headers,
+            } => UnexpectedHttpStatus::new_err((url.to_string(), code, extra, headers)),
             Error::Timeout => pyo3::exceptions::PyTimeoutError::new_err(()),
+            Error::BadHttpRequest(url, reason) => {
+                BadHttpRequest::new_err((url.to_string(), reason))
+            }
         }
     }
 }
@@ -977,12 +1003,12 @@ fn test_transform_rename_failed() {
 
 #[test]
 fn test_unexpected_http_status() {
-    let e = Error::UnexpectedHttpStatus(
-        url::Url::parse("http://example.com").unwrap(),
-        404,
-        Some("bar".to_string()),
-        std::collections::HashMap::new(),
-    );
+    let e = Error::UnexpectedHttpStatus {
+        url: url::Url::parse("http://example.com").unwrap(),
+        code: 404,
+        extra: Some("bar".to_string()),
+        headers: std::collections::HashMap::new(),
+    };
     let p: PyErr = e.into();
     // Verify that p is an instance of UnexpectedHttpStatus
     Python::with_gil(|py| {
@@ -997,5 +1023,15 @@ fn test_timeout() {
     // Verify that p is an instance of PyTimeoutError
     Python::with_gil(|py| {
         assert!(p.is_instance_of::<pyo3::exceptions::PyTimeoutError>(py));
+    });
+}
+
+#[test]
+fn test_bad_http_request() {
+    let e = Error::BadHttpRequest("http://example.com".parse().unwrap(), "foo".to_string());
+    let p: PyErr = e.into();
+    // Verify that p is an instance of BadHttpRequest
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<BadHttpRequest>(py), "{}", p);
     });
 }
