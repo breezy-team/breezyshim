@@ -1,3 +1,4 @@
+use crate::error::Error;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
@@ -34,6 +35,30 @@ impl Transport {
                     }
                 })
                 .unwrap()
+        })
+    }
+
+    pub fn has(&self, path: &str) -> Result<bool, Error> {
+        pyo3::Python::with_gil(|py| {
+            Ok(self
+                .0
+                .call_method1(py, "has", (path,))?
+                .extract::<bool>(py)
+                .unwrap())
+        })
+    }
+
+    pub fn ensure_base(&self) -> Result<(), Error> {
+        pyo3::Python::with_gil(|py| {
+            self.0.call_method0(py, "ensure_base")?;
+            Ok(())
+        })
+    }
+
+    pub fn create_prefix(&self) -> Result<(), Error> {
+        pyo3::Python::with_gil(|py| {
+            self.0.call_method0(py, "create_prefix")?;
+            Ok(())
         })
     }
 }
