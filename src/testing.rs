@@ -93,8 +93,10 @@ impl Default for TestEnv {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
+    #[serial]
     fn test_testenv() {
         let env = TestEnv::new();
         assert_eq!(env.home_dir, env.temp_dir.path().join("home"));
