@@ -102,6 +102,7 @@ pub enum Error {
         Option<String>,
         std::collections::HashMap<String, String>,
     ),
+    Timeout,
 }
 
 impl From<crate::transport::Error> for Error {
@@ -230,6 +231,7 @@ impl std::fmt::Display for Error {
                     write!(f, "Unexpected HTTP status: {} {}", s, p)
                 }
             }
+            Self::Timeout => write!(f, "Timeout"),
         }
     }
 }
@@ -443,6 +445,8 @@ impl From<PyErr> for Error {
                     value.getattr("extra").unwrap().extract().unwrap(),
                     value.getattr("headers").unwrap().extract().unwrap(),
                 )
+            } else if err.is_instance_of::<pyo3::exceptions::PyTimeoutError>(py) {
+                Error::Timeout
             } else {
                 Self::Other(err)
             }
@@ -539,6 +543,7 @@ impl From<Error> for PyErr {
             Error::UnexpectedHttpStatus(path, code, extra, headers) => {
                 UnexpectedHttpStatus::new_err((path.to_string(), code, extra, headers))
             }
+            Error::Timeout => pyo3::exceptions::PyTimeoutError::new_err(()),
         }
     }
 }
@@ -982,5 +987,15 @@ fn test_unexpected_http_status() {
     // Verify that p is an instance of UnexpectedHttpStatus
     Python::with_gil(|py| {
         assert!(p.is_instance_of::<UnexpectedHttpStatus>(py), "{}", p);
+    });
+}
+
+#[test]
+fn test_timeout() {
+    let e = Error::Timeout;
+    let p: PyErr = e.into();
+    // Verify that p is an instance of PyTimeoutError
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<pyo3::exceptions::PyTimeoutError>(py));
     });
 }
