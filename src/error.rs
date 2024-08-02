@@ -97,7 +97,7 @@ pub enum Error {
         std::io::Error,
     ),
     UnexpectedHttpStatus(
-        std::path::PathBuf,
+        url::Url,
         u16,
         Option<String>,
         std::collections::HashMap<String, String>,
@@ -225,9 +225,9 @@ impl std::fmt::Display for Error {
             ),
             Self::UnexpectedHttpStatus(p, s, b, _hs) => {
                 if let Some(b) = b {
-                    write!(f, "Unexpected HTTP status: {} {}: {}", s, p.display(), b)
+                    write!(f, "Unexpected HTTP status: {} {}: {}", s, p, b)
                 } else {
-                    write!(f, "Unexpected HTTP status: {} {}", s, p.display())
+                    write!(f, "Unexpected HTTP status: {} {}", s, p)
                 }
             }
         }
@@ -432,9 +432,13 @@ impl From<PyErr> for Error {
                 )
             } else if err.is_instance_of::<UnexpectedHttpStatus>(py) {
                 Error::UnexpectedHttpStatus(
-                    std::path::PathBuf::from(
-                        value.getattr("path").unwrap().extract::<String>().unwrap(),
-                    ),
+                    value
+                        .getattr("path")
+                        .unwrap()
+                        .extract::<String>()
+                        .unwrap()
+                        .parse()
+                        .unwrap(),
                     value.getattr("code").unwrap().extract().unwrap(),
                     value.getattr("extra").unwrap().extract().unwrap(),
                     value.getattr("headers").unwrap().extract().unwrap(),
@@ -533,12 +537,7 @@ impl From<Error> for PyErr {
                 ))
             }
             Error::UnexpectedHttpStatus(path, code, extra, headers) => {
-                UnexpectedHttpStatus::new_err((
-                    path.to_string_lossy().to_string(),
-                    code,
-                    extra,
-                    headers,
-                ))
+                UnexpectedHttpStatus::new_err((path.to_string(), code, extra, headers))
             }
         }
     }
@@ -974,7 +973,7 @@ fn test_transform_rename_failed() {
 #[test]
 fn test_unexpected_http_status() {
     let e = Error::UnexpectedHttpStatus(
-        std::path::PathBuf::from("foo"),
+        url::Url::parse("http://example.com").unwrap(),
         404,
         Some("bar".to_string()),
         std::collections::HashMap::new(),
