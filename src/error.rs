@@ -470,9 +470,27 @@ impl From<PyErr> for Error {
             } else if err.is_instance_of::<TransportNotPossible>(py) {
                 Error::TransportNotPossible(value.getattr("msg").unwrap().extract().unwrap())
             } else if err.is_instance_of::<IncompatibleFormat>(py) {
+                let format = value.getattr("format").unwrap();
+                let controldir = value.getattr("controldir").unwrap();
                 Error::IncompatibleFormat(
-                    value.getattr("format").unwrap().extract().unwrap(),
-                    value.getattr("controldir").unwrap().extract().unwrap(),
+                    if let Ok(format) = format.extract::<String>() {
+                        format
+                    } else {
+                        format
+                            .call_method0("get_format_string")
+                            .unwrap()
+                            .extract()
+                            .unwrap()
+                    },
+                    if let Ok(controldir) = controldir.extract::<String>() {
+                        controldir
+                    } else {
+                        controldir
+                            .call_method0("get_format_string")
+                            .unwrap()
+                            .extract()
+                            .unwrap()
+                    },
                 )
             } else {
                 Self::Other(err)

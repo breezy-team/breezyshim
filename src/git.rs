@@ -1,8 +1,6 @@
 use crate::controldir::Prober;
-use crate::error::Error;
 use pyo3::exceptions::PyModuleNotFoundError;
 use pyo3::prelude::*;
-use std::collections::HashMap;
 
 pub struct RemoteGitProber(PyObject);
 

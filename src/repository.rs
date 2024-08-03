@@ -207,7 +207,7 @@ impl Repository {
                 .extract::<(Vec<u8>, PyObject)>(py)
         })
         .map_err(|e| e.into())
-        .map(|(v,m)| (v,))
+        .map(|(v, _m)| (v,))
     }
 }
 
