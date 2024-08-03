@@ -47,8 +47,8 @@ pub trait InterRepository: ToPyObject {
         get_changed_refs: std::sync::Mutex<
             Box<
                 dyn FnMut(
-                        &HashMap<String, (Vec<u8>, Option<RevisionId>)>,
-                    ) -> HashMap<String, (Vec<u8>, Option<RevisionId>)>
+                        &HashMap<Vec<u8>, (Vec<u8>, Option<RevisionId>)>,
+                    ) -> HashMap<Vec<u8>, (Vec<u8>, Option<RevisionId>)>
                     + Send,
             >,
         >,
@@ -62,7 +62,7 @@ pub trait InterRepository: ToPyObject {
                 None,
                 move |args, _kwargs| {
                     let refs = args
-                        .extract::<(HashMap<String, (Vec<u8>, Option<RevisionId>)>,)>()
+                        .extract::<(HashMap<Vec<u8>, (Vec<u8>, Option<RevisionId>)>,)>()
                         .unwrap()
                         .0;
                     // Call get_changed_refs
