@@ -40,20 +40,14 @@ impl ControlDir {
 
     pub fn user_transport(&self) -> Transport {
         Python::with_gil(|py| {
-            let result = self
-                .to_object(py)
-                .call_method0(py, "user_transport")
-                .unwrap();
+            let result = self.to_object(py).getattr(py, "user_transport").unwrap();
             crate::transport::Transport::new(result)
         })
     }
 
     pub fn control_transport(&self) -> Transport {
         Python::with_gil(|py| {
-            let result = self
-                .to_object(py)
-                .call_method0(py, "control_transport")
-                .unwrap();
+            let result = self.to_object(py).getattr(py, "control_transport").unwrap();
             crate::transport::Transport::new(result)
         })
     }
