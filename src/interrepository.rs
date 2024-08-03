@@ -18,10 +18,8 @@ pub fn get(source: &Repository, target: &Repository) -> Result<Box<dyn InterRepo
     Python::with_gil(|py| {
         let m = py.import_bound("breezy.repository")?;
         let interrepo = m.getattr("InterRepository")?;
-        let inter_repository = interrepo.call_method1(
-            "get_inter_repository",
-            (source.to_object(py), target.to_object(py)),
-        )?;
+        let inter_repository =
+            interrepo.call_method1("get", (source.to_object(py), target.to_object(py)))?;
         Ok(Box::new(PyInterRepository(inter_repository.to_object(py))) as Box<dyn InterRepository>)
     })
 }
