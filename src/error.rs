@@ -43,6 +43,7 @@ import_exception!(breezy.transform, TransformRenameFailed);
 import_exception!(breezy.errors, UnexpectedHttpStatus);
 import_exception!(breezy.errors, BadHttpRequest);
 import_exception!(breezy.errors, TransportNotPossible);
+import_exception!(breezy.errors, IncompatibleFormat);
 
 #[derive(Debug)]
 pub enum Error {
@@ -108,6 +109,7 @@ pub enum Error {
     Timeout,
     BadHttpRequest(Url, String),
     TransportNotPossible(String),
+    IncompatibleFormat(String, String),
 }
 
 impl From<url::ParseError> for Error {
@@ -236,6 +238,9 @@ impl std::fmt::Display for Error {
             Self::Timeout => write!(f, "Timeout"),
             Self::BadHttpRequest(url, msg) => write!(f, "Bad HTTP request: {} {}", url, msg),
             Self::TransportNotPossible(e) => write!(f, "Transport not possible: {}", e),
+            Self::IncompatibleFormat(a, b) => {
+                write!(f, "Incompatible format: {} is not compatible with {}", a, b)
+            }
         }
     }
 }
@@ -464,6 +469,11 @@ impl From<PyErr> for Error {
                 )
             } else if err.is_instance_of::<TransportNotPossible>(py) {
                 Error::TransportNotPossible(value.getattr("msg").unwrap().extract().unwrap())
+            } else if err.is_instance_of::<IncompatibleFormat>(py) {
+                Error::IncompatibleFormat(
+                    value.getattr("format").unwrap().extract().unwrap(),
+                    value.getattr("controldir").unwrap().extract().unwrap(),
+                )
             } else {
                 Self::Other(err)
             }
@@ -568,6 +578,7 @@ impl From<Error> for PyErr {
                 BadHttpRequest::new_err((url.to_string(), reason))
             }
             Error::TransportNotPossible(e) => TransportNotPossible::new_err((e,)),
+            Error::IncompatibleFormat(a, b) => IncompatibleFormat::new_err((a, b)),
         }
     }
 }
@@ -1041,5 +1052,15 @@ fn test_transport_not_possible() {
     // Verify that p is an instance of TransportNotPossible
     Python::with_gil(|py| {
         assert!(p.is_instance_of::<TransportNotPossible>(py), "{}", p);
+    });
+}
+
+#[test]
+fn test_incompatible_format() {
+    let e = Error::IncompatibleFormat("foo".to_string(), "bar".to_string());
+    let p: PyErr = e.into();
+    // Verify that p is an instance of IncompatibleFormat
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<IncompatibleFormat>(py), "{}", p);
     });
 }
