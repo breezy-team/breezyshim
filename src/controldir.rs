@@ -54,20 +54,14 @@ impl ControlDir {
 
     pub fn open_repository(&self) -> Result<Repository, Error> {
         Python::with_gil(|py| {
-            let result = self
-                .to_object(py)
-                .call_method0(py, "open_repository")
-                .unwrap();
+            let result = self.to_object(py).call_method0(py, "open_repository")?;
             Ok(Repository::new(result))
         })
     }
 
     pub fn find_repository(&self) -> Result<Repository, Error> {
         Python::with_gil(|py| {
-            let result = self
-                .to_object(py)
-                .call_method0(py, "find_repository")
-                .unwrap();
+            let result = self.to_object(py).call_method0(py, "find_repository")?;
             Ok(Repository::new(result))
         })
     }
