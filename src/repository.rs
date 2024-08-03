@@ -10,8 +10,13 @@ use pyo3::exceptions::PyStopIteration;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
-#[derive(Clone)]
 pub struct RepositoryFormat(PyObject);
+
+impl Clone for RepositoryFormat {
+    fn clone(&self) -> Self {
+        Python::with_gil(|py| RepositoryFormat(self.0.clone_ref(py)))
+    }
+}
 
 impl RepositoryFormat {
     pub fn supports_chks(&self) -> bool {
@@ -25,8 +30,13 @@ impl RepositoryFormat {
     }
 }
 
-#[derive(Clone)]
 pub struct Repository(PyObject);
+
+impl Clone for Repository {
+    fn clone(&self) -> Self {
+        Python::with_gil(|py| Repository(self.0.clone_ref(py)))
+    }
+}
 
 #[derive(Debug)]
 pub struct Revision {
@@ -233,5 +243,17 @@ mod repository_tests {
         )
         .unwrap();
         let _repo = crate::repository::open(td.path()).unwrap();
+    }
+
+    #[test]
+    fn test_clone() {
+        let td = tempfile::tempdir().unwrap();
+        let _dir = crate::controldir::create_standalone_workingtree(
+            td.path(),
+            &ControlDirFormat::default(),
+        )
+        .unwrap();
+        let repo = crate::repository::open(td.path()).unwrap();
+        let _repo2 = repo.clone();
     }
 }
