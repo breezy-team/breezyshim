@@ -44,6 +44,7 @@ import_exception!(breezy.errors, UnexpectedHttpStatus);
 import_exception!(breezy.errors, BadHttpRequest);
 import_exception!(breezy.errors, TransportNotPossible);
 import_exception!(breezy.errors, IncompatibleFormat);
+import_exception!(breezy.errors, NoSuchRevision);
 
 #[derive(Debug)]
 pub enum Error {
@@ -110,6 +111,7 @@ pub enum Error {
     BadHttpRequest(Url, String),
     TransportNotPossible(String),
     IncompatibleFormat(String, String),
+    NoSuchRevision(crate::RevisionId),
 }
 
 impl From<url::ParseError> for Error {
@@ -241,6 +243,7 @@ impl std::fmt::Display for Error {
             Self::IncompatibleFormat(a, b) => {
                 write!(f, "Incompatible format: {} is not compatible with {}", a, b)
             }
+            Self::NoSuchRevision(rev) => write!(f, "No such revision: {}", rev),
         }
     }
 }
@@ -492,6 +495,8 @@ impl From<PyErr> for Error {
                             .unwrap()
                     },
                 )
+            } else if err.is_instance_of::<NoSuchRevision>(py) {
+                Error::NoSuchRevision(value.getattr("revision").unwrap().extract().unwrap())
             } else {
                 Self::Other(err)
             }
@@ -597,6 +602,9 @@ impl From<Error> for PyErr {
             }
             Error::TransportNotPossible(e) => TransportNotPossible::new_err((e,)),
             Error::IncompatibleFormat(a, b) => IncompatibleFormat::new_err((a, b)),
+            Error::NoSuchRevision(rev) => {
+                Python::with_gil(|py| NoSuchRevision::new_err((py.None(), rev.to_string())))
+            }
         }
     }
 }
