@@ -2,6 +2,7 @@ use crate::error::Error;
 use crate::repository::Repository;
 use crate::RevisionId;
 use pyo3::prelude::*;
+use pyo3::types::{PyBytes, PyDict};
 use std::collections::HashMap;
 
 pub struct PyInterRepository(PyObject);
@@ -66,11 +67,29 @@ pub trait InterRepository: ToPyObject {
                         .unwrap()
                         .0;
                     // Call get_changed_refs
-                    if let Ok(mut get_changed_refs) = get_changed_refs.lock() {
+                    let result = if let Ok(mut get_changed_refs) = get_changed_refs.lock() {
                         get_changed_refs(&refs)
                     } else {
                         refs
-                    }
+                    };
+
+                    Python::with_gil(|py| -> PyResult<PyObject> {
+                        let ret = PyDict::new_bound(py);
+
+                        for (k, (v, r)) in result {
+                            ret.set_item(
+                                PyBytes::new_bound(py, k.as_slice()),
+                                (
+                                    PyBytes::new_bound(py, v.as_slice()),
+                                    r.map(|r| r.into_py(py)),
+                                ),
+                            )?;
+                        }
+
+                        // We need to change the return type since pyo3::Python can't be sent between
+                        // threads
+                        Ok(ret.into_py(py))
+                    })
                 },
             )
             .unwrap();
