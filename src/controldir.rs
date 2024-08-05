@@ -663,7 +663,7 @@ pub fn all_probers() -> Vec<Box<dyn Prober>> {
     Python::with_gil(|py| -> PyResult<Vec<Box<dyn Prober>>> {
         let m = py.import_bound("breezy.controldir")?;
         let cdf = m.getattr("ControlDirFormat")?;
-        let probers = cdf.getattr("all_probers")?.extract::<Vec<PyObject>>()?;
+        let probers = cdf.call_method0("all_probers")?.extract::<Vec<PyObject>>()?;
         Ok(probers
             .into_iter()
             .map(|p| Box::new(PyProber(p)) as Box<dyn Prober>)
@@ -759,4 +759,28 @@ impl Default for ControlDirFormatRegistry {
 
 lazy_static::lazy_static! {
     pub static ref FORMAT_REGISTRY: ControlDirFormatRegistry = ControlDirFormatRegistry::new();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_control_dir_format_registry() {
+        let registry = ControlDirFormatRegistry::new();
+        let format = registry.make_controldir("2a").unwrap();
+        let _ = format.get_format_string();
+    }
+
+    #[test]
+    fn test_format_registry() {
+        let format = FORMAT_REGISTRY.make_controldir("2a").unwrap();
+        let _ = format.get_format_string();
+    }
+
+    #[test]
+    fn test_all_probers() {
+        let probers = all_probers();
+        assert!(!probers.is_empty());
+    }
 }
