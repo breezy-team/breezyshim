@@ -46,6 +46,10 @@ import_exception!(breezy.errors, TransportNotPossible);
 import_exception!(breezy.errors, IncompatibleFormat);
 import_exception!(breezy.errors, NoSuchRevision);
 import_exception!(breezy.forge, NoSuchProject);
+import_exception!(breezy.plugins.gitlab.forge, ForkingDisabled);
+import_exception!(breezy.plugins.gitlab.forge, GitLabConflict);
+import_exception!(breezy.plugins.gitlab.forge, ProjectCreationTimeout);
+import_exception!(breezy.forge, SourceNotDerivedFromTarget);
 
 #[derive(Debug)]
 pub enum Error {
@@ -114,6 +118,10 @@ pub enum Error {
     IncompatibleFormat(String, String),
     NoSuchRevision(crate::RevisionId),
     NoSuchProject(String),
+    ForkingDisabled(String),
+    ProjectCreationTimeout(String, chrono::Duration),
+    GitLabConflict(String),
+    SourceNotDerivedFromTarget,
 }
 
 impl From<url::ParseError> for Error {
@@ -247,6 +255,12 @@ impl std::fmt::Display for Error {
             }
             Self::NoSuchRevision(rev) => write!(f, "No such revision: {}", rev),
             Self::NoSuchProject(p) => write!(f, "No such project: {}", p),
+            Self::ForkingDisabled(p) => write!(f, "Forking disabled: {}", p),
+            Self::ProjectCreationTimeout(p, t) => {
+                write!(f, "Project creation timeout: {} after {} seconds", p, t)
+            }
+            Self::GitLabConflict(p) => write!(f, "GitLab conflict: {}", p),
+            Self::SourceNotDerivedFromTarget => write!(f, "Source not derived from target"),
         }
     }
 }
@@ -502,6 +516,17 @@ impl From<PyErr> for Error {
                 Error::NoSuchRevision(value.getattr("revision").unwrap().extract().unwrap())
             } else if err.is_instance_of::<NoSuchProject>(py) {
                 Error::NoSuchProject(value.getattr("project").unwrap().extract().unwrap())
+            } else if err.is_instance_of::<ForkingDisabled>(py) {
+                Error::ForkingDisabled(value.getattr("project").unwrap().extract().unwrap())
+            } else if err.is_instance_of::<ProjectCreationTimeout>(py) {
+                Error::ProjectCreationTimeout(
+                    value.getattr("project").unwrap().extract().unwrap(),
+                    value.getattr("timeout").unwrap().extract().unwrap(),
+                )
+            } else if err.is_instance_of::<GitLabConflict>(py) {
+                Error::GitLabConflict(value.getattr("reason").unwrap().extract().unwrap())
+            } else if err.is_instance_of::<SourceNotDerivedFromTarget>(py) {
+                Error::SourceNotDerivedFromTarget
             } else {
                 Self::Other(err)
             }
@@ -611,6 +636,10 @@ impl From<Error> for PyErr {
                 Python::with_gil(|py| NoSuchRevision::new_err((py.None(), rev.to_string())))
             }
             Error::NoSuchProject(p) => NoSuchProject::new_err((p,)),
+            Error::ForkingDisabled(p) => ForkingDisabled::new_err((p,)),
+            Error::ProjectCreationTimeout(p, t) => ProjectCreationTimeout::new_err((p, t)),
+            Error::GitLabConflict(p) => GitLabConflict::new_err((p,)),
+            Error::SourceNotDerivedFromTarget => SourceNotDerivedFromTarget::new_err(()),
         }
     }
 }
@@ -1104,5 +1133,35 @@ fn test_no_such_project() {
     // Verify that p is an instance of NoSuchProject
     Python::with_gil(|py| {
         assert!(p.is_instance_of::<NoSuchProject>(py), "{}", p);
+    });
+}
+
+#[test]
+fn test_forking_disabled() {
+    let e = Error::ForkingDisabled("foo".to_string());
+    let p: PyErr = e.into();
+    // Verify that p is an instance of ForkingDisabled
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<ForkingDisabled>(py), "{}", p);
+    });
+}
+
+#[test]
+fn test_gitlab_conflict() {
+    let e = Error::GitLabConflict("foo".to_string());
+    let p: PyErr = e.into();
+    // Verify that p is an instance of GitLabConflict
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<GitLabConflict>(py), "{}", p);
+    });
+}
+
+#[test]
+fn test_project_creation_timeout() {
+    let e = Error::ProjectCreationTimeout("foo".to_string(), chrono::Duration::seconds(0));
+    let p: PyErr = e.into();
+    // Verify that p is an instance of ProjectCreationTimeout
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<ProjectCreationTimeout>(py), "{}", p);
     });
 }
