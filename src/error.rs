@@ -45,6 +45,7 @@ import_exception!(breezy.errors, BadHttpRequest);
 import_exception!(breezy.errors, TransportNotPossible);
 import_exception!(breezy.errors, IncompatibleFormat);
 import_exception!(breezy.errors, NoSuchRevision);
+import_exception!(breezy.forge, NoSuchProject);
 
 #[derive(Debug)]
 pub enum Error {
@@ -112,6 +113,7 @@ pub enum Error {
     TransportNotPossible(String),
     IncompatibleFormat(String, String),
     NoSuchRevision(crate::RevisionId),
+    NoSuchProject(String),
 }
 
 impl From<url::ParseError> for Error {
@@ -244,6 +246,7 @@ impl std::fmt::Display for Error {
                 write!(f, "Incompatible format: {} is not compatible with {}", a, b)
             }
             Self::NoSuchRevision(rev) => write!(f, "No such revision: {}", rev),
+            Self::NoSuchProject(p) => write!(f, "No such project: {}", p),
         }
     }
 }
@@ -497,6 +500,8 @@ impl From<PyErr> for Error {
                 )
             } else if err.is_instance_of::<NoSuchRevision>(py) {
                 Error::NoSuchRevision(value.getattr("revision").unwrap().extract().unwrap())
+            } else if err.is_instance_of::<NoSuchProject>(py) {
+                Error::NoSuchProject(value.getattr("project").unwrap().extract().unwrap())
             } else {
                 Self::Other(err)
             }
@@ -605,6 +610,7 @@ impl From<Error> for PyErr {
             Error::NoSuchRevision(rev) => {
                 Python::with_gil(|py| NoSuchRevision::new_err((py.None(), rev.to_string())))
             }
+            Error::NoSuchProject(p) => NoSuchProject::new_err((p,)),
         }
     }
 }
@@ -1088,5 +1094,15 @@ fn test_incompatible_format() {
     // Verify that p is an instance of IncompatibleFormat
     Python::with_gil(|py| {
         assert!(p.is_instance_of::<IncompatibleFormat>(py), "{}", p);
+    });
+}
+
+#[test]
+fn test_no_such_project() {
+    let e = Error::NoSuchProject("foo".to_string());
+    let p: PyErr = e.into();
+    // Verify that p is an instance of NoSuchProject
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<NoSuchProject>(py), "{}", p);
     });
 }
