@@ -217,6 +217,16 @@ impl MergeProposal {
             Ok(())
         })
     }
+
+    pub fn get_web_url(&self) -> Result<url::Url, crate::error::Error> {
+        Python::with_gil(|py| {
+            let web_url = self.0.call_method0(py, "get_web_url")?;
+            web_url
+                .extract::<String>(py)?
+                .parse::<url::Url>()
+                .map_err(|e| e.into())
+        })
+    }
 }
 
 #[pyclass]
@@ -293,6 +303,18 @@ impl Forge {
                 self.to_object(py)
                     .call_method1(py, "get_proposal_by_url", (url.as_str(),))?;
             Ok(MergeProposal::from(proposal))
+        })
+    }
+
+    pub fn get_web_url(&self, branch: &dyn Branch) -> Result<url::Url, crate::error::Error> {
+        Python::with_gil(|py| {
+            let url = self
+                .to_object(py)
+                .call_method1(py, "get_web_url", (&branch.to_object(py),))
+                ?
+                .extract::<String>(py)
+                .unwrap();
+            Ok(url.parse::<url::Url>().unwrap())
         })
     }
 
