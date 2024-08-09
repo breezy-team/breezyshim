@@ -16,6 +16,24 @@ impl From<PyObject> for Forge {
     }
 }
 
+impl std::fmt::Debug for MergeProposal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Just print the URL for now
+        let mut s = f.debug_struct("MergeProposal");
+        if let Ok(url) = self.url() {
+            s.field("url", &url);
+        }
+        s.finish()
+    }
+}
+
+impl std::fmt::Display for MergeProposal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let url = self.url().unwrap();
+        write!(f, "{}", url)
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum MergeProposalStatus {
     All,
@@ -377,6 +395,16 @@ impl Forge {
         })
     }
 
+    pub fn supports_merge_proposal_labels(&self) -> bool {
+        Python::with_gil(|py| {
+            let supports_merge_proposal_labels = self
+                .to_object(py)
+                .getattr(py, "supports_merge_proposal_labels")
+                .unwrap();
+            supports_merge_proposal_labels.extract(py).unwrap()
+        })
+    }
+
     pub fn get_proposer(
         &self,
         from_branch: &dyn Branch,
@@ -518,7 +546,18 @@ impl Forge {
 
 impl std::fmt::Debug for Forge {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Forge").finish()
+        let mut s = f.debug_struct("Forge");
+        if let Ok(base_url) = self.base_url().to_string().parse::<url::Url>() {
+            s.field("base_url", &base_url);
+        }
+        s.finish()
+    }
+}
+
+impl std::fmt::Display for Forge {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let base_url = self.base_url();
+        write!(f, "{}", base_url)
     }
 }
 
