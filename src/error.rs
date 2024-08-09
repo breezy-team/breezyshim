@@ -309,8 +309,6 @@ impl From<PyErr> for Error {
                 )
             } else if err.is_instance_of::<pyo3::exceptions::PyConnectionError>(py) {
                 Error::ConnectionError(value.getattr("message").unwrap().extract().unwrap())
-            } else if err.is_instance_of::<TransportError>(py) {
-                Error::TransportError(value.getattr("message").unwrap().extract().unwrap())
             } else if err.is_instance_of::<UnsupportedFormatError>(py) {
                 Error::UnsupportedFormat(value.getattr("format").unwrap().extract().unwrap())
             } else if err.is_instance_of::<UnsupportedVcs>(py) {
@@ -527,6 +525,9 @@ impl From<PyErr> for Error {
                 Error::GitLabConflict(value.getattr("reason").unwrap().extract().unwrap())
             } else if err.is_instance_of::<SourceNotDerivedFromTarget>(py) {
                 Error::SourceNotDerivedFromTarget
+            // Intentionally sorted below the more specific errors
+            } else if err.is_instance_of::<TransportError>(py) {
+                Error::TransportError(value.getattr("message").unwrap().extract().unwrap())
             } else {
                 Self::Other(err)
             }
