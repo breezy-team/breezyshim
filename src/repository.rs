@@ -3,7 +3,7 @@ use crate::delta::TreeDelta;
 use crate::graph::Graph;
 use crate::location::AsLocation;
 use crate::revisionid::RevisionId;
-use crate::tree::{PyRevisionTree, RevisionTree};
+use crate::tree::RevisionTree;
 use chrono::DateTime;
 use chrono::TimeZone;
 use pyo3::exceptions::PyStopIteration;
@@ -30,7 +30,13 @@ impl RepositoryFormat {
     }
 }
 
-pub struct PyRepository(PyObject);
+pub struct Repository(PyObject);
+
+impl Clone for Repository {
+    fn clone(&self) -> Self {
+        Python::with_gil(|py| Repository(self.0.clone_ref(py)))
+    }
+}
 
 #[derive(Debug)]
 pub struct Revision {
@@ -113,29 +119,20 @@ impl Iterator for DeltaIterator {
     }
 }
 
-impl ToPyObject for PyRepository {
+impl ToPyObject for Repository {
     fn to_object(&self, py: Python) -> PyObject {
         self.0.to_object(py)
     }
 }
 
-impl From<PyObject> for PyRepository {
-    fn from(o: PyObject) -> Self {
-        PyRepository(o)
+impl Repository {
+    pub fn new(obj: PyObject) -> Self {
+        Repository(obj)
     }
-}
 
-impl Repository for PyRepository {
-    fn as_repository(&self) -> Box<dyn Repository> {
-        Python::with_gil(|py| Box::new(PyRepository::from(self.to_object(py).clone_ref(py))))
-    }
-}
-
-
-pub trait Repository: ToPyObject {
-    fn get_user_url(&self) -> url::Url {
+    pub fn get_user_url(&self) -> url::Url {
         Python::with_gil(|py| {
-            self.to_object(py)
+            self.0
                 .getattr(py, "user_url")
                 .unwrap()
                 .extract::<String>(py)
@@ -145,13 +142,13 @@ pub trait Repository: ToPyObject {
         })
     }
 
-    fn fetch(
+    pub fn fetch(
         &self,
-        other_repository: &dyn Repository,
+        other_repository: &Repository,
         stop_revision: Option<&RevisionId>,
     ) -> Result<(), crate::error::Error> {
         Python::with_gil(|py| {
-            self.to_object(py).call_method1(
+            self.0.call_method1(
                 py,
                 "fetch",
                 (
@@ -163,58 +160,58 @@ pub trait Repository: ToPyObject {
         })
     }
 
-    fn revision_tree(&self, revid: &RevisionId) -> Result<Box<dyn RevisionTree>, crate::error::Error> {
+    pub fn revision_tree(&self, revid: &RevisionId) -> Result<RevisionTree, crate::error::Error> {
         Python::with_gil(|py| {
-            let o = self.to_object(py).call_method1(py, "revision_tree", (revid.clone(),))?;
-            Ok(Box::new(PyRevisionTree::from(o)) as Box<dyn RevisionTree>)
+            let o = self.0.call_method1(py, "revision_tree", (revid.clone(),))?;
+            Ok(RevisionTree(o))
         })
     }
 
-    fn get_graph(&self) -> Graph {
-        Python::with_gil(|py| Graph::from(self.to_object(py).call_method0(py, "get_graph").unwrap()))
+    pub fn get_graph(&self) -> Graph {
+        Python::with_gil(|py| Graph::from(self.0.call_method0(py, "get_graph").unwrap()))
     }
 
-    fn controldir(&self) -> ControlDir {
-        Python::with_gil(|py| ControlDir::new(self.to_object(py).getattr(py, "controldir").unwrap()))
+    pub fn controldir(&self) -> ControlDir {
+        Python::with_gil(|py| ControlDir::new(self.0.getattr(py, "controldir").unwrap()))
     }
 
-    fn format(&self) -> RepositoryFormat {
-        Python::with_gil(|py| RepositoryFormat(self.to_object(py).getattr(py, "_format").unwrap()))
+    pub fn format(&self) -> RepositoryFormat {
+        Python::with_gil(|py| RepositoryFormat(self.0.getattr(py, "_format").unwrap()))
     }
 
-    fn iter_revisions(
+    pub fn iter_revisions(
         &self,
         revision_ids: Vec<RevisionId>,
-    ) -> Box<dyn Iterator<Item = (RevisionId, Option<Revision>)>> {
+    ) -> impl Iterator<Item = (RevisionId, Option<Revision>)> {
         Python::with_gil(|py| {
             let o = self
-                .to_object(py)
+                .0
                 .call_method1(py, "iter_revisions", (revision_ids,))
                 .unwrap();
-            Box::new(RevisionIterator(o)) as Box<dyn Iterator<Item = (RevisionId, Option<Revision>)>>
+            RevisionIterator(o)
         })
     }
 
-    fn get_revision_deltas(
+    pub fn get_revision_deltas(
         &self,
         revs: &[Revision],
         specific_files: Option<&[&std::path::Path]>,
-    ) -> Box<dyn Iterator<Item = TreeDelta>> {
+    ) -> impl Iterator<Item = TreeDelta> {
         Python::with_gil(|py| {
             let revs = revs.iter().map(|r| r.to_object(py)).collect::<Vec<_>>();
             let specific_files = specific_files
                 .map(|files| files.iter().map(|f| f.to_path_buf()).collect::<Vec<_>>());
             let o = self
-                .to_object(py)
+                .0
                 .call_method1(py, "get_revision_deltas", (revs, specific_files))
                 .unwrap();
-            Box::new(DeltaIterator(o)) as Box<dyn Iterator<Item = TreeDelta>>
+            DeltaIterator(o)
         })
     }
 
-    fn get_revision(&self, revision_id: &RevisionId) -> Result<Revision, crate::error::Error> {
+    pub fn get_revision(&self, revision_id: &RevisionId) -> Result<Revision, crate::error::Error> {
         Python::with_gil(|py| {
-            self.to_object(py)
+            self.0
                 .call_method1(py, "get_revision", (revision_id.clone(),))?
                 .extract(py)
         })
@@ -222,29 +219,27 @@ pub trait Repository: ToPyObject {
     }
 
     // TODO: This should really be on ForeignRepository
-    fn lookup_bzr_revision_id(
+    pub fn lookup_bzr_revision_id(
         &self,
         revision_id: &RevisionId,
     ) -> Result<(Vec<u8>,), crate::error::Error> {
         Python::with_gil(|py| {
-            self.to_object(py)
+            self.0
                 .call_method1(py, "lookup_bzr_revision_id", (revision_id.clone(),))?
                 .extract::<(Vec<u8>, PyObject)>(py)
         })
         .map_err(|e| e.into())
         .map(|(v, _m)| (v,))
     }
-
-    fn as_repository(&self) -> Box<dyn Repository>;
 }
 
-pub fn open(base: impl AsLocation) -> Result<Box<dyn Repository>, crate::error::Error> {
+pub fn open(base: impl AsLocation) -> Result<Repository, crate::error::Error> {
     Python::with_gil(|py| {
         let o = py
             .import_bound("breezy.repository")?
             .getattr("Repository")?
             .call_method1("open", (base.as_location(),))?;
-        Ok(Box::new(PyRepository::from(o.to_object(py))) as Box<dyn Repository>)
+        Ok(Repository::new(o.into()))
     })
 }
 
@@ -271,6 +266,6 @@ mod repository_tests {
         )
         .unwrap();
         let repo = crate::repository::open(td.path()).unwrap();
-        let _repo2 = repo.as_repository();
+        let _repo2 = repo.clone();
     }
 }

@@ -10,6 +10,7 @@ pub mod vcs_up_to_date;
 use crate::error::Error;
 use crate::tree::{Tree, WorkingTree};
 use crate::Branch;
+use debian_control::changes::Changes;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -88,7 +89,7 @@ impl From<pyo3::PyErr> for BuildError {
 }
 
 pub fn build_helper(
-    local_tree: &dyn WorkingTree,
+    local_tree: &WorkingTree,
     subpath: &std::path::Path,
     branch: &dyn Branch,
     target_dir: &std::path::Path,

@@ -125,8 +125,6 @@ impl FromPyObject<'_> for TreeEntry {
 }
 
 pub trait Tree: ToPyObject {
-    fn as_tree(&self) -> &dyn Tree;
-
     fn get_tag_dict(&self) -> Result<std::collections::HashMap<String, RevisionId>, Error> {
         Python::with_gil(|py| {
             let branch = self.to_object(py).getattr(py, "branch")?;
@@ -407,7 +405,7 @@ pub trait Tree: ToPyObject {
     }
 }
 
-pub trait MutableTree: Tree  {
+pub trait MutableTree: Tree {
     fn lock_write(&self) -> Result<Lock, Error> {
         Python::with_gil(|py| {
             let lock = self.to_object(py).call_method0(py, "lock_write")?;
@@ -453,37 +451,31 @@ pub trait MutableTree: Tree  {
     }
 }
 
-pub struct PyRevisionTree(PyObject);
+pub struct RevisionTree(pub PyObject);
 
-impl From<PyObject> for PyRevisionTree {
-    fn from(obj: PyObject) -> Self {
-        PyRevisionTree(obj)
-    }
-}
-
-impl ToPyObject for PyRevisionTree {
+impl ToPyObject for RevisionTree {
     fn to_object(&self, py: Python) -> PyObject {
         self.0.to_object(py)
     }
 }
 
-impl Tree for PyRevisionTree {
-    fn as_tree(&self) -> &dyn Tree {
-        self
+impl Tree for RevisionTree {}
+
+impl Clone for RevisionTree {
+    fn clone(&self) -> Self {
+        Python::with_gil(|py| RevisionTree(self.0.clone_ref(py)))
     }
 }
 
-pub trait RevisionTree: Tree {
-    fn as_revision_tree(&self) -> &dyn RevisionTree;
-
-    fn repository(&self) -> Box<dyn crate::repository::Repository> {
+impl RevisionTree {
+    pub fn repository(&self) -> crate::repository::Repository {
         Python::with_gil(|py| {
             let repository = self.to_object(py).getattr(py, "_repository").unwrap();
-            Box::new(crate::repository::PyRepository::from(repository)) as Box<dyn crate::repository::Repository>
+            crate::repository::Repository::new(repository)
         })
     }
 
-    fn get_revision_id(&self) -> RevisionId {
+    pub fn get_revision_id(&self) -> RevisionId {
         Python::with_gil(|py| {
             self.to_object(py)
                 .call_method0(py, "get_revision_id")
@@ -493,7 +485,7 @@ pub trait RevisionTree: Tree {
         })
     }
 
-    fn get_parent_ids(&self) -> Vec<RevisionId> {
+    pub fn get_parent_ids(&self) -> Vec<RevisionId> {
         Python::with_gil(|py| {
             self.to_object(py)
                 .call_method0(py, "get_parent_ids")
@@ -504,38 +496,22 @@ pub trait RevisionTree: Tree {
     }
 }
 
-impl RevisionTree for PyRevisionTree {
-    fn as_revision_tree(&self) -> &dyn RevisionTree {
-        self
+pub struct WorkingTree(pub PyObject);
+
+impl Clone for WorkingTree {
+    fn clone(&self) -> Self {
+        Python::with_gil(|py| WorkingTree(self.0.clone_ref(py)))
     }
 }
 
-pub struct PyWorkingTree(pub PyObject);
-
-impl ToPyObject for PyWorkingTree {
+impl ToPyObject for WorkingTree {
     fn to_object(&self, py: Python) -> PyObject {
         self.0.to_object(py)
     }
 }
 
-impl Tree for PyWorkingTree {
-    fn as_tree(&self) -> &dyn Tree {
-        self
-    }
-}
-
-impl MutableTree for PyWorkingTree {}
-
-impl WorkingTree for PyWorkingTree {
-    fn as_working_tree(&self) -> &dyn WorkingTree {
-        self
-    }
-}
-
-pub trait WorkingTree: MutableTree {
-    fn as_working_tree(&self) -> &dyn WorkingTree;
-
-    fn is_control_filename(&self, path: &Path) -> bool {
+impl WorkingTree {
+    pub fn is_control_filename(&self, path: &Path) -> bool {
         Python::with_gil(|py| {
             self.to_object(py)
                 .call_method1(py, "is_control_filename", (path,))
@@ -546,7 +522,7 @@ pub trait WorkingTree: MutableTree {
     }
 
     /// Return the base path for this working tree.
-    fn basedir(&self) -> PathBuf {
+    pub fn basedir(&self) -> PathBuf {
         Python::with_gil(|py| {
             self.to_object(py)
                 .getattr(py, "basedir")
@@ -557,7 +533,7 @@ pub trait WorkingTree: MutableTree {
     }
 
     /// Return the branch for this working tree.
-    fn branch(&self) -> Box<dyn Branch> {
+    pub fn branch(&self) -> Box<dyn Branch> {
         Python::with_gil(|py| {
             let branch = self.to_object(py).getattr(py, "branch").unwrap();
             Box::new(RegularBranch::new(branch)) as Box<dyn Branch>
@@ -565,32 +541,42 @@ pub trait WorkingTree: MutableTree {
     }
 
     /// Return the control directory for this working tree.
-    fn controldir(&self) -> ControlDir {
+    pub fn controldir(&self) -> ControlDir {
         Python::with_gil(|py| {
             let controldir = self.to_object(py).getattr(py, "controldir").unwrap();
             ControlDir::new(controldir)
         })
     }
 
-    fn basis_tree(&self) -> Result<Box<dyn crate::tree::RevisionTree>, Error> {
+    #[deprecated = "Use ::open instead"]
+    pub fn open(path: &Path) -> Result<WorkingTree, Error> {
+        open(path)
+    }
+
+    #[deprecated = "Use ::open_containing instead"]
+    pub fn open_containing(path: &Path) -> Result<(WorkingTree, PathBuf), Error> {
+        open_containing(path)
+    }
+
+    pub fn basis_tree(&self) -> Result<crate::tree::RevisionTree, Error> {
         Python::with_gil(|py| {
             let tree = self.to_object(py).call_method0(py, "basis_tree")?;
-            Ok(Box::new(PyRevisionTree::from(tree)) as Box<dyn crate::tree::RevisionTree>)
+            Ok(RevisionTree(tree))
         })
     }
 
-    fn revision_tree(&self, revision_id: &RevisionId) -> Result<Box<dyn RevisionTree>, Error> {
+    pub fn revision_tree(&self, revision_id: &RevisionId) -> Result<Box<RevisionTree>, Error> {
         Python::with_gil(|py| {
             let tree = self.to_object(py).call_method1(
                 py,
                 "revision_tree",
                 (revision_id.to_object(py),),
             )?;
-            Ok(Box::new(PyRevisionTree::from(tree)) as Box<dyn RevisionTree>)
+            Ok(Box::new(RevisionTree(tree)))
         })
     }
 
-    fn get_tag_dict(&self) -> Result<std::collections::HashMap<String, RevisionId>, Error> {
+    pub fn get_tag_dict(&self) -> Result<std::collections::HashMap<String, RevisionId>, Error> {
         Python::with_gil(|py| {
             let branch = self.to_object(py).getattr(py, "branch")?;
             let tags = branch.getattr(py, "tags")?;
@@ -600,7 +586,7 @@ pub trait WorkingTree: MutableTree {
         .map_err(|e: PyErr| -> Error { e.into() })
     }
 
-    fn abspath(&self, path: &Path) -> Result<PathBuf, Error> {
+    pub fn abspath(&self, path: &Path) -> Result<PathBuf, Error> {
         Python::with_gil(|py| {
             Ok(self
                 .to_object(py)
@@ -609,7 +595,7 @@ pub trait WorkingTree: MutableTree {
         })
     }
 
-    fn relpath(&self, path: &Path) -> Result<PathBuf, Error> {
+    pub fn relpath(&self, path: &Path) -> Result<PathBuf, Error> {
         Python::with_gil(|py| {
             Ok(self
                 .to_object(py)
@@ -618,7 +604,7 @@ pub trait WorkingTree: MutableTree {
         })
     }
 
-    fn supports_setting_file_ids(&self) -> bool {
+    pub fn supports_setting_file_ids(&self) -> bool {
         Python::with_gil(|py| {
             self.to_object(py)
                 .call_method0(py, "supports_setting_file_ids")
@@ -628,7 +614,7 @@ pub trait WorkingTree: MutableTree {
         })
     }
 
-    fn add(&self, paths: &[&Path]) -> Result<(), Error> {
+    pub fn add(&self, paths: &[&Path]) -> Result<(), Error> {
         Python::with_gil(|py| {
             self.to_object(py)
                 .call_method1(py, "add", (paths.to_vec(),))
@@ -637,7 +623,7 @@ pub trait WorkingTree: MutableTree {
         .map(|_| ())
     }
 
-    fn smart_add(&self, paths: &[&Path]) -> Result<(), Error> {
+    pub fn smart_add(&self, paths: &[&Path]) -> Result<(), Error> {
         Python::with_gil(|py| {
             self.to_object(py)
                 .call_method1(py, "smart_add", (paths.to_vec(),))
@@ -646,7 +632,7 @@ pub trait WorkingTree: MutableTree {
         .map(|_| ())
     }
 
-    fn commit(
+    pub fn commit(
         &self,
         message: &str,
         allow_pointless: Option<bool>,
@@ -683,14 +669,14 @@ pub trait WorkingTree: MutableTree {
         })
     }
 
-    fn last_revision(&self) -> Result<RevisionId, Error> {
+    pub fn last_revision(&self) -> Result<RevisionId, Error> {
         Python::with_gil(|py| {
             let last_revision = self.to_object(py).call_method0(py, "last_revision")?;
             Ok(RevisionId::from(last_revision.extract::<Vec<u8>>(py)?))
         })
     }
 
-    fn pull(
+    pub fn pull(
         &self,
         source: &dyn crate::branch::Branch,
         overwrite: Option<bool>,
@@ -711,30 +697,36 @@ pub trait WorkingTree: MutableTree {
     }
 }
 
-pub fn open(path: &Path) -> Result<Box<dyn WorkingTree>, Error> {
-    Python::with_gil(|py| {
-        let m = py.import_bound("breezy.workingtree")?;
-        let c = m.getattr("WorkingTree")?;
-        let wt = c.call_method1("open", (path,))?;
-        Ok(Box::new(PyWorkingTree(wt.to_object(py))) as Box<dyn WorkingTree>)
-    })
-}
+    pub fn open(path: &Path) -> Result<WorkingTree, Error> {
+        Python::with_gil(|py| {
+            let m = py.import_bound("breezy.workingtree")?;
+            let c = m.getattr("WorkingTree")?;
+            let wt = c.call_method1("open", (path,))?;
+            Ok(WorkingTree(wt.to_object(py)))
+        })
+    }
 
-pub fn open_containing(path: &Path) -> Result<(Box<dyn WorkingTree>, PathBuf), Error> {
-    Python::with_gil(|py| {
-        let m = py.import_bound("breezy.workingtree")?;
-        let c = m.getattr("WorkingTree")?;
-        let (wt, p): (Bound<PyAny>, String) =
-            c.call_method1("open_containing", (path,))?.extract()?;
-        Ok((Box::new(PyWorkingTree(wt.to_object(py))) as Box<dyn WorkingTree>, PathBuf::from(p)))
-    })
-}
+    pub fn open_containing(path: &Path) -> Result<(WorkingTree, PathBuf), Error> {
+        Python::with_gil(|py| {
+            let m = py.import_bound("breezy.workingtree")?;
+            let c = m.getattr("WorkingTree")?;
+            let (wt, p): (Bound<PyAny>, String) =
+                c.call_method1("open_containing", (path,))?.extract()?;
+            Ok((WorkingTree(wt.to_object(py)), PathBuf::from(p)))
+        })
+    }
 
-impl From<PyObject> for PyWorkingTree {
+
+
+impl From<PyObject> for WorkingTree {
     fn from(obj: PyObject) -> Self {
-        Self(obj)
+        WorkingTree(obj)
     }
 }
+
+impl Tree for WorkingTree {}
+
+impl MutableTree for WorkingTree {}
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct TreeChange {
@@ -824,16 +816,13 @@ impl From<&dyn Branch> for MemoryTree {
     }
 }
 
-impl Tree for MemoryTree {
-    fn as_tree(&self) -> &dyn Tree {
-        self
-    }
-}
+impl Tree for MemoryTree {}
 
 impl MutableTree for MemoryTree {}
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::controldir::{create_standalone_workingtree, ControlDirFormat};
 
     #[test]

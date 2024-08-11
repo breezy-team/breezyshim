@@ -114,7 +114,7 @@ impl VerificationResult {
 }
 
 pub fn bulk_verify_signatures(
-    repository: &dyn Repository,
+    repository: &Repository,
     revids: &[&RevisionId],
     strategy: &GPGStrategy,
 ) -> Result<Vec<(RevisionId, VerificationResult)>, Error> {

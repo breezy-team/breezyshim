@@ -1,7 +1,7 @@
 use crate::controldir::ControlDir;
 use crate::error::Error;
 use crate::lock::Lock;
-use crate::repository::{PyRepository,Repository};
+use crate::repository::Repository;
 use crate::revisionid::RevisionId;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
@@ -52,9 +52,9 @@ pub trait Branch: ToPyObject + Send {
         })
     }
 
-    fn repository(&self) -> Box<dyn Repository> {
+    fn repository(&self) -> Repository {
         Python::with_gil(|py| {
-            Box::new(PyRepository::from(self.to_object(py).getattr(py, "repository").unwrap()))
+            Repository::new(self.to_object(py).getattr(py, "repository").unwrap())
         })
     }
 
@@ -78,11 +78,11 @@ pub trait Branch: ToPyObject + Send {
         })
     }
 
-    fn basis_tree(&self) -> Result<Box<dyn crate::tree::RevisionTree>, crate::error::Error> {
+    fn basis_tree(&self) -> Result<crate::tree::RevisionTree, crate::error::Error> {
         Python::with_gil(|py| {
-            Ok(Box::new(crate::tree::PyRevisionTree::from(
+            Ok(crate::tree::RevisionTree(
                 self.to_object(py).call_method0(py, "basis_tree")?,
-            )) as Box<dyn crate::tree::RevisionTree>)
+            ))
         })
     }
 
@@ -237,7 +237,7 @@ pub trait Branch: ToPyObject + Send {
     fn create_checkout(
         &self,
         to_location: &std::path::Path,
-    ) -> Result<Box<dyn crate::tree::WorkingTree>, Error> {
+    ) -> Result<crate::tree::WorkingTree, Error> {
         Python::with_gil(|py| {
             self.to_object(py)
                 .call_method1(
@@ -245,7 +245,7 @@ pub trait Branch: ToPyObject + Send {
                     "create_checkout",
                     (to_location.to_string_lossy().to_string(),),
                 )
-                .map(|o| Box::new(crate::tree::PyWorkingTree(o)) as Box<dyn crate::tree::WorkingTree>)
+                .map(crate::tree::WorkingTree)
                 .map_err(|e| e.into())
         })
     }
@@ -286,7 +286,7 @@ impl ToPyObject for MemoryBranch {
 impl Branch for MemoryBranch {}
 
 impl MemoryBranch {
-    pub fn new(repository: &dyn Repository, revno: Option<u32>, revid: &RevisionId) -> Self {
+    pub fn new(repository: &Repository, revno: Option<u32>, revid: &RevisionId) -> Self {
         Python::with_gil(|py| {
             let mb_cls = py
                 .import_bound("breezy.memorybranch")

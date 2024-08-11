@@ -35,11 +35,7 @@ impl From<PyObject> for PreviewTree {
     }
 }
 
-impl Tree for PreviewTree {
-    fn as_tree(&self) -> &dyn Tree {
-        self
-    }
-}
+impl Tree for PreviewTree {}
 
 impl TreeTransform {
     pub fn finalize(&self) -> Result<(), crate::error::Error> {

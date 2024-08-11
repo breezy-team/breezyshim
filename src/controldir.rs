@@ -1,8 +1,8 @@
 use crate::branch::{py_tag_selector, Branch, RegularBranch};
 use crate::error::Error;
-use crate::repository::{PyRepository,Repository};
+use crate::repository::Repository;
 use crate::transport::Transport;
-use crate::tree::{PyWorkingTree, WorkingTree};
+use crate::tree::WorkingTree;
 
 use crate::location::AsLocation;
 
@@ -52,17 +52,17 @@ impl ControlDir {
         })
     }
 
-    pub fn open_repository(&self) -> Result<Box<dyn Repository>, Error> {
+    pub fn open_repository(&self) -> Result<Repository, Error> {
         Python::with_gil(|py| {
             let result = self.to_object(py).call_method0(py, "open_repository")?;
-            Ok(Box::new(PyRepository::from(result)) as Box<dyn Repository>)
+            Ok(Repository::new(result))
         })
     }
 
-    pub fn find_repository(&self) -> Result<Box<dyn Repository>, Error> {
+    pub fn find_repository(&self) -> Result<Repository, Error> {
         Python::with_gil(|py| {
             let result = self.to_object(py).call_method0(py, "find_repository")?;
-            Ok(Box::new(PyRepository::from(result)) as Box<dyn Repository>)
+            Ok(Repository::new(result))
         })
     }
 
@@ -75,7 +75,7 @@ impl ControlDir {
     pub fn create_standalone_workingtree(
         base: &std::path::Path,
         format: impl AsFormat,
-    ) -> Result<Box<dyn WorkingTree>, Error> {
+    ) -> Result<WorkingTree, Error> {
         create_standalone_workingtree(base, format)
     }
 
@@ -97,7 +97,7 @@ impl ControlDir {
         })
     }
 
-    pub fn create_repository(&self, shared: Option<bool>) -> Result<Box<dyn Repository>, Error> {
+    pub fn create_repository(&self, shared: Option<bool>) -> Result<Repository, Error> {
         Python::with_gil(|py| {
             let kwargs = PyDict::new_bound(py);
             if let Some(shared) = shared {
@@ -105,8 +105,9 @@ impl ControlDir {
             }
             let repository = self
                 .to_object(py)
-                .call_method_bound(py, "create_repository", (), Some(&kwargs))?;
-            Ok(Box::new(PyRepository::from(repository)) as Box<dyn Repository>)
+                .call_method_bound(py, "create_repository", (), Some(&kwargs))?
+                .extract(py)?;
+            Ok(Repository::new(repository))
         })
     }
 
@@ -120,13 +121,13 @@ impl ControlDir {
         })
     }
 
-    pub fn create_workingtree(&self) -> crate::Result<Box<dyn WorkingTree>> {
+    pub fn create_workingtree(&self) -> crate::Result<WorkingTree> {
         Python::with_gil(|py| {
             let wt = self
                 .to_object(py)
                 .call_method0(py, "create_workingtree")?
                 .extract(py)?;
-            Ok(Box::new(PyWorkingTree(wt)) as Box<dyn WorkingTree>)
+            Ok(WorkingTree(wt))
         })
     }
 
@@ -226,10 +227,10 @@ impl ControlDir {
         })
     }
 
-    pub fn open_workingtree(&self) -> crate::Result<Box<dyn WorkingTree>> {
+    pub fn open_workingtree(&self) -> crate::Result<WorkingTree> {
         Python::with_gil(|py| {
             let wt = self.0.call_method0(py, "open_workingtree")?.extract(py)?;
-            Ok(Box::new(PyWorkingTree(wt)) as Box<dyn WorkingTree>)
+            Ok(WorkingTree(wt))
         })
     }
 
@@ -342,7 +343,7 @@ pub fn open_tree_or_branch(
     location: impl AsLocation,
     name: Option<&str>,
     possible_transports: Option<&mut Vec<Transport>>,
-) -> Result<(Option<Box<dyn WorkingTree>>, Box<dyn Branch>), Error> {
+) -> Result<(Option<WorkingTree>, Box<dyn Branch>), Error> {
     Python::with_gil(|py| {
         let m = py.import_bound("breezy.controldir")?;
         let cd = m.getattr("ControlDir")?;
@@ -361,7 +362,7 @@ pub fn open_tree_or_branch(
 
         let (tree, branch) = ret.extract::<(Option<PyObject>, PyObject)>(py)?;
         let branch = Box::new(RegularBranch::new(branch)) as Box<dyn Branch>;
-        let tree = tree.map(|o| Box::new(PyWorkingTree(o)) as Box<dyn WorkingTree>);
+        let tree = tree.map(WorkingTree);
         Ok((tree, branch))
     })
 }
@@ -613,7 +614,7 @@ pub fn create_branch_convenience(base: &url::Url) -> Result<Box<dyn Branch>, Err
 pub fn create_standalone_workingtree(
     base: &std::path::Path,
     format: impl AsFormat,
-) -> Result<Box<dyn WorkingTree>, Error> {
+) -> Result<WorkingTree, Error> {
     let base = base.to_str().unwrap();
     Python::with_gil(|py| {
         let m = py.import_bound("breezy.controldir")?;
@@ -624,7 +625,7 @@ pub fn create_standalone_workingtree(
             (base, format.unwrap_or_default().to_object(py)),
             None,
         )?;
-        Ok(Box::new(PyWorkingTree(wt.to_object(py))) as Box<dyn WorkingTree>)
+        Ok(WorkingTree(wt.to_object(py)))
     })
 }
 

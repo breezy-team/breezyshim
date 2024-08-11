@@ -114,11 +114,7 @@ impl ToPyObject for AppliedPatches {
     }
 }
 
-impl Tree for AppliedPatches {
-    fn as_tree(&self) -> &dyn Tree {
-        self
-    }
-}
+impl Tree for AppliedPatches {}
 
 #[cfg(test)]
 mod applied_patches_tests {
@@ -150,7 +146,7 @@ mod applied_patches_tests {
         ))
         .unwrap();
 
-        let newtree = crate::patches::AppliedPatches::new(tree.as_tree(), vec![patch], None).unwrap();
+        let newtree = crate::patches::AppliedPatches::new(&tree, vec![patch], None).unwrap();
         assert_eq!(
             b"b\n".to_vec(),
             newtree.get_file_text(std::path::Path::new("a")).unwrap()
@@ -180,7 +176,7 @@ mod applied_patches_tests {
 "#,
         ))
         .unwrap();
-        let newtree = crate::patches::AppliedPatches::new(tree.as_tree(), vec![patch], None).unwrap();
+        let newtree = crate::patches::AppliedPatches::new(&tree, vec![patch], None).unwrap();
         assert!(!newtree.has_filename(std::path::Path::new("a")));
         std::mem::drop(env);
     }
@@ -206,7 +202,7 @@ mod applied_patches_tests {
 "#,
         ))
         .unwrap();
-        let newtree = crate::patches::AppliedPatches::new(tree.as_tree(), vec![patch], None).unwrap();
+        let newtree = crate::patches::AppliedPatches::new(&tree, vec![patch], None).unwrap();
         assert_eq!(
             b"b\n".to_vec(),
             newtree.get_file_text(std::path::Path::new("b")).unwrap()

@@ -4,13 +4,13 @@ pub use dirty_tracker::State;
 
 pub struct DirtyTreeTracker {
     tracker: DirtyTracker,
-    tree: Box<dyn WorkingTree>,
+    tree: WorkingTree,
     base: std::path::PathBuf,
 }
 
 impl DirtyTreeTracker {
     /// Create a new DirtyTreeTracker for the given WorkingTree.
-    pub fn new(tree: Box<dyn WorkingTree>) -> Self {
+    pub fn new(tree: WorkingTree) -> Self {
         let base = tree.basedir();
         let tracker = DirtyTracker::new(&base).unwrap();
         Self {
@@ -20,7 +20,7 @@ impl DirtyTreeTracker {
         }
     }
 
-    pub fn new_in_subpath(tree: Box<dyn WorkingTree>, subpath: &std::path::Path) -> Self {
+    pub fn new_in_subpath(tree: WorkingTree, subpath: &std::path::Path) -> Self {
         let base = tree.basedir();
         let tracker = DirtyTracker::new(&base.join(subpath)).unwrap();
         Self {
