@@ -51,6 +51,15 @@ import_exception!(breezy.plugins.gitlab.forge, GitLabConflict);
 import_exception!(breezy.plugins.gitlab.forge, ProjectCreationTimeout);
 import_exception!(breezy.forge, SourceNotDerivedFromTarget);
 
+lazy_static::lazy_static! {
+    // Only present in breezy << 4.0
+    pub static ref BreezyConnectionError: Option<PyObject> = { Python::with_gil(|py| {
+        let m = py.import_bound("breezy.errors").unwrap();
+        m.getattr("ConnectionError").ok().map(|x| x.to_object(py))
+    })
+};
+}
+
 #[derive(Debug)]
 pub enum Error {
     Other(PyErr),
@@ -308,7 +317,7 @@ impl From<PyErr> for Error {
                     value.getattr("extra").unwrap().extract().unwrap(),
                 )
             } else if err.is_instance_of::<pyo3::exceptions::PyConnectionError>(py) {
-                Error::ConnectionError(value.getattr("message").unwrap().extract().unwrap())
+                Error::ConnectionError(err.to_string())
             } else if err.is_instance_of::<UnsupportedFormatError>(py) {
                 Error::UnsupportedFormat(value.getattr("format").unwrap().extract().unwrap())
             } else if err.is_instance_of::<UnsupportedVcs>(py) {
@@ -525,6 +534,10 @@ impl From<PyErr> for Error {
                 Error::GitLabConflict(value.getattr("reason").unwrap().extract().unwrap())
             } else if err.is_instance_of::<SourceNotDerivedFromTarget>(py) {
                 Error::SourceNotDerivedFromTarget
+            } else if BreezyConnectionError.as_ref().and_then(|cls| Python::with_gil(|py| {
+                Some(err.is_instance_bound(py, cls.bind(py)))
+            })).unwrap_or(false) {
+                Error::ConnectionError(err.to_string())
             // Intentionally sorted below the more specific errors
             } else if err.is_instance_of::<TransportError>(py) {
                 Error::TransportError(value.getattr("message").unwrap().extract().unwrap())
