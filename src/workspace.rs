@@ -6,7 +6,7 @@ use pyo3::prelude::*;
 
 #[cfg(feature = "dirty-tracker")]
 pub fn reset_tree_with_dirty_tracker(
-    local_tree: &WorkingTree,
+    local_tree: &dyn WorkingTree,
     basis_tree: Option<&dyn Tree>,
     subpath: Option<&std::path::Path>,
     dirty_tracker: Option<&mut DirtyTreeTracker>,
