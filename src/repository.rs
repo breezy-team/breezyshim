@@ -3,7 +3,7 @@ use crate::delta::TreeDelta;
 use crate::graph::Graph;
 use crate::location::AsLocation;
 use crate::revisionid::RevisionId;
-use crate::tree::RevisionTree;
+use crate::tree::{PyRevisionTree, RevisionTree};
 use chrono::DateTime;
 use chrono::TimeZone;
 use pyo3::exceptions::PyStopIteration;
@@ -160,10 +160,10 @@ impl Repository {
         })
     }
 
-    pub fn revision_tree(&self, revid: &RevisionId) -> Result<RevisionTree, crate::error::Error> {
+    pub fn revision_tree(&self, revid: &RevisionId) -> Result<Box<dyn RevisionTree>, crate::error::Error> {
         Python::with_gil(|py| {
             let o = self.0.call_method1(py, "revision_tree", (revid.clone(),))?;
-            Ok(RevisionTree(o))
+            Ok(Box::new(PyRevisionTree::from(o)) as Box<dyn RevisionTree>)
         })
     }
 

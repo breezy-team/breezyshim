@@ -78,11 +78,11 @@ pub trait Branch: ToPyObject + Send {
         })
     }
 
-    fn basis_tree(&self) -> Result<crate::tree::RevisionTree, crate::error::Error> {
+    fn basis_tree(&self) -> Result<Box<dyn crate::tree::RevisionTree>, crate::error::Error> {
         Python::with_gil(|py| {
-            Ok(crate::tree::RevisionTree(
+            Ok(Box::new(crate::tree::PyRevisionTree::from(
                 self.to_object(py).call_method0(py, "basis_tree")?,
-            ))
+            )) as Box<dyn crate::tree::RevisionTree>)
         })
     }
 
@@ -237,7 +237,7 @@ pub trait Branch: ToPyObject + Send {
     fn create_checkout(
         &self,
         to_location: &std::path::Path,
-    ) -> Result<crate::tree::WorkingTree, Error> {
+    ) -> Result<Box<dyn crate::tree::WorkingTree>, Error> {
         Python::with_gil(|py| {
             self.to_object(py)
                 .call_method1(
@@ -245,7 +245,7 @@ pub trait Branch: ToPyObject + Send {
                     "create_checkout",
                     (to_location.to_string_lossy().to_string(),),
                 )
-                .map(crate::tree::WorkingTree)
+                .map(|o| Box::new(crate::tree::PyWorkingTree(o)) as Box<dyn crate::tree::WorkingTree>)
                 .map_err(|e| e.into())
         })
     }

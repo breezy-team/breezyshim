@@ -13,4 +13,4 @@ pub trait MutableInventoryTree: MutableTree {
     }
 }
 
-impl MutableInventoryTree for crate::tree::WorkingTree {}
+impl MutableInventoryTree for dyn crate::tree::WorkingTree {}

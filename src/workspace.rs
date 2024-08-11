@@ -21,7 +21,7 @@ pub fn reset_tree_with_dirty_tracker(
 }
 
 pub fn reset_tree(
-    local_tree: &WorkingTree,
+    local_tree: &dyn WorkingTree,
     basis_tree: Option<&dyn Tree>,
     subpath: Option<&std::path::Path>,
 ) -> Result<(), Error> {
@@ -36,7 +36,7 @@ pub fn reset_tree(
 }
 
 pub fn check_clean_tree(
-    local_tree: &WorkingTree,
+    local_tree: &dyn WorkingTree,
     basis_tree: &dyn Tree,
     subpath: &std::path::Path,
 ) -> Result<(), Error> {
