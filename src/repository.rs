@@ -30,13 +30,7 @@ impl RepositoryFormat {
     }
 }
 
-pub struct Repository(PyObject);
-
-impl Clone for Repository {
-    fn clone(&self) -> Self {
-        Python::with_gil(|py| Repository(self.0.clone_ref(py)))
-    }
-}
+pub struct PyRepository(PyObject);
 
 #[derive(Debug)]
 pub struct Revision {
@@ -119,20 +113,29 @@ impl Iterator for DeltaIterator {
     }
 }
 
-impl ToPyObject for Repository {
+impl ToPyObject for PyRepository {
     fn to_object(&self, py: Python) -> PyObject {
         self.0.to_object(py)
     }
 }
 
-impl Repository {
-    pub fn new(obj: PyObject) -> Self {
-        Repository(obj)
+impl From<PyObject> for PyRepository {
+    fn from(o: PyObject) -> Self {
+        PyRepository(o)
     }
+}
 
-    pub fn get_user_url(&self) -> url::Url {
+impl Repository for PyRepository {
+    fn as_repository(&self) -> Box<dyn Repository> {
+        Python::with_gil(|py| Box::new(PyRepository::from(self.to_object(py).clone_ref(py))))
+    }
+}
+
+
+pub trait Repository: ToPyObject {
+    fn get_user_url(&self) -> url::Url {
         Python::with_gil(|py| {
-            self.0
+            self.to_object(py)
                 .getattr(py, "user_url")
                 .unwrap()
                 .extract::<String>(py)
@@ -142,13 +145,13 @@ impl Repository {
         })
     }
 
-    pub fn fetch(
+    fn fetch(
         &self,
-        other_repository: &Repository,
+        other_repository: &dyn Repository,
         stop_revision: Option<&RevisionId>,
     ) -> Result<(), crate::error::Error> {
         Python::with_gil(|py| {
-            self.0.call_method1(
+            self.to_object(py).call_method1(
                 py,
                 "fetch",
                 (
@@ -160,58 +163,58 @@ impl Repository {
         })
     }
 
-    pub fn revision_tree(&self, revid: &RevisionId) -> Result<Box<dyn RevisionTree>, crate::error::Error> {
+    fn revision_tree(&self, revid: &RevisionId) -> Result<Box<dyn RevisionTree>, crate::error::Error> {
         Python::with_gil(|py| {
-            let o = self.0.call_method1(py, "revision_tree", (revid.clone(),))?;
+            let o = self.to_object(py).call_method1(py, "revision_tree", (revid.clone(),))?;
             Ok(Box::new(PyRevisionTree::from(o)) as Box<dyn RevisionTree>)
         })
     }
 
-    pub fn get_graph(&self) -> Graph {
-        Python::with_gil(|py| Graph::from(self.0.call_method0(py, "get_graph").unwrap()))
+    fn get_graph(&self) -> Graph {
+        Python::with_gil(|py| Graph::from(self.to_object(py).call_method0(py, "get_graph").unwrap()))
     }
 
-    pub fn controldir(&self) -> ControlDir {
-        Python::with_gil(|py| ControlDir::new(self.0.getattr(py, "controldir").unwrap()))
+    fn controldir(&self) -> ControlDir {
+        Python::with_gil(|py| ControlDir::new(self.to_object(py).getattr(py, "controldir").unwrap()))
     }
 
-    pub fn format(&self) -> RepositoryFormat {
-        Python::with_gil(|py| RepositoryFormat(self.0.getattr(py, "_format").unwrap()))
+    fn format(&self) -> RepositoryFormat {
+        Python::with_gil(|py| RepositoryFormat(self.to_object(py).getattr(py, "_format").unwrap()))
     }
 
-    pub fn iter_revisions(
+    fn iter_revisions(
         &self,
         revision_ids: Vec<RevisionId>,
-    ) -> impl Iterator<Item = (RevisionId, Option<Revision>)> {
+    ) -> Box<dyn Iterator<Item = (RevisionId, Option<Revision>)>> {
         Python::with_gil(|py| {
             let o = self
-                .0
+                .to_object(py)
                 .call_method1(py, "iter_revisions", (revision_ids,))
                 .unwrap();
-            RevisionIterator(o)
+            Box::new(RevisionIterator(o)) as Box<dyn Iterator<Item = (RevisionId, Option<Revision>)>>
         })
     }
 
-    pub fn get_revision_deltas(
+    fn get_revision_deltas(
         &self,
         revs: &[Revision],
         specific_files: Option<&[&std::path::Path]>,
-    ) -> impl Iterator<Item = TreeDelta> {
+    ) -> Box<dyn Iterator<Item = TreeDelta>> {
         Python::with_gil(|py| {
             let revs = revs.iter().map(|r| r.to_object(py)).collect::<Vec<_>>();
             let specific_files = specific_files
                 .map(|files| files.iter().map(|f| f.to_path_buf()).collect::<Vec<_>>());
             let o = self
-                .0
+                .to_object(py)
                 .call_method1(py, "get_revision_deltas", (revs, specific_files))
                 .unwrap();
-            DeltaIterator(o)
+            Box::new(DeltaIterator(o)) as Box<dyn Iterator<Item = TreeDelta>>
         })
     }
 
-    pub fn get_revision(&self, revision_id: &RevisionId) -> Result<Revision, crate::error::Error> {
+    fn get_revision(&self, revision_id: &RevisionId) -> Result<Revision, crate::error::Error> {
         Python::with_gil(|py| {
-            self.0
+            self.to_object(py)
                 .call_method1(py, "get_revision", (revision_id.clone(),))?
                 .extract(py)
         })
@@ -219,27 +222,29 @@ impl Repository {
     }
 
     // TODO: This should really be on ForeignRepository
-    pub fn lookup_bzr_revision_id(
+    fn lookup_bzr_revision_id(
         &self,
         revision_id: &RevisionId,
     ) -> Result<(Vec<u8>,), crate::error::Error> {
         Python::with_gil(|py| {
-            self.0
+            self.to_object(py)
                 .call_method1(py, "lookup_bzr_revision_id", (revision_id.clone(),))?
                 .extract::<(Vec<u8>, PyObject)>(py)
         })
         .map_err(|e| e.into())
         .map(|(v, _m)| (v,))
     }
+
+    fn as_repository(&self) -> Box<dyn Repository>;
 }
 
-pub fn open(base: impl AsLocation) -> Result<Repository, crate::error::Error> {
+pub fn open(base: impl AsLocation) -> Result<Box<dyn Repository>, crate::error::Error> {
     Python::with_gil(|py| {
         let o = py
             .import_bound("breezy.repository")?
             .getattr("Repository")?
             .call_method1("open", (base.as_location(),))?;
-        Ok(Repository::new(o.into()))
+        Ok(Box::new(PyRepository::from(o.to_object(py))) as Box<dyn Repository>)
     })
 }
 
@@ -266,6 +271,6 @@ mod repository_tests {
         )
         .unwrap();
         let repo = crate::repository::open(td.path()).unwrap();
-        let _repo2 = repo.clone();
+        let _repo2 = repo.as_repository();
     }
 }

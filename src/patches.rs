@@ -126,7 +126,6 @@ mod applied_patches_tests {
     use crate::tree::Tree;
     use patchkit::patch::UnifiedPatch;
     use serial_test::serial;
-    use std::any::Any;
 
     #[test]
     #[serial]

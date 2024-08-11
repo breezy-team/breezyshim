@@ -473,17 +473,13 @@ impl Tree for PyRevisionTree {
     }
 }
 
-impl Clone for PyRevisionTree {
-    fn clone(&self) -> Self {
-        Python::with_gil(|py| PyRevisionTree::from(self.0.clone_ref(py)))
-    }
-}
-
 pub trait RevisionTree: Tree {
-    fn repository(&self) -> crate::repository::Repository {
+    fn as_revision_tree(&self) -> Box<dyn RevisionTree>;
+
+    fn repository(&self) -> Box<dyn crate::repository::Repository> {
         Python::with_gil(|py| {
             let repository = self.to_object(py).getattr(py, "_repository").unwrap();
-            crate::repository::Repository::new(repository)
+            Box::new(crate::repository::PyRepository::from(repository)) as Box<dyn crate::repository::Repository>
         })
     }
 
@@ -508,15 +504,13 @@ pub trait RevisionTree: Tree {
     }
 }
 
-impl RevisionTree for PyRevisionTree {}
-
-pub struct PyWorkingTree(pub PyObject);
-
-impl Clone for PyWorkingTree {
-    fn clone(&self) -> Self {
-        Python::with_gil(|py| PyWorkingTree(self.0.clone_ref(py)))
+impl RevisionTree for PyRevisionTree {
+    fn as_revision_tree(&self) -> Box<dyn RevisionTree> {
+        Python::with_gil(|py| Box::new(PyRevisionTree(self.to_object(py).clone_ref(py))))
     }
 }
+
+pub struct PyWorkingTree(pub PyObject);
 
 impl ToPyObject for PyWorkingTree {
     fn to_object(&self, py: Python) -> PyObject {
@@ -532,9 +526,15 @@ impl Tree for PyWorkingTree {
 
 impl MutableTree for PyWorkingTree {}
 
-impl WorkingTree for PyWorkingTree {}
+impl WorkingTree for PyWorkingTree {
+    fn as_working_tree(&self) -> Box<dyn WorkingTree> {
+        Python::with_gil(|py| Box::new(PyWorkingTree(self.to_object(py).clone_ref(py))))
+    }
+}
 
 pub trait WorkingTree: MutableTree {
+    fn as_working_tree(&self) -> Box<dyn WorkingTree>;
+
     fn is_control_filename(&self, path: &Path) -> bool {
         Python::with_gil(|py| {
             self.to_object(py)
@@ -834,7 +834,6 @@ impl MutableTree for MemoryTree {}
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::controldir::{create_standalone_workingtree, ControlDirFormat};
 
     #[test]

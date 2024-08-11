@@ -1,6 +1,6 @@
 use crate::branch::{py_tag_selector, Branch, RegularBranch};
 use crate::error::Error;
-use crate::repository::Repository;
+use crate::repository::{PyRepository,Repository};
 use crate::transport::Transport;
 use crate::tree::{PyWorkingTree, WorkingTree};
 
@@ -52,17 +52,17 @@ impl ControlDir {
         })
     }
 
-    pub fn open_repository(&self) -> Result<Repository, Error> {
+    pub fn open_repository(&self) -> Result<Box<dyn Repository>, Error> {
         Python::with_gil(|py| {
             let result = self.to_object(py).call_method0(py, "open_repository")?;
-            Ok(Repository::new(result))
+            Ok(Box::new(PyRepository::from(result)) as Box<dyn Repository>)
         })
     }
 
-    pub fn find_repository(&self) -> Result<Repository, Error> {
+    pub fn find_repository(&self) -> Result<Box<dyn Repository>, Error> {
         Python::with_gil(|py| {
             let result = self.to_object(py).call_method0(py, "find_repository")?;
-            Ok(Repository::new(result))
+            Ok(Box::new(PyRepository::from(result)) as Box<dyn Repository>)
         })
     }
 
@@ -97,7 +97,7 @@ impl ControlDir {
         })
     }
 
-    pub fn create_repository(&self, shared: Option<bool>) -> Result<Repository, Error> {
+    pub fn create_repository(&self, shared: Option<bool>) -> Result<Box<dyn Repository>, Error> {
         Python::with_gil(|py| {
             let kwargs = PyDict::new_bound(py);
             if let Some(shared) = shared {
@@ -105,9 +105,8 @@ impl ControlDir {
             }
             let repository = self
                 .to_object(py)
-                .call_method_bound(py, "create_repository", (), Some(&kwargs))?
-                .extract(py)?;
-            Ok(Repository::new(repository))
+                .call_method_bound(py, "create_repository", (), Some(&kwargs))?;
+            Ok(Box::new(PyRepository::from(repository)) as Box<dyn Repository>)
         })
     }
 

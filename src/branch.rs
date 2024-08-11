@@ -1,7 +1,7 @@
 use crate::controldir::ControlDir;
 use crate::error::Error;
 use crate::lock::Lock;
-use crate::repository::Repository;
+use crate::repository::{PyRepository,Repository};
 use crate::revisionid::RevisionId;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
@@ -52,9 +52,9 @@ pub trait Branch: ToPyObject + Send {
         })
     }
 
-    fn repository(&self) -> Repository {
+    fn repository(&self) -> Box<dyn Repository> {
         Python::with_gil(|py| {
-            Repository::new(self.to_object(py).getattr(py, "repository").unwrap())
+            Box::new(PyRepository::from(self.to_object(py).getattr(py, "repository").unwrap()))
         })
     }
 
@@ -286,7 +286,7 @@ impl ToPyObject for MemoryBranch {
 impl Branch for MemoryBranch {}
 
 impl MemoryBranch {
-    pub fn new(repository: &Repository, revno: Option<u32>, revid: &RevisionId) -> Self {
+    pub fn new(repository: &dyn Repository, revno: Option<u32>, revid: &RevisionId) -> Self {
         Python::with_gil(|py| {
             let mb_cls = py
                 .import_bound("breezy.memorybranch")
