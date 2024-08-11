@@ -474,7 +474,7 @@ impl Tree for PyRevisionTree {
 }
 
 pub trait RevisionTree: Tree {
-    fn as_revision_tree(&self) -> Box<dyn RevisionTree>;
+    fn as_revision_tree(&self) -> &dyn RevisionTree;
 
     fn repository(&self) -> Box<dyn crate::repository::Repository> {
         Python::with_gil(|py| {
@@ -505,8 +505,8 @@ pub trait RevisionTree: Tree {
 }
 
 impl RevisionTree for PyRevisionTree {
-    fn as_revision_tree(&self) -> Box<dyn RevisionTree> {
-        Python::with_gil(|py| Box::new(PyRevisionTree(self.to_object(py).clone_ref(py))))
+    fn as_revision_tree(&self) -> &dyn RevisionTree {
+        self
     }
 }
 
@@ -527,13 +527,13 @@ impl Tree for PyWorkingTree {
 impl MutableTree for PyWorkingTree {}
 
 impl WorkingTree for PyWorkingTree {
-    fn as_working_tree(&self) -> Box<dyn WorkingTree> {
-        Python::with_gil(|py| Box::new(PyWorkingTree(self.to_object(py).clone_ref(py))))
+    fn as_working_tree(&self) -> &dyn WorkingTree {
+        self
     }
 }
 
 pub trait WorkingTree: MutableTree {
-    fn as_working_tree(&self) -> Box<dyn WorkingTree>;
+    fn as_working_tree(&self) -> &dyn WorkingTree;
 
     fn is_control_filename(&self, path: &Path) -> bool {
         Python::with_gil(|py| {
