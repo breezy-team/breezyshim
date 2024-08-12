@@ -45,6 +45,20 @@ import_exception!(breezy.errors, BadHttpRequest);
 import_exception!(breezy.errors, TransportNotPossible);
 import_exception!(breezy.errors, IncompatibleFormat);
 import_exception!(breezy.errors, NoSuchRevision);
+import_exception!(breezy.forge, NoSuchProject);
+import_exception!(breezy.plugins.gitlab.forge, ForkingDisabled);
+import_exception!(breezy.plugins.gitlab.forge, GitLabConflict);
+import_exception!(breezy.plugins.gitlab.forge, ProjectCreationTimeout);
+import_exception!(breezy.forge, SourceNotDerivedFromTarget);
+
+lazy_static::lazy_static! {
+    // Only present in breezy << 4.0
+    pub static ref BreezyConnectionError: Option<PyObject> = { Python::with_gil(|py| {
+        let m = py.import_bound("breezy.errors").unwrap();
+        m.getattr("ConnectionError").ok().map(|x| x.to_object(py))
+    })
+};
+}
 
 #[derive(Debug)]
 pub enum Error {
@@ -112,6 +126,11 @@ pub enum Error {
     TransportNotPossible(String),
     IncompatibleFormat(String, String),
     NoSuchRevision(crate::RevisionId),
+    NoSuchProject(String),
+    ForkingDisabled(String),
+    ProjectCreationTimeout(String, chrono::Duration),
+    GitLabConflict(String),
+    SourceNotDerivedFromTarget,
 }
 
 impl From<url::ParseError> for Error {
@@ -244,6 +263,13 @@ impl std::fmt::Display for Error {
                 write!(f, "Incompatible format: {} is not compatible with {}", a, b)
             }
             Self::NoSuchRevision(rev) => write!(f, "No such revision: {}", rev),
+            Self::NoSuchProject(p) => write!(f, "No such project: {}", p),
+            Self::ForkingDisabled(p) => write!(f, "Forking disabled: {}", p),
+            Self::ProjectCreationTimeout(p, t) => {
+                write!(f, "Project creation timeout: {} after {} seconds", p, t)
+            }
+            Self::GitLabConflict(p) => write!(f, "GitLab conflict: {}", p),
+            Self::SourceNotDerivedFromTarget => write!(f, "Source not derived from target"),
         }
     }
 }
@@ -291,9 +317,7 @@ impl From<PyErr> for Error {
                     value.getattr("extra").unwrap().extract().unwrap(),
                 )
             } else if err.is_instance_of::<pyo3::exceptions::PyConnectionError>(py) {
-                Error::ConnectionError(value.getattr("message").unwrap().extract().unwrap())
-            } else if err.is_instance_of::<TransportError>(py) {
-                Error::TransportError(value.getattr("message").unwrap().extract().unwrap())
+                Error::ConnectionError(err.to_string())
             } else if err.is_instance_of::<UnsupportedFormatError>(py) {
                 Error::UnsupportedFormat(value.getattr("format").unwrap().extract().unwrap())
             } else if err.is_instance_of::<UnsupportedVcs>(py) {
@@ -497,6 +521,26 @@ impl From<PyErr> for Error {
                 )
             } else if err.is_instance_of::<NoSuchRevision>(py) {
                 Error::NoSuchRevision(value.getattr("revision").unwrap().extract().unwrap())
+            } else if err.is_instance_of::<NoSuchProject>(py) {
+                Error::NoSuchProject(value.getattr("project").unwrap().extract().unwrap())
+            } else if err.is_instance_of::<ForkingDisabled>(py) {
+                Error::ForkingDisabled(value.getattr("project").unwrap().extract().unwrap())
+            } else if err.is_instance_of::<ProjectCreationTimeout>(py) {
+                Error::ProjectCreationTimeout(
+                    value.getattr("project").unwrap().extract().unwrap(),
+                    value.getattr("timeout").unwrap().extract().unwrap(),
+                )
+            } else if err.is_instance_of::<GitLabConflict>(py) {
+                Error::GitLabConflict(value.getattr("reason").unwrap().extract().unwrap())
+            } else if err.is_instance_of::<SourceNotDerivedFromTarget>(py) {
+                Error::SourceNotDerivedFromTarget
+            } else if BreezyConnectionError.as_ref().and_then(|cls| Python::with_gil(|py| {
+                Some(err.is_instance_bound(py, cls.bind(py)))
+            })).unwrap_or(false) {
+                Error::ConnectionError(err.to_string())
+            // Intentionally sorted below the more specific errors
+            } else if err.is_instance_of::<TransportError>(py) {
+                Error::TransportError(value.getattr("message").unwrap().extract().unwrap())
             } else {
                 Self::Other(err)
             }
@@ -605,6 +649,11 @@ impl From<Error> for PyErr {
             Error::NoSuchRevision(rev) => {
                 Python::with_gil(|py| NoSuchRevision::new_err((py.None(), rev.to_string())))
             }
+            Error::NoSuchProject(p) => NoSuchProject::new_err((p,)),
+            Error::ForkingDisabled(p) => ForkingDisabled::new_err((p,)),
+            Error::ProjectCreationTimeout(p, t) => ProjectCreationTimeout::new_err((p, t)),
+            Error::GitLabConflict(p) => GitLabConflict::new_err((p,)),
+            Error::SourceNotDerivedFromTarget => SourceNotDerivedFromTarget::new_err(()),
         }
     }
 }
@@ -1088,5 +1137,45 @@ fn test_incompatible_format() {
     // Verify that p is an instance of IncompatibleFormat
     Python::with_gil(|py| {
         assert!(p.is_instance_of::<IncompatibleFormat>(py), "{}", p);
+    });
+}
+
+#[test]
+fn test_no_such_project() {
+    let e = Error::NoSuchProject("foo".to_string());
+    let p: PyErr = e.into();
+    // Verify that p is an instance of NoSuchProject
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<NoSuchProject>(py), "{}", p);
+    });
+}
+
+#[test]
+fn test_forking_disabled() {
+    let e = Error::ForkingDisabled("foo".to_string());
+    let p: PyErr = e.into();
+    // Verify that p is an instance of ForkingDisabled
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<ForkingDisabled>(py), "{}", p);
+    });
+}
+
+#[test]
+fn test_gitlab_conflict() {
+    let e = Error::GitLabConflict("foo".to_string());
+    let p: PyErr = e.into();
+    // Verify that p is an instance of GitLabConflict
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<GitLabConflict>(py), "{}", p);
+    });
+}
+
+#[test]
+fn test_project_creation_timeout() {
+    let e = Error::ProjectCreationTimeout("foo".to_string(), chrono::Duration::seconds(0));
+    let p: PyErr = e.into();
+    // Verify that p is an instance of ProjectCreationTimeout
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<ProjectCreationTimeout>(py), "{}", p);
     });
 }

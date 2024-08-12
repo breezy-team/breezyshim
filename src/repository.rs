@@ -130,6 +130,18 @@ impl Repository {
         Repository(obj)
     }
 
+    pub fn get_user_url(&self) -> url::Url {
+        Python::with_gil(|py| {
+            self.0
+                .getattr(py, "user_url")
+                .unwrap()
+                .extract::<String>(py)
+                .unwrap()
+                .parse()
+                .unwrap()
+        })
+    }
+
     pub fn fetch(
         &self,
         other_repository: &Repository,

@@ -548,23 +548,14 @@ impl WorkingTree {
         })
     }
 
+    #[deprecated = "Use ::open instead"]
     pub fn open(path: &Path) -> Result<WorkingTree, Error> {
-        Python::with_gil(|py| {
-            let m = py.import_bound("breezy.workingtree")?;
-            let c = m.getattr("WorkingTree")?;
-            let wt = c.call_method1("open", (path,))?;
-            Ok(WorkingTree(wt.to_object(py)))
-        })
+        open(path)
     }
 
+    #[deprecated = "Use ::open_containing instead"]
     pub fn open_containing(path: &Path) -> Result<(WorkingTree, PathBuf), Error> {
-        Python::with_gil(|py| {
-            let m = py.import_bound("breezy.workingtree")?;
-            let c = m.getattr("WorkingTree")?;
-            let (wt, p): (Bound<PyAny>, String) =
-                c.call_method1("open_containing", (path,))?.extract()?;
-            Ok((WorkingTree(wt.to_object(py)), PathBuf::from(p)))
-        })
+        open_containing(path)
     }
 
     pub fn basis_tree(&self) -> Result<crate::tree::RevisionTree, Error> {
@@ -705,6 +696,27 @@ impl WorkingTree {
         .map(|_| ())
     }
 }
+
+    pub fn open(path: &Path) -> Result<WorkingTree, Error> {
+        Python::with_gil(|py| {
+            let m = py.import_bound("breezy.workingtree")?;
+            let c = m.getattr("WorkingTree")?;
+            let wt = c.call_method1("open", (path,))?;
+            Ok(WorkingTree(wt.to_object(py)))
+        })
+    }
+
+    pub fn open_containing(path: &Path) -> Result<(WorkingTree, PathBuf), Error> {
+        Python::with_gil(|py| {
+            let m = py.import_bound("breezy.workingtree")?;
+            let c = m.getattr("WorkingTree")?;
+            let (wt, p): (Bound<PyAny>, String) =
+                c.call_method1("open_containing", (path,))?.extract()?;
+            Ok((WorkingTree(wt.to_object(py)), PathBuf::from(p)))
+        })
+    }
+
+
 
 impl From<PyObject> for WorkingTree {
     fn from(obj: PyObject) -> Self {
