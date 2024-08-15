@@ -405,6 +405,18 @@ pub trait Tree: ToPyObject {
 }
 
 pub trait MutableTree: Tree {
+    fn add(&self, files: &[&Path]) -> Result<(), Error> {
+        Python::with_gil(|py| -> Result<(), PyErr> {
+            self.to_object(py).call_method1(
+                py,
+                "add",
+                (files.iter().map(|p| p.to_path_buf()).collect::<Vec<_>>(),),
+            )?;
+            Ok(())
+        })
+        .map_err(|e| e.into())
+    }
+
     fn lock_write(&self) -> Result<Lock, Error> {
         Python::with_gil(|py| {
             let lock = self.to_object(py).call_method0(py, "lock_write")?;
