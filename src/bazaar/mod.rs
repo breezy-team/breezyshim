@@ -1,3 +1,4 @@
+//! Bazaar-specific functionality.
 use crate::controldir::Prober;
 use pyo3::exceptions::PyModuleNotFoundError;
 use pyo3::prelude::*;

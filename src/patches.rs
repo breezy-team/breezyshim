@@ -1,3 +1,4 @@
+//! Patching support for Breezy.
 use crate::transform::TreeTransform;
 use crate::tree::Tree;
 use patchkit::patch::{HunkLine, UnifiedPatch};

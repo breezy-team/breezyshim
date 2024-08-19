@@ -1,3 +1,4 @@
+//! Hooks
 use pyo3::prelude::*;
 
 pub struct HookDict(PyObject);

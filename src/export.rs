@@ -1,3 +1,4 @@
+//! Export a tree to a directory.
 use crate::tree::Tree;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;

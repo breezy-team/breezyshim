@@ -1,3 +1,5 @@
+//! The `ControlDir` class provides a high-level interface to control directories,
+//! e.g. ".bzr" or ".git" directories.
 use crate::branch::{py_tag_selector, Branch, RegularBranch};
 use crate::error::Error;
 use crate::repository::Repository;
@@ -663,7 +665,9 @@ pub fn all_probers() -> Vec<Box<dyn Prober>> {
     Python::with_gil(|py| -> PyResult<Vec<Box<dyn Prober>>> {
         let m = py.import_bound("breezy.controldir")?;
         let cdf = m.getattr("ControlDirFormat")?;
-        let probers = cdf.call_method0("all_probers")?.extract::<Vec<PyObject>>()?;
+        let probers = cdf
+            .call_method0("all_probers")?
+            .extract::<Vec<PyObject>>()?;
         Ok(probers
             .into_iter()
             .map(|p| Box::new(PyProber(p)) as Box<dyn Prober>)

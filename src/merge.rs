@@ -1,3 +1,4 @@
+//! Tree merging.
 use crate::branch::Branch;
 use crate::graph::Graph;
 use crate::hooks::HookDict;

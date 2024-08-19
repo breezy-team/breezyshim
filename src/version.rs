@@ -1,3 +1,4 @@
+//! Version information for the Breezy library.
 use pyo3::prelude::*;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]

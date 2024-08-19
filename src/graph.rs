@@ -1,3 +1,4 @@
+//! Graph traversal operations on revision graphs.
 use crate::revisionid::RevisionId;
 use pyo3::exceptions::PyStopIteration;
 use pyo3::import_exception;

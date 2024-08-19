@@ -1,3 +1,4 @@
+//! Fast and efficient detection of files that have been modified in a directory tree.
 use crate::tree::WorkingTree;
 use dirty_tracker::DirtyTracker;
 pub use dirty_tracker::State;

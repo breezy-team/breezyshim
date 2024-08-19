@@ -1,3 +1,4 @@
+//! Generation of unified diffs between trees.
 use crate::tree::Tree;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;

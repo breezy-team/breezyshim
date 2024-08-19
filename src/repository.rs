@@ -1,3 +1,6 @@
+//! Repository handling
+//!
+//! A repository is a collection of revisions and their associated data.
 use crate::controldir::ControlDir;
 use crate::delta::TreeDelta;
 use crate::graph::Graph;

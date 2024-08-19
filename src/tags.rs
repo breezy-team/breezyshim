@@ -1,3 +1,4 @@
+//! Revision tags
 use crate::error::Error;
 use crate::revisionid::RevisionId;
 use pyo3::prelude::*;

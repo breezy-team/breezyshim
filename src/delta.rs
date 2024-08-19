@@ -1,6 +1,7 @@
+//! Detection of changes between trees.
+use crate::osutils::is_inside_any;
 use crate::tree::TreeChange;
 use pyo3::prelude::*;
-use crate::osutils::is_inside_any;
 
 /// Describes changes from one tree to another.
 ///
@@ -75,7 +76,10 @@ impl FromPyObject<'_> for TreeDelta {
     }
 }
 
-pub fn filter_excluded<'a>(iter_changes: impl Iterator<Item = TreeChange> + 'a, exclude: &'a [&'a std::path::Path]) -> impl Iterator<Item = TreeChange> + 'a {
+pub fn filter_excluded<'a>(
+    iter_changes: impl Iterator<Item = TreeChange> + 'a,
+    exclude: &'a [&'a std::path::Path],
+) -> impl Iterator<Item = TreeChange> + 'a {
     iter_changes.filter(|change| {
         let new_excluded = if let Some(p) = change.path.1.as_ref() {
             is_inside_any(exclude, p.as_path())

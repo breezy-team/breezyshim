@@ -1,3 +1,4 @@
+//! Transport module
 use crate::error::Error;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;

@@ -1,3 +1,4 @@
+//! APT repository access.
 use crate::error::Error;
 use debian_control::apt::{Package, Source};
 use debversion::Version;

@@ -1,3 +1,7 @@
+//! Subversion repository prober.
+//!
+//! This module provides a prober for Subversion repositories, but no actual
+//! implementation is provided.
 use crate::controldir::Prober;
 use pyo3::exceptions::PyModuleNotFoundError;
 use pyo3::prelude::*;

@@ -1,3 +1,4 @@
+//! Working trees
 use crate::branch::{Branch, RegularBranch};
 use crate::controldir::ControlDir;
 use crate::error::Error;

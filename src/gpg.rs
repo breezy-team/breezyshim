@@ -1,3 +1,4 @@
+//! GPG related functions and types.
 use crate::repository::Repository;
 use crate::RevisionId;
 use pyo3::import_exception;

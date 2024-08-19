@@ -1,3 +1,8 @@
+//! Configuration handling.
+//!
+//! This module provides access to the Breezy configuration system.
+//! It allows reading and writing configuration values, and provides
+//! access to credential stores.
 use crate::Result;
 use pyo3::prelude::*;
 

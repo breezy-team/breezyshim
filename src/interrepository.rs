@@ -1,3 +1,4 @@
+//! Operations between repositories.
 use crate::error::Error;
 use crate::repository::Repository;
 use crate::RevisionId;

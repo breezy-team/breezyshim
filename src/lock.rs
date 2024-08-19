@@ -1,3 +1,4 @@
+//! Locking of Breezy objects.
 use pyo3::prelude::*;
 
 pub struct Lock(PyObject);

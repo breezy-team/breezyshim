@@ -1,3 +1,7 @@
+//! Support for detecting CVS repositories.
+//!
+//! This module provides a prober for detecting CVS repositories, but
+//! does not provide any support for interacting with them.
 use crate::controldir::Prober;
 use pyo3::exceptions::PyModuleNotFoundError;
 use pyo3::prelude::*;

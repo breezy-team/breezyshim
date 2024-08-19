@@ -1,3 +1,4 @@
+//! Convenience functions for automated operations on a VCS tree
 #[cfg(feature = "dirty-tracker")]
 use crate::dirty_tracker::{DirtyTreeTracker, State as DirtyTrackerState};
 use crate::error::Error;

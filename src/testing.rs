@@ -1,3 +1,4 @@
+//! Test utilities for the Breezy Rust bindings.
 use pyo3::prelude::*;
 use std::collections::HashMap;
 use std::fs;

@@ -1,3 +1,4 @@
+//! Code hosting services and merge proposals.
 use crate::branch::{py_tag_selector, Branch, RegularBranch};
 use crate::error::Error;
 use crate::revisionid::RevisionId;
@@ -328,8 +329,7 @@ impl Forge {
         Python::with_gil(|py| {
             let url = self
                 .to_object(py)
-                .call_method1(py, "get_web_url", (&branch.to_object(py),))
-                ?
+                .call_method1(py, "get_web_url", (&branch.to_object(py),))?
                 .extract::<String>(py)
                 .unwrap();
             Ok(url.parse::<url::Url>().unwrap())

@@ -1,3 +1,4 @@
+//! Error handling for the Breezy Python bindings
 use pyo3::import_exception;
 use pyo3::prelude::*;
 use pyo3::PyErr;
@@ -534,9 +535,13 @@ impl From<PyErr> for Error {
                 Error::GitLabConflict(value.getattr("reason").unwrap().extract().unwrap())
             } else if err.is_instance_of::<SourceNotDerivedFromTarget>(py) {
                 Error::SourceNotDerivedFromTarget
-            } else if BreezyConnectionError.as_ref().and_then(|cls| Python::with_gil(|py| {
-                Some(err.is_instance_bound(py, cls.bind(py)))
-            })).unwrap_or(false) {
+            } else if BreezyConnectionError
+                .as_ref()
+                .and_then(|cls| {
+                    Python::with_gil(|py| Some(err.is_instance_bound(py, cls.bind(py))))
+                })
+                .unwrap_or(false)
+            {
                 Error::ConnectionError(err.to_string())
             // Intentionally sorted below the more specific errors
             } else if err.is_instance_of::<TransportError>(py) {

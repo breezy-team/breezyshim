@@ -1,3 +1,4 @@
+//! Trees
 use crate::branch::Branch;
 use crate::error::Error;
 use crate::lock::Lock;

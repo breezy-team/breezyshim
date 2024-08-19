@@ -1,3 +1,7 @@
+//! Support for detecting Fossil repositories.
+//!
+//! This module provides a prober for detecting Fossil repositories, but
+//! currently does not provide any additional functionality.
 use crate::controldir::Prober;
 use pyo3::exceptions::PyModuleNotFoundError;
 use pyo3::prelude::*;

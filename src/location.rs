@@ -1,3 +1,4 @@
+//! UI-layer location handling
 use pyo3::prelude::*;
 use url::Url;
 
@@ -93,7 +94,9 @@ fn test_as_location_str() {
 
 impl AsLocation for &std::path::Path {
     fn as_location(&self) -> PyObject {
-        Python::with_gil(|py| pyo3::types::PyString::new_bound(py, self.to_str().unwrap()).to_object(py))
+        Python::with_gil(|py| {
+            pyo3::types::PyString::new_bound(py, self.to_str().unwrap()).to_object(py)
+        })
     }
 }
 

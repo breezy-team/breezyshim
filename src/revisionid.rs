@@ -1,3 +1,4 @@
+//! Revision ID type and related functions.
 use pyo3::prelude::*;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 

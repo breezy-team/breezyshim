@@ -1,3 +1,4 @@
+//! Status reporting functions.
 use crate::tree::WorkingTree;
 use pyo3::prelude::*;
 

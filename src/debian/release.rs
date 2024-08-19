@@ -1,3 +1,4 @@
+//! Debian package releasing
 use crate::error::Error;
 use crate::tree::MutableTree;
 use pyo3::prelude::*;

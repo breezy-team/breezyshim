@@ -1,3 +1,4 @@
+//! Tree transformation API.
 use crate::tree::Tree;
 use pyo3::prelude::*;
 

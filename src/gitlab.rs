@@ -1,3 +1,4 @@
+//! Basic support for interacting with GitLab
 use pyo3::prelude::*;
 
 pub fn login(url: &url::Url) -> PyResult<()> {

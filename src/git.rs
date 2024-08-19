@@ -1,3 +1,4 @@
+//! Git version control system support.
 use crate::controldir::Prober;
 use pyo3::exceptions::PyModuleNotFoundError;
 use pyo3::prelude::*;

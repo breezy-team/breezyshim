@@ -1,3 +1,4 @@
+//! Operations between two trees.
 use crate::delta::TreeDelta;
 use crate::tree::Tree;
 use pyo3::prelude::*;

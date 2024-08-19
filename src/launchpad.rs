@@ -1,3 +1,4 @@
+//! Launchpad login and related functions
 use pyo3::prelude::*;
 
 pub fn login(url: &url::Url) {

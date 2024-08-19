@@ -1,3 +1,4 @@
+//! Basic support for interacting with GitHub.
 use pyo3::prelude::*;
 
 pub fn retrieve_github_token() -> String {

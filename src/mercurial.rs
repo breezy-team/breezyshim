@@ -1,3 +1,7 @@
+//! Mercurial prober.
+//!
+//! This allows detecting Mercurial repositories, but does not provide any
+//! functionality to interact with them.
 use crate::controldir::Prober;
 use pyo3::exceptions::PyModuleNotFoundError;
 use pyo3::prelude::*;

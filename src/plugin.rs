@@ -1,3 +1,4 @@
+//! Plugin loading and management.
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 

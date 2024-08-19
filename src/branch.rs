@@ -1,3 +1,13 @@
+//! Branches are the primary way to interact with the history of a project in Breezy.
+//!
+//! A branch is a named sequence of revisions. Each revision is a snapshot of the project at a
+//! particular point in time. Revisions are linked together in a chain, forming a history of the
+//! project. The branch itself is a pointer to the most recent revision in the chain.
+//! Branches can be pushed to and pulled from other branches, allowing changes to be shared between
+//! different branches.
+//!
+//! Breezy supports several different types of branches, each with different capabilities and
+//! constraints.
 use crate::controldir::ControlDir;
 use crate::error::Error;
 use crate::lock::Lock;
