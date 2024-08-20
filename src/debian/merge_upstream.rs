@@ -40,7 +40,7 @@ pub fn do_import(
     force_pristine_tar: bool,
     committer: Option<&str>,
     files_excluded: Option<&[&Path]>,
-) -> Result<Vec<(String, String, RevisionId, bool, PathBuf)>, Error> {
+) -> Result<Vec<(String, String, RevisionId, Option<bool>, PathBuf)>, Error> {
     Python::with_gil(|py| {
         let m = PyModule::import_bound(py, "breezy.plugins.debian.merge_upstream").unwrap();
         let do_import = m.getattr("do_import").unwrap();

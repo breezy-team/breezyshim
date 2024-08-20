@@ -160,7 +160,7 @@ impl UpstreamSource {
         package: &str,
         version: &str,
         target_dir: &Path,
-        components: Option<&[String]>,
+        components: Option<&[Option<String>]>,
     ) -> Result<Vec<PathBuf>, Error> {
         Python::with_gil(|py| {
             Ok(self
