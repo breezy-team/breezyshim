@@ -9,6 +9,10 @@ pub mod release;
 pub mod upstream;
 pub mod vcs_up_to_date;
 
+pub const DEFAULT_BUILD_DIR: &str = "../build-area";
+pub const DEFAULT_ORIG_DIR: &str = "..";
+pub const DEFAULT_RESULT_DIR: &str = "..";
+
 use crate::error::Error;
 use crate::tree::{Tree, WorkingTree};
 use crate::Branch;

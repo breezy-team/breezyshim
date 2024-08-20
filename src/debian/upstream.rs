@@ -63,7 +63,7 @@ impl UpstreamSource {
     ///
     /// # Returns
     /// A tuple of the latest upstream version and the mangled version.
-    fn get_latest_version(
+    pub fn get_latest_version(
         &self,
         package: &str,
         current_version: &str,
@@ -81,7 +81,7 @@ impl UpstreamSource {
     /// # Arguments
     /// * `package`: Name of the package
     /// * `version`: Last upstream version since which to retrieve versions
-    fn get_recent_versions(
+    pub fn get_recent_versions(
         &self,
         package: &str,
         since_version: Option<&str>,
@@ -111,7 +111,7 @@ impl UpstreamSource {
     ///
     /// # Returns
     /// A dictionary mapping component names to revision ids
-    fn version_as_revisions(
+    pub fn version_as_revisions(
         &self,
         package: &str,
         version: &str,
@@ -131,7 +131,7 @@ impl UpstreamSource {
     /// * `package` - Package name
     /// * `version` - Version string
     /// * `tarballs` - Tarballs list
-    fn has_version(
+    pub fn has_version(
         &self,
         package: &str,
         version: &str,
@@ -155,7 +155,7 @@ impl UpstreamSource {
     ///
     /// # Returns
     /// Paths of the fetched tarballs
-    fn fetch_tarballs(
+    pub fn fetch_tarballs(
         &self,
         package: &str,
         version: &str,
