@@ -21,6 +21,7 @@ import_exception!(http.client, IncompleteRead);
 import_exception!(breezy.bzr, LineEndingError);
 import_exception!(breezy.errors, InvalidHttpResponse);
 import_exception!(breezy.errors, AlreadyControlDirError);
+import_exception!(breezy.errors, AlreadyBranchError);
 import_exception!(breezy.errors, DivergedBranches);
 import_exception!(breezy.workspace, WorkspaceDirty);
 import_exception!(breezy.transport, NoSuchFile);
@@ -86,6 +87,7 @@ pub enum Error {
         std::collections::HashMap<String, String>,
     ),
     AlreadyControlDir(std::path::PathBuf),
+    AlreadyBranch(std::path::PathBuf),
     DivergedBranches,
     WorkspaceDirty(std::path::PathBuf),
     NoSuchFile(std::path::PathBuf),
@@ -195,6 +197,7 @@ impl std::fmt::Display for Error {
                 }
             }
             Self::AlreadyControlDir(p) => write!(f, "Already exists: {}", p.display()),
+            Self::AlreadyBranch(p) => write!(f, "Already a branch: {}", p.display()),
             Self::DivergedBranches => write!(f, "Diverged branches"),
             Self::WorkspaceDirty(p) => write!(f, "Workspace dirty at {}", p.display()),
             Self::NoSuchFile(p) => write!(f, "No such file: {}", p.to_string_lossy()),
@@ -341,6 +344,8 @@ impl From<PyErr> for Error {
                 )
             } else if err.is_instance_of::<AlreadyControlDirError>(py) {
                 Error::AlreadyControlDir(value.getattr("path").unwrap().extract().unwrap())
+            } else if err.is_instance_of::<AlreadyBranchError>(py) {
+                Error::AlreadyBranch(value.getattr("path").unwrap().extract().unwrap())
             } else if err.is_instance_of::<DivergedBranches>(py) {
                 Error::DivergedBranches
             } else if err.is_instance_of::<WorkspaceDirty>(py) {
@@ -586,6 +591,9 @@ impl From<Error> for PyErr {
             }
             Error::AlreadyControlDir(path) => {
                 AlreadyControlDirError::new_err((path.to_string_lossy().to_string(),))
+            }
+            Error::AlreadyBranch(path) => {
+                AlreadyBranchError::new_err((path.to_string_lossy().to_string(),))
             }
             Error::DivergedBranches => {
                 Python::with_gil(|py| DivergedBranches::new_err((py.None(), py.None())))
@@ -1182,5 +1190,15 @@ fn test_project_creation_timeout() {
     // Verify that p is an instance of ProjectCreationTimeout
     Python::with_gil(|py| {
         assert!(p.is_instance_of::<ProjectCreationTimeout>(py), "{}", p);
+    });
+}
+
+#[test]
+fn test_already_branch() {
+    let e = Error::AlreadyBranch(std::path::PathBuf::from("foo"));
+    let p: PyErr = e.into();
+    // Verify that p is an instance of AlreadyBranchError
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<AlreadyBranchError>(py), "{}", p);
     });
 }
