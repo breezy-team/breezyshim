@@ -5,6 +5,26 @@ use pyo3::prelude::*;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+pub struct PristineTarSource(PyObject);
+
+impl From<PyObject> for PristineTarSource {
+    fn from(obj: PyObject) -> Self {
+        PristineTarSource(obj)
+    }
+}
+
+impl ToPyObject for PristineTarSource {
+    fn to_object(&self, py: Python) -> PyObject {
+        self.0.clone_ref(py)
+    }
+}
+
+impl IntoPy<PyObject> for PristineTarSource {
+    fn into_py(self, py: Python) -> PyObject {
+        self.to_object(py)
+    }
+}
+
 /// A source for upstream versions (uscan, debian/rules, etc).
 pub struct UpstreamBranchSource(PyObject);
 
@@ -184,5 +204,30 @@ impl UpstreamBranchSource {
     pub fn upstream_branch(&self) -> Box<dyn crate::branch::Branch> {
         let o = Python::with_gil(|py| self.to_object(py).getattr(py, "upstream_branch").unwrap());
         Box::new(crate::branch::RegularBranch::new(o))
+    }
+}
+
+impl UpstreamSource for PristineTarSource {}
+
+impl PristineTarSource {
+    /// Check whether this upstream source contains a particular package.
+    ///
+    /// # Arguments
+    /// * `package` - Package name
+    /// * `version` - Version string
+    /// * `tarballs` - Tarballs list
+    pub fn has_version(
+        &self,
+        package: &str,
+        version: &str,
+        tarballs: Option<Tarballs>,
+        try_hard: bool,
+    ) -> Result<bool, Error> {
+        Python::with_gil(|py| {
+            Ok(self
+                .to_object(py)
+                .call_method1(py, "has_version", (package, version, tarballs, try_hard))?
+                .extract(py)?)
+        })
     }
 }
