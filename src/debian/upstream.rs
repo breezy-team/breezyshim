@@ -1,4 +1,4 @@
-use crate::error::Error;
+use crate::debian::error::Error;
 use crate::RevisionId;
 use pyo3::prelude::*;
 use std::collections::HashMap;

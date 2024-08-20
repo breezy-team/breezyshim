@@ -1,6 +1,6 @@
 use crate::branch::Branch;
+use crate::debian::error::Error;
 use crate::debian::upstream::UpstreamSource;
-use crate::error::Error;
 use crate::tree::Tree;
 use crate::workingtree::WorkingTree;
 use crate::RevisionId;
