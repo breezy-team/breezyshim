@@ -18,6 +18,31 @@ pub enum Error {
     MissingUpstreamTarball { package: String, version: String },
 }
 
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Error::BrzError(err) => write!(f, "{}", err),
+            Error::BuildFailed => write!(f, "Build failed"),
+            Error::UpstreamAlreadyImported(version) => {
+                write!(f, "Upstream version {} already imported", version)
+            }
+            Error::DistCommandFailed(err) => write!(f, "Dist command failed: {}", err),
+            Error::PackageVersionNotPresent { package, version } => {
+                write!(f, "Package {} version {} not present", package, version)
+            }
+            Error::MissingUpstreamTarball { package, version } => {
+                write!(
+                    f,
+                    "Missing upstream tarball for {} version {}",
+                    package, version
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for Error {}
+
 impl From<BrzError> for Error {
     fn from(err: BrzError) -> Error {
         Error::BrzError(err)
