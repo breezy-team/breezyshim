@@ -23,6 +23,39 @@ use std::path::PathBuf;
 
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
+use pyo3::exceptions::PyValueError;
+
+#[derive(Debug, Clone, PartialEq, Eq, std::hash::Hash, Default)]
+pub enum VersionKind {
+    #[default]
+    Auto,
+    Snapshot,
+    Release,
+}
+
+impl ToPyObject for VersionKind {
+    fn to_object(&self, py: Python) -> PyObject {
+        match self {
+            VersionKind::Auto => "auto".to_object(py),
+            VersionKind::Snapshot => "snapshot".to_object(py),
+            VersionKind::Release => "release".to_object(py),
+        }
+    }
+}
+
+impl FromPyObject<'_> for VersionKind {
+    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
+        let kind = ob.extract::<String>()?;
+        match kind.as_str() {
+            "auto" => Ok(VersionKind::Auto),
+            "snapshot" => Ok(VersionKind::Snapshot),
+            "release" => Ok(VersionKind::Release),
+            _ => Err(PyValueError::new_err((
+                format!("Invalid version kind: {}", kind),
+            ))),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, std::hash::Hash)]
 pub enum TarballKind {

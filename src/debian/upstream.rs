@@ -1,6 +1,9 @@
 use crate::debian::error::Error;
+use crate::controldir::ControlDir;
+use crate::debian::VersionKind;
 use crate::debian::TarballKind;
 use crate::RevisionId;
+use pyo3::types::PyDict;
 use pyo3::prelude::*;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -217,6 +220,22 @@ impl UpstreamBranchSource {
                 .to_object(py)
                 .call_method1(py, "version_as_revision", (package, version, tarballs))?
                 .extract(py)?)
+        })
+    }
+
+    pub fn from_branch(upstream_branch: &dyn crate::branch::Branch, version_kind: Option<VersionKind>, local_dir: &ControlDir) -> Result<Self, Error> {
+        Python::with_gil(|py| {
+            let m = py
+                .import_bound("breezy.plugins.debian.org.upstream.branch")
+                .unwrap();
+            let cls = m.getattr("UpstreamBranchSource").unwrap();
+            let upstream_branch = upstream_branch.to_object(py);
+            let kwargs = PyDict::new_bound(py);
+            kwargs.set_item("version_kind", version_kind.unwrap_or_default())?;
+            kwargs.set_item("local_dir", local_dir.to_object(py))?;
+            Ok(UpstreamBranchSource(
+                cls.call_method("from_branch", (upstream_branch,), Some(&kwargs))?.into(),
+            ))
         })
     }
 }
