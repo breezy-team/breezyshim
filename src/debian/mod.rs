@@ -4,6 +4,7 @@
 //!
 //! It mostly wraps the `breezy.plugins.debian` module from the Breezy VCS.
 pub mod apt;
+pub mod error;
 pub mod merge_upstream;
 pub mod release;
 pub mod upstream;
@@ -13,86 +14,15 @@ pub const DEFAULT_BUILD_DIR: &str = "../build-area";
 pub const DEFAULT_ORIG_DIR: &str = "..";
 pub const DEFAULT_RESULT_DIR: &str = "..";
 
+use crate::debian::error::Error as DebianError;
 use crate::error::Error;
 use crate::tree::{Tree, WorkingTree};
 use crate::Branch;
-use debian_control::changes::Changes;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
-
-#[derive(Debug)]
-pub enum BuildError {
-    BuildFailed,
-    PackageVersionNotPresent(String, debversion::Version),
-    MissingUpstreamTarball(String, debversion::Version),
-    Other(pyo3::PyErr),
-}
-
-impl std::fmt::Display for BuildError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            BuildError::Other(e) => write!(f, "Python error: {}", e),
-            BuildError::BuildFailed => write!(f, "Build failed"),
-            BuildError::PackageVersionNotPresent(package, version) => {
-                write!(f, "Version {} of package {} not present", version, package)
-            }
-            BuildError::MissingUpstreamTarball(package, version) => {
-                write!(
-                    f,
-                    "Upstream tarball for version {} of package {} not present",
-                    version, package
-                )
-            }
-        }
-    }
-}
-
-impl std::error::Error for BuildError {}
-
-impl From<pyo3::PyErr> for BuildError {
-    fn from(e: pyo3::PyErr) -> Self {
-        pyo3::import_exception!(breezy.plugins.debian.builder, BuildFailedError);
-        pyo3::import_exception!(breezy.plugins.debian.upstream, PackageVersionNotPresent);
-        pyo3::import_exception!(breezy.plugins.debian.upstream, MissingUpstreamTarball);
-
-        pyo3::Python::with_gil(|py| {
-            if e.is_instance_of::<BuildFailedError>(py) {
-                BuildError::BuildFailed
-            } else if e.is_instance_of::<PackageVersionNotPresent>(py) {
-                let args = e.value_bound(py);
-                let package_name = args
-                    .getattr("package")
-                    .unwrap()
-                    .extract::<String>()
-                    .unwrap();
-                let version = args
-                    .getattr("version")
-                    .unwrap()
-                    .extract::<debversion::Version>()
-                    .unwrap();
-                BuildError::PackageVersionNotPresent(package_name, version)
-            } else if e.is_instance_of::<MissingUpstreamTarball>(py) {
-                let args = e.value_bound(py);
-                let package_name = args
-                    .getattr("package")
-                    .unwrap()
-                    .extract::<String>()
-                    .unwrap();
-                let version = args
-                    .getattr("version")
-                    .unwrap()
-                    .extract::<debversion::Version>()
-                    .unwrap();
-                BuildError::MissingUpstreamTarball(package_name, version)
-            } else {
-                BuildError::Other(e)
-            }
-        })
-    }
-}
 
 pub fn build_helper(
     local_tree: &WorkingTree,
@@ -102,7 +32,7 @@ pub fn build_helper(
     builder: &str,
     guess_upstream_branch_url: bool,
     apt_repo: Option<&dyn apt::Apt>,
-) -> Result<HashMap<String, PathBuf>, BuildError> {
+) -> Result<HashMap<String, PathBuf>, DebianError> {
     pyo3::prepare_freethreaded_python();
 
     Python::with_gil(|py| -> PyResult<HashMap<String, PathBuf>> {
@@ -122,7 +52,7 @@ pub fn build_helper(
             .call_method1("_build_helper", (locals,))?
             .extract()
     })
-    .map_err(BuildError::from)
+    .map_err(DebianError::from)
 }
 
 /// Return the name of the debian tag for the given tree and branch.
