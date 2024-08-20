@@ -21,6 +21,68 @@ impl ToPyObject for WorkingTree {
     }
 }
 
+pub struct CommitBuilder(WorkingTree, Py<pyo3::types::PyDict>);
+
+impl From<WorkingTree> for CommitBuilder {
+    fn from(wt: WorkingTree) -> Self {
+        Python::with_gil(|py| {
+            let kwargs = pyo3::types::PyDict::new_bound(py);
+            CommitBuilder(wt, kwargs.into())
+        })
+    }
+}
+
+impl CommitBuilder {
+    pub fn committer(self, committer: &str) -> Self {
+        Python::with_gil(|py| {
+            self.1.bind(py).set_item("committer", committer).unwrap();
+        });
+        self
+    }
+
+    pub fn message(self, message: &str) -> Self {
+        Python::with_gil(|py| {
+            self.1.bind(py).set_item("message", message).unwrap();
+        });
+        self
+    }
+
+    pub fn specific_files(self, specific_files: &[&Path]) -> Self {
+        let specific_files: Vec<PathBuf> = specific_files.iter().map(|x| x.to_path_buf()).collect();
+        Python::with_gil(|py| {
+            self.1.bind(py)
+                .set_item("specific_files", specific_files)
+                .unwrap();
+        });
+        self
+    }
+
+    pub fn allow_pointless(self, allow_pointless: bool) -> Self {
+        Python::with_gil(|py| {
+            self.1.bind(py).set_item("allow_pointless", allow_pointless).unwrap();
+        });
+        self
+    }
+
+    pub fn reporter(self, reporter: &impl crate::commit::CommitReporter) -> Self {
+        Python::with_gil(|py| {
+            self.1.bind(py).set_item("reporter", reporter).unwrap();
+        });
+        self
+    }
+
+    pub fn commit(self) -> Result<RevisionId, Error> {
+        Python::with_gil(|py| {
+            Ok(self
+                .0
+                .to_object(py)
+                .call_method_bound(py, "commit", (), Some(self.1.bind(py)))?
+                .extract(py)
+                .unwrap())
+        })
+    }
+}
+
 impl WorkingTree {
     pub fn is_control_filename(&self, path: &Path) -> bool {
         Python::with_gil(|py| {
@@ -143,6 +205,11 @@ impl WorkingTree {
         .map(|_| ())
     }
 
+    pub fn build_commit(&self) -> CommitBuilder {
+        CommitBuilder::from(self.clone())
+    }
+
+    #[deprecated = "Use build_commit instead"]
     pub fn commit(
         &self,
         message: &str,
@@ -150,34 +217,22 @@ impl WorkingTree {
         committer: Option<&str>,
         specific_files: Option<&[&Path]>,
     ) -> Result<RevisionId, Error> {
-        Python::with_gil(|py| {
-            let kwargs = pyo3::types::PyDict::new_bound(py);
-            if let Some(committer) = committer {
-                kwargs.set_item("committer", committer).unwrap();
-            }
-            if let Some(specific_files) = specific_files {
-                kwargs.set_item("specific_files", specific_files).unwrap();
-            }
-            if let Some(allow_pointless) = allow_pointless {
-                kwargs.set_item("allow_pointless", allow_pointless).unwrap();
-            }
+        let mut builder = self.build_commit()
+            .message(message);
 
-            let null_commit_reporter = py
-                .import_bound("breezy.commit")
-                .unwrap()
-                .getattr("NullCommitReporter")
-                .unwrap()
-                .call0()
-                .unwrap();
-            kwargs.set_item("reporter", null_commit_reporter).unwrap();
+        if let Some(specific_files) = specific_files {
+            builder = builder.specific_files(specific_files);
+        }
 
-            Ok(self
-                .to_object(py)
-                .call_method_bound(py, "commit", (message,), Some(&kwargs))
-                .map_err(|e| -> Error { e.into() })?
-                .extract(py)
-                .unwrap())
-        })
+        if let Some(allow_pointless) = allow_pointless {
+            builder = builder.allow_pointless(allow_pointless);
+        }
+
+        if let Some(committer) = committer {
+            builder = builder.committer(committer);
+        }
+
+        builder.commit()
     }
 
     pub fn last_revision(&self) -> Result<RevisionId, Error> {
