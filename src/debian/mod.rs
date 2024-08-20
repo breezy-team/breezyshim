@@ -24,6 +24,50 @@ use std::path::PathBuf;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
+#[derive(Debug, Clone, PartialEq, Eq, std::hash::Hash)]
+pub enum TarballKind {
+    Orig,
+    Additional(String),
+}
+
+impl From<Option<String>> for TarballKind {
+    fn from(kind: Option<String>) -> Self {
+        match kind {
+            Some(kind) => TarballKind::Additional(kind),
+            None => TarballKind::Orig,
+        }
+    }
+}
+
+impl From<TarballKind> for Option<String> {
+    fn from(kind: TarballKind) -> Self {
+        match kind {
+            TarballKind::Orig => None,
+            TarballKind::Additional(kind) => Some(kind),
+        }
+    }
+}
+
+impl FromPyObject<'_> for TarballKind {
+    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
+        let kind = ob.extract::<Option<String>>()?;
+        Ok(kind.into())
+    }
+}
+
+impl ToPyObject for TarballKind {
+    fn to_object(&self, py: Python) -> PyObject {
+        let o: Option<String> = self.clone().into();
+        o.to_object(py)
+    }
+}
+
+impl IntoPy<PyObject> for TarballKind {
+    fn into_py(self, py: Python) -> PyObject {
+        self.to_object(py)
+    }
+}
+
 pub fn build_helper(
     local_tree: &WorkingTree,
     subpath: &std::path::Path,

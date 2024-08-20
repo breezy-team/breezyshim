@@ -1,6 +1,7 @@
 use crate::branch::Branch;
 use crate::debian::error::Error;
 use crate::debian::upstream::UpstreamSource;
+use crate::debian::TarballKind;
 use crate::tree::Tree;
 use crate::workingtree::WorkingTree;
 use crate::RevisionId;
@@ -29,18 +30,18 @@ use std::path::{Path, PathBuf};
 pub fn do_import(
     tree: &WorkingTree,
     subpath: &Path,
-    tarball_filenames: &[(&Path, &str)],
+    tarball_filenames: &[&Path],
     package: &str,
     version: &str,
-    current_version: &str,
+    current_version: Option<&str>,
     upstream_branch: &dyn Branch,
-    upstream_revisions: HashMap<String, RevisionId>,
+    upstream_revisions: HashMap<TarballKind, (RevisionId, PathBuf)>,
     merge_type: Option<&str>,
     force: bool,
     force_pristine_tar: bool,
     committer: Option<&str>,
     files_excluded: Option<&[&Path]>,
-) -> Result<Vec<(String, String, RevisionId, Option<bool>, PathBuf)>, Error> {
+) -> Result<Vec<(TarballKind, String, RevisionId, Option<bool>, PathBuf)>, Error> {
     Python::with_gil(|py| {
         let m = PyModule::import_bound(py, "breezy.plugins.debian.merge_upstream").unwrap();
         let do_import = m.getattr("do_import").unwrap();
@@ -85,10 +86,10 @@ pub fn get_tarballs(
 }
 
 pub fn get_existing_imported_upstream_revids(
-    upstream_source: &UpstreamSource,
+    upstream_source: &dyn UpstreamSource,
     package: &str,
     new_upstream_version: &str,
-) -> Result<Vec<(String, String, RevisionId, Option<bool>, PathBuf)>, Error> {
+) -> Result<Vec<(TarballKind, String, RevisionId, Option<bool>, PathBuf)>, Error> {
     Python::with_gil(|py| {
         let m = PyModule::import_bound(py, "breezy.plugins.debian.merge_upstream").unwrap();
         let get_existing_imported_upstream_revids =
