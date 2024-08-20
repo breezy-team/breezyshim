@@ -87,8 +87,8 @@ pub trait UpstreamSource: ToPyObject {
     fn get_latest_version(
         &self,
         package: &str,
-        current_version: &str,
-    ) -> Result<(String, String), Error> {
+        current_version: Option<&str>,
+    ) -> Result<Option<(String, String)>, Error> {
         Python::with_gil(|py| {
             Ok(self
                 .to_object(py)
@@ -205,6 +205,20 @@ impl UpstreamBranchSource {
         let o = Python::with_gil(|py| self.to_object(py).getattr(py, "upstream_branch").unwrap());
         Box::new(crate::branch::RegularBranch::new(o))
     }
+
+    pub fn version_as_revision(
+        &self,
+        package: &str,
+        version: &str,
+        tarballs: Option<Tarballs>,
+    ) -> Result<(RevisionId, PathBuf), Error> {
+        Python::with_gil(|py| {
+            Ok(self
+                .to_object(py)
+                .call_method1(py, "version_as_revision", (package, version, tarballs))?
+                .extract(py)?)
+        })
+    }
 }
 
 impl UpstreamSource for PristineTarSource {}
@@ -230,4 +244,37 @@ impl PristineTarSource {
                 .extract(py)?)
         })
     }
+}
+
+/// Update the revision in a upstream version string.
+///
+/// # Arguments
+/// * `branch` - Branch in which the revision can be found
+/// * `version_string` - Original version string
+/// * `revid` - Revision id of the revision
+/// * `sep` - Separator to use when adding snapshot
+pub fn upstream_version_add_revision(
+    upstream_branch: &dyn crate::branch::Branch,
+    version_string: &str,
+    revid: &RevisionId,
+    sep: Option<&str>,
+) -> Result<String, Error> {
+    let sep = sep.unwrap_or("+");
+    Python::with_gil(|py| {
+        let m = py
+            .import_bound("breezy.plugins.debian.org.upstream.branch")
+            .unwrap();
+        let upstream_version_add_revision = m.getattr("upstream_version_add_revision").unwrap();
+        Ok(upstream_version_add_revision
+            .call_method1(
+                "upstream_version_add_revision",
+                (
+                    upstream_branch.to_object(py),
+                    version_string,
+                    revid.to_object(py),
+                    sep,
+                ),
+            )?
+            .extract()?)
+    })
 }
