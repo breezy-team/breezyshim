@@ -4,7 +4,9 @@
 //!
 //! It mostly wraps the `breezy.plugins.debian` module from the Breezy VCS.
 pub mod apt;
+pub mod merge_upstream;
 pub mod release;
+pub mod upstream;
 pub mod vcs_up_to_date;
 
 use crate::error::Error;
