@@ -259,6 +259,17 @@ pub trait Branch: ToPyObject + Send {
                 .map_err(|e| e.into())
         })
     }
+
+    fn generate_revision_history(&self, last_revision: &RevisionId) -> Result<(), Error> {
+        Python::with_gil(|py| {
+            self.to_object(py).call_method1(
+                py,
+                "generate_revision_history",
+                (last_revision.to_object(py),),
+            )?;
+            Ok(())
+        })
+    }
 }
 
 #[derive(Clone)]
