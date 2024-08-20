@@ -17,6 +17,7 @@
 
 pub mod bazaar;
 pub mod branch;
+pub mod commit;
 pub mod config;
 pub mod controldir;
 pub mod cvs;
