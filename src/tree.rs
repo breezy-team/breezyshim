@@ -461,6 +461,8 @@ pub trait MutableTree: Tree {
         })
         .map_err(|e| e.into())
     }
+
+    fn as_tree(&self) -> &dyn Tree;
 }
 
 pub struct RevisionTree(pub PyObject);
@@ -598,7 +600,11 @@ impl From<&dyn Branch> for MemoryTree {
 
 impl Tree for MemoryTree {}
 
-impl MutableTree for MemoryTree {}
+impl MutableTree for MemoryTree {
+    fn as_tree(&self) -> &dyn Tree {
+        self
+    }
+}
 
 pub use crate::workingtree::WorkingTree;
 

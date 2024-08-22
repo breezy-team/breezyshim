@@ -50,7 +50,8 @@ impl CommitBuilder {
     pub fn specific_files(self, specific_files: &[&Path]) -> Self {
         let specific_files: Vec<PathBuf> = specific_files.iter().map(|x| x.to_path_buf()).collect();
         Python::with_gil(|py| {
-            self.1.bind(py)
+            self.1
+                .bind(py)
                 .set_item("specific_files", specific_files)
                 .unwrap();
         });
@@ -59,7 +60,10 @@ impl CommitBuilder {
 
     pub fn allow_pointless(self, allow_pointless: bool) -> Self {
         Python::with_gil(|py| {
-            self.1.bind(py).set_item("allow_pointless", allow_pointless).unwrap();
+            self.1
+                .bind(py)
+                .set_item("allow_pointless", allow_pointless)
+                .unwrap();
         });
         self
     }
@@ -217,8 +221,7 @@ impl WorkingTree {
         committer: Option<&str>,
         specific_files: Option<&[&Path]>,
     ) -> Result<RevisionId, Error> {
-        let mut builder = self.build_commit()
-            .message(message);
+        let mut builder = self.build_commit().message(message);
 
         if let Some(specific_files) = specific_files {
             builder = builder.specific_files(specific_files);
@@ -290,4 +293,8 @@ impl From<PyObject> for WorkingTree {
 
 impl Tree for WorkingTree {}
 
-impl MutableTree for WorkingTree {}
+impl MutableTree for WorkingTree {
+    fn as_tree(&self) -> &dyn Tree {
+        self
+    }
+}
