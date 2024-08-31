@@ -1,5 +1,5 @@
 //! Tree transformation API.
-use crate::tree::Tree;
+use crate::tree::{PathBuf, Tree};
 use pyo3::prelude::*;
 
 pub struct TreeTransform(PyObject);
@@ -21,6 +21,36 @@ impl FromPyObject<'_> for TreeChange {
 
 #[derive(Clone)]
 pub struct Conflict(PyObject);
+
+impl Conflict {
+    pub fn associated_filenames(&self) -> Result<Vec<PathBuf>, crate::error::Error> {
+        let mut v: Vec<PathBuf> = vec![];
+
+        Python::with_gil(|py| {
+            let ret = self.0.getattr(py, "associated_filenames")?;
+
+            for item in ret.bind(py).iter()? {
+                v.push(item?.extract()?);
+            }
+
+            Ok(v)
+        })
+    }
+
+    pub fn describe(&self) -> Result<String, crate::error::Error> {
+        Python::with_gil(|py| {
+            let ret = self.0.call_method0(py, "describe")?;
+            Ok(ret.extract(py)?)
+        })
+    }
+
+    pub fn cleanup(&self, tree: &dyn Tree) -> Result<(), crate::error::Error> {
+        Python::with_gil(|py| {
+            self.0.call_method1(py, "cleanup", (tree.to_object(py),))?;
+            Ok(())
+        })
+    }
+}
 
 pub struct PreviewTree(PyObject);
 
