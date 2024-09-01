@@ -8,7 +8,7 @@ use pyo3::prelude::*;
 pub type Path = std::path::Path;
 pub type PathBuf = std::path::PathBuf;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Eq)]
 pub enum Kind {
     File,
     Directory,
@@ -25,13 +25,31 @@ impl Kind {
             Kind::TreeReference => "+",
         }
     }
+}
 
-    pub fn to_string(&self) -> &'static str {
+impl std::fmt::Display for Kind {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Kind::File => "file",
-            Kind::Directory => "directory",
-            Kind::Symlink => "symlink",
-            Kind::TreeReference => "tree-reference",
+            Kind::File => write!(f, "file"),
+            Kind::Directory => write!(f, "directory"),
+            Kind::Symlink => write!(f, "symlink"),
+            Kind::TreeReference => write!(f, "tree-reference"),
+        }
+    }
+}
+
+impl std::str::FromStr for Kind {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "file" => Ok(Kind::File),
+            "directory" => Ok(Kind::Directory),
+            "symlink" => Ok(Kind::Symlink),
+            "tree-reference" => Ok(Kind::TreeReference),
+            n => {
+                return Err(format!("Invalid kind: {}", n));
+            }
         }
     }
 }
@@ -516,7 +534,7 @@ pub struct TreeChange {
     pub changed_content: bool,
     pub versioned: (Option<bool>, Option<bool>),
     pub name: (Option<std::ffi::OsString>, Option<std::ffi::OsString>),
-    pub kind: (Option<String>, Option<String>),
+    pub kind: (Option<Kind>, Option<Kind>),
     pub executable: (Option<bool>, Option<bool>),
     pub copied: bool,
 }
