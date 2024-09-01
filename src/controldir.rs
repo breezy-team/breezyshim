@@ -70,7 +70,7 @@ impl ControlDir {
 
     #[deprecated]
     pub fn create_branch_convenience(base: &url::Url) -> Result<Box<dyn Branch>, Error> {
-        create_branch_convenience(base)
+        create_branch_convenience(base, None)
     }
 
     #[deprecated]
@@ -372,7 +372,11 @@ pub fn open_tree_or_branch(
 #[test]
 fn test_open_tree_or_branch() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    create_branch_convenience(&url::Url::from_directory_path(tmp_dir.path()).unwrap()).unwrap();
+    create_branch_convenience(
+        &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
+        None,
+    )
+    .unwrap();
     let (wt, branch) = open_tree_or_branch(
         &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
         None,
@@ -599,11 +603,22 @@ impl AsFormat for &ControlDirFormat {
     }
 }
 
-pub fn create_branch_convenience(base: &url::Url) -> Result<Box<dyn Branch>, Error> {
+pub fn create_branch_convenience(
+    base: &url::Url,
+    force_new_tree: Option<bool>,
+) -> Result<Box<dyn Branch>, Error> {
     Python::with_gil(|py| {
         let m = py.import_bound("breezy.controldir")?;
         let cd = m.getattr("ControlDir")?;
-        let branch = cd.call_method("create_branch_convenience", (base.to_string(),), None)?;
+        let kwargs = PyDict::new_bound(py);
+        if let Some(force_new_tree) = force_new_tree {
+            kwargs.set_item("force_new_tree", force_new_tree)?;
+        }
+        let branch = cd.call_method(
+            "create_branch_convenience",
+            (base.to_string(),),
+            Some(&kwargs),
+        )?;
         Ok(Box::new(RegularBranch::new(branch.to_object(py))) as Box<dyn Branch>)
     })
 }
@@ -645,8 +660,11 @@ fn test_create_standalone_workingtree() {
 #[test]
 fn test_create_branch_convenience() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let branch =
-        create_branch_convenience(&url::Url::from_directory_path(tmp_dir.path()).unwrap()).unwrap();
+    let branch = create_branch_convenience(
+        &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
+        None,
+    )
+    .unwrap();
 
     assert_eq!(
         branch.get_user_url(),
