@@ -136,7 +136,11 @@ mod applied_patches_tests {
         .unwrap();
         std::fs::write(td.path().join("a"), "a\n").unwrap();
         tree.add(&[std::path::Path::new("a")]).unwrap();
-        tree.build_commit().message("Add a").commit().unwrap();
+        tree.build_commit()
+            .message("Add a")
+            .reporter(&crate::commit::NullCommitReporter::new())
+            .commit()
+            .unwrap();
         let patch = UnifiedPatch::parse_patch(patchkit::parse::splitlines(
             br#"--- a/a
 +++ b/a
@@ -168,7 +172,11 @@ mod applied_patches_tests {
         .unwrap();
         std::fs::write(td.path().join("a"), "a\n").unwrap();
         tree.add(&[std::path::Path::new("a")]).unwrap();
-        tree.build_commit().message("Add a").commit().unwrap();
+        tree.build_commit()
+            .reporter(&crate::commit::NullCommitReporter::new())
+            .message("Add a")
+            .commit()
+            .unwrap();
         let patch = patchkit::patch::UnifiedPatch::parse_patch(patchkit::parse::splitlines(
             br#"--- a/a
 +++ /dev/null
@@ -194,7 +202,11 @@ mod applied_patches_tests {
         .unwrap();
         std::fs::write(td.path().join("a"), "a\n").unwrap();
         tree.add(&[std::path::Path::new("a")]).unwrap();
-        tree.build_commit().message("Add a").commit().unwrap();
+        tree.build_commit()
+            .reporter(&crate::commit::NullCommitReporter::new())
+            .message("Add a")
+            .commit()
+            .unwrap();
         let patch = patchkit::patch::UnifiedPatch::parse_patch(patchkit::parse::splitlines(
             br#"--- /dev/null
 +++ b/b

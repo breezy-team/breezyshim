@@ -4,6 +4,7 @@
 //!
 //! It mostly wraps the `breezy.plugins.debian` module from the Breezy VCS.
 pub mod apt;
+pub mod debcommit;
 pub mod error;
 pub mod merge_upstream;
 pub mod release;
@@ -21,9 +22,54 @@ use crate::Branch;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
-use pyo3::exceptions::PyValueError;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Vendor {
+    Debian,
+    Ubuntu,
+    Kali,
+}
+
+impl std::fmt::Display for Vendor {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Vendor::Debian => write!(f, "debian"),
+            Vendor::Ubuntu => write!(f, "ubuntu"),
+            Vendor::Kali => write!(f, "kali"),
+        }
+    }
+}
+
+impl std::str::FromStr for Vendor {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "debian" => Ok(Vendor::Debian),
+            "ubuntu" => Ok(Vendor::Ubuntu),
+            "kali" => Ok(Vendor::Kali),
+            _ => Err(format!("Invalid vendor: {}", s)),
+        }
+    }
+}
+
+impl FromPyObject<'_> for Vendor {
+    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
+        let vendor = ob.extract::<String>()?;
+        match vendor.as_str() {
+            "debian" => Ok(Vendor::Debian),
+            "ubuntu" => Ok(Vendor::Ubuntu),
+            "kali" => Ok(Vendor::Kali),
+            _ => Err(PyValueError::new_err((format!(
+                "Invalid vendor: {}",
+                vendor
+            ),))),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, std::hash::Hash, Default)]
 pub enum VersionKind {
@@ -50,9 +96,10 @@ impl FromPyObject<'_> for VersionKind {
             "auto" => Ok(VersionKind::Auto),
             "snapshot" => Ok(VersionKind::Snapshot),
             "release" => Ok(VersionKind::Release),
-            _ => Err(PyValueError::new_err((
-                format!("Invalid version kind: {}", kind),
-            ))),
+            _ => Err(PyValueError::new_err((format!(
+                "Invalid version kind: {}",
+                kind
+            ),))),
         }
     }
 }
@@ -146,14 +193,43 @@ pub fn tree_debian_tag_name(
     tree: &dyn Tree,
     branch: &dyn Branch,
     subpath: Option<&std::path::Path>,
-    vendor: Option<String>,
+    vendor: Option<Vendor>,
 ) -> Result<String, Error> {
     Python::with_gil(|py| {
         let result = py.import_bound("breezy.plugins.debian")?.call_method1(
             "tree_debian_tag_name",
-            (tree.to_object(py), branch.to_object(py), subpath, vendor),
+            (
+                tree.to_object(py),
+                branch.to_object(py),
+                subpath,
+                vendor.map(|v| v.to_string()),
+            ),
         )?;
 
         Ok(result.extract()?)
     })
+}
+
+// TODO(jelmer): deduplicate this with the suite_to_distribution function
+// in debian-analyzer
+/// Infer the distribution from a suite.
+///
+/// When passed the name of a suite (anything in the distributions field of
+/// a changelog) it will infer the distribution from that (i.e. Debian or
+/// Ubuntu).
+///
+/// # Arguments
+/// * `suite`: the string containing the suite
+///
+/// # Returns
+/// Vendor or None if the distribution cannot be inferred.
+pub fn suite_to_distribution(suite: &str) -> Option<Vendor> {
+    Python::with_gil(|py| -> PyResult<Option<Vendor>> {
+        let result = py
+            .import_bound("breezy.plugins.debian.util")?
+            .call_method1("suite_to_distribution", (suite,))?;
+
+        Ok(result.extract()?)
+    })
+    .unwrap()
 }

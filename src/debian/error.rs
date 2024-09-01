@@ -7,6 +7,7 @@ import_exception!(breezy.plugins.debian.import_dsc, UpstreamAlreadyImported);
 import_exception!(breezy.plugins.debian.upstream.branch, DistCommandfailed);
 import_exception!(breezy.plugins.debian.upstream, PackageVersionNotPresent);
 import_exception!(breezy.plugins.debian.upstream, MissingUpstreamTarball);
+import_exception!(breezy.plugins.debian.changelog, UnreleasedChanges);
 
 #[derive(Debug)]
 pub enum Error {
@@ -16,6 +17,8 @@ pub enum Error {
     DistCommandFailed(String),
     PackageVersionNotPresent { package: String, version: String },
     MissingUpstreamTarball { package: String, version: String },
+    UnreleasedChanges,
+    ChangeLogError(debian_changelog::Error),
 }
 
 impl std::fmt::Display for Error {
@@ -37,6 +40,8 @@ impl std::fmt::Display for Error {
                     package, version
                 )
             }
+            Error::UnreleasedChanges => write!(f, "Unreleased changes"),
+            Error::ChangeLogError(err) => write!(f, "{}", err),
         }
     }
 }
@@ -46,6 +51,12 @@ impl std::error::Error for Error {}
 impl From<BrzError> for Error {
     fn from(err: BrzError) -> Error {
         Error::BrzError(err)
+    }
+}
+
+impl From<debian_changelog::Error> for Error {
+    fn from(err: debian_changelog::Error) -> Error {
+        Error::ChangeLogError(err)
     }
 }
 
@@ -74,6 +85,8 @@ impl From<PyErr> for Error {
                     }
                 } else if err.is_instance_of::<BuildFailedError>(py) {
                     Error::BuildFailed
+                } else if err.is_instance_of::<UnreleasedChanges>(py) {
+                    Error::UnreleasedChanges
                 } else {
                     Error::BrzError(brz_error)
                 }

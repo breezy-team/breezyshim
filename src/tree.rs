@@ -638,7 +638,11 @@ mod tests {
         let path = td.path().join("foo");
         std::fs::write(&path, b"").unwrap();
         wt.add(&[(std::path::Path::new("foo"))]).unwrap();
-        wt.commit("Initial commit", None, None, None).unwrap();
+        wt.build_commit()
+            .message("Initial commit")
+            .reporter(&crate::commit::NullCommitReporter::new())
+            .commit()
+            .unwrap();
         assert!(wt.has_filename(&path));
         wt.remove(&[&path]).unwrap();
         assert!(!wt.is_versioned(&path));
