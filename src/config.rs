@@ -95,6 +95,15 @@ impl ConfigStack {
             }
         })
     }
+
+    pub fn set(&self, key: &str, value: &impl ConfigValue) -> Result<()> {
+        Python::with_gil(|py| -> Result<()> {
+            self.0
+                .call_method1(py, "set", (key, value.to_object(py)))?;
+            Ok(())
+        })?;
+        Ok(())
+    }
 }
 
 pub fn global_stack() -> Result<ConfigStack> {
