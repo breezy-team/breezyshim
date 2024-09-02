@@ -335,13 +335,6 @@ impl From<PyErr> for Error {
                 )
             } else if err.is_instance_of::<LineEndingError>(py) {
                 Error::LineEndingError(value.getattr("file").unwrap().extract().unwrap())
-            } else if err.is_instance_of::<InvalidHttpResponse>(py) {
-                Error::InvalidHttpResponse(
-                    value.getattr("path").unwrap().extract().unwrap(),
-                    value.getattr("msg").unwrap().extract().unwrap(),
-                    value.getattr("orig_error").unwrap().extract().unwrap(),
-                    value.getattr("headers").unwrap().extract().unwrap(),
-                )
             } else if err.is_instance_of::<AlreadyControlDirError>(py) {
                 Error::AlreadyControlDir(value.getattr("path").unwrap().extract().unwrap())
             } else if err.is_instance_of::<AlreadyBranchError>(py) {
@@ -549,8 +542,15 @@ impl From<PyErr> for Error {
             {
                 Error::ConnectionError(err.to_string())
             // Intentionally sorted below the more specific errors
+            } else if err.is_instance_of::<InvalidHttpResponse>(py) {
+                Error::InvalidHttpResponse(
+                    value.getattr("path").unwrap().extract().unwrap(),
+                    value.getattr("msg").unwrap().extract().unwrap(),
+                    value.getattr("orig_error").unwrap().extract().unwrap(),
+                    value.getattr("headers").unwrap().extract().unwrap(),
+                )
             } else if err.is_instance_of::<TransportError>(py) {
-                Error::TransportError(value.getattr("message").unwrap().extract().unwrap())
+                Error::TransportError(value.getattr("msg").unwrap().extract().unwrap())
             } else {
                 Self::Other(err)
             }
