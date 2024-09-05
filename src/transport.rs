@@ -2,6 +2,7 @@
 use crate::error::Error;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
+use std::path::{Path, PathBuf};
 
 pub struct Transport(PyObject);
 
@@ -36,6 +37,17 @@ impl Transport {
                     }
                 })
                 .unwrap()
+        })
+    }
+
+    pub fn local_abspath(&self, path: &Path) -> Result<PathBuf, Error> {
+        pyo3::Python::with_gil(|py| {
+            Ok(self
+                .0
+                .call_method1(py, "local_abspath", (path,))
+                .unwrap()
+                .extract::<PathBuf>(py)
+                .unwrap())
         })
     }
 

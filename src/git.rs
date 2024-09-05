@@ -5,6 +5,8 @@ use pyo3::prelude::*;
 
 pub struct RemoteGitProber(PyObject);
 
+pub const ZERO_SHA: &[u8] = b"0000000000000000000000000000000000000000";
+
 impl RemoteGitProber {
     pub fn new() -> Option<Self> {
         Python::with_gil(|py| {
@@ -74,5 +76,3 @@ impl crate::controldir::AsFormat for BareLocalGitControlDirFormat {
         Some(crate::controldir::ControlDirFormat::from(self.0.clone()))
     }
 }
-
-pub static ZERO_SHA: &[u8; 40] = b"0000000000000000000000000000000000000000";
