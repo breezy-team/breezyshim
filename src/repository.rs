@@ -248,6 +248,18 @@ impl Repository {
         .map(|(v, _m)| (v,))
     }
 
+    pub fn lookup_foreign_revision_id(
+        &self,
+        foreign_revid: &[u8],
+    ) -> Result<RevisionId, crate::error::Error> {
+        Python::with_gil(|py| {
+            self.0
+                .call_method1(py, "lookup_foreign_revision_id", (foreign_revid,))?
+                .extract(py)
+        })
+        .map_err(|e| e.into())
+    }
+
     pub fn lock_read(&self) -> Result<Lock, crate::error::Error> {
         Python::with_gil(|py| {
             Ok(Lock::from(
