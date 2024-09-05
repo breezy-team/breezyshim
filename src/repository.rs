@@ -5,6 +5,7 @@ use crate::controldir::ControlDir;
 use crate::delta::TreeDelta;
 use crate::graph::Graph;
 use crate::location::AsLocation;
+use crate::lock::Lock;
 use crate::revisionid::RevisionId;
 use crate::tree::RevisionTree;
 use chrono::DateTime;
@@ -145,6 +146,14 @@ impl Repository {
         })
     }
 
+    pub fn get_user_transport(&self) -> PyObject {
+        Python::with_gil(|py| self.0.getattr(py, "user_transport").unwrap())
+    }
+
+    pub fn get_control_transport(&self) -> PyObject {
+        Python::with_gil(|py| self.0.getattr(py, "control_transport").unwrap())
+    }
+
     pub fn fetch(
         &self,
         other_repository: &Repository,
@@ -233,6 +242,14 @@ impl Repository {
         })
         .map_err(|e| e.into())
         .map(|(v, _m)| (v,))
+    }
+
+    pub fn lock_read(&self) -> Result<Lock, crate::error::Error> {
+        Python::with_gil(|py| {
+            Ok(Lock::from(
+                self.to_object(py).call_method0(py, "lock_read")?,
+            ))
+        })
     }
 }
 
