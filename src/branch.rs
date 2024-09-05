@@ -372,3 +372,14 @@ pub fn open_containing(url: &url::Url) -> Result<(Box<dyn Branch>, String), Erro
         ))
     })
 }
+
+pub fn open_from_transport(
+    transport: &crate::transport::Transport,
+) -> Result<Box<dyn Branch>, Error> {
+    Python::with_gil(|py| {
+        let m = py.import_bound("breezy.branch").unwrap();
+        let c = m.getattr("Branch").unwrap();
+        let r = c.call_method1("open_from_transport", (transport.to_object(py),))?;
+        Ok(Box::new(RegularBranch(r.to_object(py))) as Box<dyn Branch>)
+    })
+}
