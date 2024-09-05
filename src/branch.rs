@@ -54,6 +54,14 @@ pub trait Branch: ToPyObject + Send {
         })
     }
 
+    fn lock_write(&self) -> Result<Lock, crate::error::Error> {
+        Python::with_gil(|py| {
+            Ok(Lock::from(
+                self.to_object(py).call_method0(py, "lock_write")?,
+            ))
+        })
+    }
+
     fn tags(&self) -> Result<crate::tags::Tags, crate::error::Error> {
         Python::with_gil(|py| {
             Ok(crate::tags::Tags::from(

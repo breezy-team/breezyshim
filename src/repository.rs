@@ -146,12 +146,16 @@ impl Repository {
         })
     }
 
-    pub fn get_user_transport(&self) -> PyObject {
-        Python::with_gil(|py| self.0.getattr(py, "user_transport").unwrap())
+    pub fn user_transport(&self) -> crate::transport::Transport {
+        Python::with_gil(|py| {
+            crate::transport::Transport::new(self.0.getattr(py, "user_transport").unwrap())
+        })
     }
 
-    pub fn get_control_transport(&self) -> PyObject {
-        Python::with_gil(|py| self.0.getattr(py, "control_transport").unwrap())
+    pub fn control_transport(&self) -> crate::transport::Transport {
+        Python::with_gil(|py| {
+            crate::transport::Transport::new(self.0.getattr(py, "control_transport").unwrap())
+        })
     }
 
     pub fn fetch(
@@ -248,6 +252,14 @@ impl Repository {
         Python::with_gil(|py| {
             Ok(Lock::from(
                 self.to_object(py).call_method0(py, "lock_read")?,
+            ))
+        })
+    }
+
+    pub fn lock_write(&self) -> Result<Lock, crate::error::Error> {
+        Python::with_gil(|py| {
+            Ok(Lock::from(
+                self.to_object(py).call_method0(py, "lock_write")?,
             ))
         })
     }
