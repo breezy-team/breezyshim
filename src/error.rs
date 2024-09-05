@@ -52,6 +52,7 @@ import_exception!(breezy.plugins.gitlab.forge, ForkingDisabled);
 import_exception!(breezy.plugins.gitlab.forge, GitLabConflict);
 import_exception!(breezy.plugins.gitlab.forge, ProjectCreationTimeout);
 import_exception!(breezy.forge, SourceNotDerivedFromTarget);
+import_exception!(breezy.controldir, BranchReferenceLoop);
 
 lazy_static::lazy_static! {
     // Only present in breezy << 4.0
@@ -134,6 +135,7 @@ pub enum Error {
     ProjectCreationTimeout(String, chrono::Duration),
     GitLabConflict(String),
     SourceNotDerivedFromTarget,
+    BranchReferenceLoop,
 }
 
 impl From<url::ParseError> for Error {
@@ -274,6 +276,7 @@ impl std::fmt::Display for Error {
             }
             Self::GitLabConflict(p) => write!(f, "GitLab conflict: {}", p),
             Self::SourceNotDerivedFromTarget => write!(f, "Source not derived from target"),
+            Self::BranchReferenceLoop => write!(f, "Branch reference loop"),
         }
     }
 }
@@ -551,6 +554,8 @@ impl From<PyErr> for Error {
                 )
             } else if err.is_instance_of::<TransportError>(py) {
                 Error::TransportError(value.getattr("msg").unwrap().extract().unwrap())
+            } else if err.is_instance_of::<BranchReferenceLoop>(py) {
+                Error::BranchReferenceLoop
             } else {
                 Self::Other(err)
             }
@@ -667,6 +672,7 @@ impl From<Error> for PyErr {
             Error::ProjectCreationTimeout(p, t) => ProjectCreationTimeout::new_err((p, t)),
             Error::GitLabConflict(p) => GitLabConflict::new_err((p,)),
             Error::SourceNotDerivedFromTarget => SourceNotDerivedFromTarget::new_err(()),
+            Error::BranchReferenceLoop => BranchReferenceLoop::new_err(()),
         }
     }
 }
