@@ -23,6 +23,7 @@ debian-control = { version = ">= 0.1.14", optional = true, features = ["python-d
 dirty-tracker = { version = "0.3", optional = true }
 debian-changelog = { version = "0.1.12", optional = true }
 difflib = { version = "0.4.0", optional = true }
+percent-encoding = "2.3.1"
 
 [features]
 default = ["auto-initialize"]
