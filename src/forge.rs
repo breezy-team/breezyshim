@@ -581,6 +581,14 @@ pub fn get_forge(branch: &dyn Branch) -> Result<Forge, Error> {
     })
 }
 
+pub fn get_forge_by_hostname(hostname: &str) -> Result<Forge, Error> {
+    Python::with_gil(|py| {
+        let m = py.import_bound("breezy.forge").unwrap();
+        let forge = m.call_method1("get_forge_by_hostname", (hostname,))?;
+        Ok(Forge(forge.to_object(py)))
+    })
+}
+
 pub fn determine_title(description: &str) -> String {
     Python::with_gil(|py| {
         let m = py.import_bound("breezy.forge").unwrap();
