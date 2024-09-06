@@ -542,6 +542,18 @@ impl Forge {
             url.parse::<url::Url>().unwrap()
         })
     }
+
+    pub fn get_user_url(&self, user: &str) -> Result<url::Url, crate::error::Error> {
+        Python::with_gil(|py| {
+            let url = self
+                .to_object(py)
+                .call_method1(py, "get_user_url", (user,))
+                .unwrap()
+                .extract::<String>(py)
+                .unwrap();
+            Ok(url.parse::<url::Url>().unwrap())
+        })
+    }
 }
 
 impl std::fmt::Debug for Forge {
