@@ -1,10 +1,10 @@
-use crate::debian::error::Error;
 use crate::controldir::ControlDir;
-use crate::debian::VersionKind;
+use crate::debian::error::Error;
 use crate::debian::TarballKind;
+use crate::debian::VersionKind;
 use crate::RevisionId;
-use pyo3::types::PyDict;
 use pyo3::prelude::*;
+use pyo3::types::PyDict;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -223,7 +223,11 @@ impl UpstreamBranchSource {
         })
     }
 
-    pub fn from_branch(upstream_branch: &dyn crate::branch::Branch, version_kind: Option<VersionKind>, local_dir: &ControlDir) -> Result<Self, Error> {
+    pub fn from_branch(
+        upstream_branch: &dyn crate::branch::Branch,
+        version_kind: Option<VersionKind>,
+        local_dir: &ControlDir,
+    ) -> Result<Self, Error> {
         Python::with_gil(|py| {
             let m = py
                 .import_bound("breezy.plugins.debian.org.upstream.branch")
@@ -234,7 +238,8 @@ impl UpstreamBranchSource {
             kwargs.set_item("version_kind", version_kind.unwrap_or_default())?;
             kwargs.set_item("local_dir", local_dir.to_object(py))?;
             Ok(UpstreamBranchSource(
-                cls.call_method("from_branch", (upstream_branch,), Some(&kwargs))?.into(),
+                cls.call_method("from_branch", (upstream_branch,), Some(&kwargs))?
+                    .into(),
             ))
         })
     }
@@ -295,5 +300,18 @@ pub fn upstream_version_add_revision(
                 ),
             )?
             .extract()?)
+    })
+}
+
+pub struct PristineTarSource(PyObject);
+
+pub fn get_pristine_tar_source(
+    packaging_tree: &dyn Tree,
+    packaging_branch: &dyn Branch,
+) -> Result<PristineTarSource, Error> {
+    Python::with_gil(|py| {
+        let m = py.import_bound("breezy.plugins.debian.upstream").unwrap();
+        let cls = m.getattr("get_pristine_tar_source").unwrap();
+        Ok(cls.call1((packaging_tree.to_object(py), packaging_branch.to_object(py)))?)
     })
 }
