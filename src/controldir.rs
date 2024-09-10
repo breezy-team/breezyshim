@@ -68,19 +68,6 @@ impl ControlDir {
         })
     }
 
-    #[deprecated]
-    pub fn create_branch_convenience(base: &url::Url) -> Result<Box<dyn Branch>, Error> {
-        create_branch_convenience(base, None)
-    }
-
-    #[deprecated]
-    pub fn create_standalone_workingtree(
-        base: &std::path::Path,
-        format: impl AsFormat,
-    ) -> Result<WorkingTree, Error> {
-        create_standalone_workingtree(base, format)
-    }
-
     pub fn cloning_metadir(&self) -> ControlDirFormat {
         Python::with_gil(|py| {
             let result = self.to_object(py).call_method0(py, "cloning_metadir")?;
@@ -285,12 +272,6 @@ impl Default for ControlDirFormat {
     }
 }
 
-#[test]
-fn test_control_dir_format_default() {
-    let d = ControlDirFormat::default();
-    d.get_format_string();
-}
-
 impl ControlDirFormat {
     pub fn get_format_string(&self) -> Vec<u8> {
         Python::with_gil(|py| {
@@ -369,31 +350,6 @@ pub fn open_tree_or_branch(
     })
 }
 
-#[test]
-fn test_open_tree_or_branch() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    create_branch_convenience(
-        &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
-        None,
-    )
-    .unwrap();
-    let (wt, branch) = open_tree_or_branch(
-        &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
-        None,
-        None,
-    )
-    .unwrap();
-
-    assert_eq!(
-        wt.unwrap().basedir().canonicalize().unwrap(),
-        tmp_dir.path().canonicalize().unwrap()
-    );
-    assert_eq!(
-        branch.get_user_url(),
-        url::Url::from_directory_path(tmp_dir.path()).unwrap()
-    );
-}
-
 pub fn open(
     url: impl AsLocation,
     possible_transports: Option<&mut Vec<Transport>>,
@@ -408,36 +364,6 @@ pub fn open(
         let controldir = cd.call_method("open", (url.as_location(),), Some(&kwargs))?;
         Ok(ControlDir(controldir.to_object(py)))
     })
-}
-
-#[test]
-fn test_open() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-
-    let e = open(
-        &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
-        None,
-    )
-    .unwrap_err();
-
-    assert!(matches!(e, Error::NotBranchError(..)),);
-
-    let cd = create(
-        &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
-        "2a",
-        None,
-    )
-    .unwrap();
-
-    let od = open(
-        &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
-        None,
-    )
-    .unwrap();
-    assert_eq!(
-        cd.get_format().get_format_string(),
-        od.get_format().get_format_string()
-    );
 }
 
 pub fn create(
@@ -460,27 +386,6 @@ pub fn create(
     })
 }
 
-#[test]
-fn test_create() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let cd = create(
-        &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
-        "2a",
-        None,
-    )
-    .unwrap();
-
-    let od = open(
-        &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
-        None,
-    )
-    .unwrap();
-    assert_eq!(
-        cd.get_format().get_format_string(),
-        od.get_format().get_format_string()
-    );
-}
-
 pub fn create_on_transport(
     transport: &Transport,
     format: impl AsFormat,
@@ -494,17 +399,6 @@ pub fn create_on_transport(
             None,
         )?))
     })
-}
-
-#[test]
-fn test_create_on_transport() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let transport = crate::transport::get_transport(
-        &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
-        None,
-    )
-    .unwrap();
-    let _cd = create_on_transport(&transport, "2a").unwrap();
 }
 
 pub fn open_containing_from_transport(
@@ -533,18 +427,6 @@ pub fn open_containing_from_transport(
     })
 }
 
-#[test]
-fn test_open_containing_from_transport() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let transport = crate::transport::get_transport(
-        &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
-        None,
-    )
-    .unwrap();
-    let e = open_containing_from_transport(&transport, None).unwrap_err();
-    assert!(matches!(e, Error::NotBranchError(..)),);
-}
-
 pub fn open_from_transport(
     transport: &Transport,
     probers: Option<&[&dyn Prober]>,
@@ -566,18 +448,6 @@ pub fn open_from_transport(
         )?;
         Ok(ControlDir(controldir.to_object(py)))
     })
-}
-
-#[test]
-fn test_open_from_transport() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let transport = crate::transport::get_transport(
-        &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
-        None,
-    )
-    .unwrap();
-    let e = open_from_transport(&transport, None).unwrap_err();
-    assert!(matches!(e, Error::NotBranchError(..)),);
 }
 
 pub trait AsFormat {
@@ -606,13 +476,18 @@ impl AsFormat for &ControlDirFormat {
 pub fn create_branch_convenience(
     base: &url::Url,
     force_new_tree: Option<bool>,
+    format: impl AsFormat,
 ) -> Result<Box<dyn Branch>, Error> {
     Python::with_gil(|py| {
         let m = py.import_bound("breezy.controldir")?;
         let cd = m.getattr("ControlDir")?;
+        let format = format.as_format();
         let kwargs = PyDict::new_bound(py);
         if let Some(force_new_tree) = force_new_tree {
             kwargs.set_item("force_new_tree", force_new_tree)?;
+        }
+        if let Some(format) = format {
+            kwargs.set_item("format", format.to_object(py))?;
         }
         let branch = cd.call_method(
             "create_branch_convenience",
@@ -646,32 +521,6 @@ pub fn create_standalone_workingtree(
     })
 }
 
-#[test]
-fn test_create_standalone_workingtree() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
-
-    assert_eq!(
-        wt.basedir().canonicalize().unwrap(),
-        tmp_dir.path().canonicalize().unwrap()
-    );
-}
-
-#[test]
-fn test_create_branch_convenience() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let branch = create_branch_convenience(
-        &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
-        None,
-    )
-    .unwrap();
-
-    assert_eq!(
-        branch.get_user_url(),
-        url::Url::from_directory_path(tmp_dir.path()).unwrap()
-    );
-}
-
 pub fn all_probers() -> Vec<Box<dyn Prober>> {
     struct PyProber(PyObject);
     impl ToPyObject for PyProber {
@@ -692,63 +541,6 @@ pub fn all_probers() -> Vec<Box<dyn Prober>> {
             .collect::<Vec<_>>())
     })
     .unwrap()
-}
-
-#[test]
-fn test_create_repository() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let controldir = create(
-        &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
-        &ControlDirFormat::default(),
-        None,
-    )
-    .unwrap();
-    let _repo = controldir.create_repository(None).unwrap();
-}
-
-#[test]
-fn test_create_branch() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let controldir = create(
-        &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
-        &ControlDirFormat::default(),
-        None,
-    )
-    .unwrap();
-    assert!(matches!(
-        controldir.create_branch(None),
-        Err(Error::NoRepositoryPresent)
-    ));
-    let _repo = controldir.create_repository(None).unwrap();
-    let _branch = controldir.create_branch(Some("foo")).unwrap();
-}
-
-#[test]
-fn test_create_workingtree() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let controldir = create(
-        &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
-        &ControlDirFormat::default(),
-        None,
-    )
-    .unwrap();
-    controldir.create_repository(None).unwrap();
-    controldir.create_branch(None).unwrap();
-    let _wt = controldir.create_workingtree().unwrap();
-}
-
-#[test]
-fn test_branch_names() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let controldir = create(
-        &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
-        &ControlDirFormat::default(),
-        None,
-    )
-    .unwrap();
-    controldir.create_repository(None).unwrap();
-    controldir.create_branch(None).unwrap();
-    assert_eq!(controldir.branch_names().unwrap(), vec!["".to_string()]);
 }
 
 pub struct ControlDirFormatRegistry(PyObject);
@@ -804,5 +596,207 @@ mod tests {
     fn test_all_probers() {
         let probers = all_probers();
         assert!(!probers.is_empty());
+    }
+
+    #[test]
+    fn test_open_tree_or_branch() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        create_branch_convenience(
+            &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
+            None,
+            &ControlDirFormat::default(),
+        )
+        .unwrap();
+        let (wt, branch) = open_tree_or_branch(
+            &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(
+            wt.unwrap().basedir().canonicalize().unwrap(),
+            tmp_dir.path().canonicalize().unwrap()
+        );
+        assert_eq!(
+            branch.get_user_url(),
+            url::Url::from_directory_path(tmp_dir.path()).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_control_dir_format_default() {
+        let d = ControlDirFormat::default();
+        d.get_format_string();
+    }
+
+    #[test]
+    fn test_open() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+
+        let e = open(
+            &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
+            None,
+        )
+        .unwrap_err();
+
+        assert!(matches!(e, Error::NotBranchError(..)),);
+
+        let cd = create(
+            &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
+            "2a",
+            None,
+        )
+        .unwrap();
+
+        let od = open(
+            &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            cd.get_format().get_format_string(),
+            od.get_format().get_format_string()
+        );
+    }
+
+    #[test]
+    fn test_create() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let cd = create(
+            &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
+            "2a",
+            None,
+        )
+        .unwrap();
+
+        let od = open(
+            &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            cd.get_format().get_format_string(),
+            od.get_format().get_format_string()
+        );
+    }
+
+    #[test]
+    fn test_create_on_transport() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let transport = crate::transport::get_transport(
+            &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
+            None,
+        )
+        .unwrap();
+        let _cd = create_on_transport(&transport, "2a").unwrap();
+    }
+
+    #[test]
+    fn test_open_containing_from_transport() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let transport = crate::transport::get_transport(
+            &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
+            None,
+        )
+        .unwrap();
+        let e = open_containing_from_transport(&transport, None).unwrap_err();
+        assert!(matches!(e, Error::NotBranchError(..)),);
+    }
+
+    #[test]
+    fn test_open_from_transport() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let transport = crate::transport::get_transport(
+            &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
+            None,
+        )
+        .unwrap();
+        let e = open_from_transport(&transport, None).unwrap_err();
+        assert!(matches!(e, Error::NotBranchError(..)),);
+    }
+
+    #[test]
+    fn test_create_standalone_workingtree() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
+
+        assert_eq!(
+            wt.basedir().canonicalize().unwrap(),
+            tmp_dir.path().canonicalize().unwrap()
+        );
+    }
+
+    #[test]
+    fn test_create_branch_convenience() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let branch = create_branch_convenience(
+            &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
+            None,
+            &ControlDirFormat::default(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            branch.get_user_url(),
+            url::Url::from_directory_path(tmp_dir.path()).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_create_repository() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let controldir = create(
+            &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
+            &ControlDirFormat::default(),
+            None,
+        )
+        .unwrap();
+        let _repo = controldir.create_repository(None).unwrap();
+    }
+
+    #[test]
+    fn test_create_branch() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let controldir = create(
+            &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
+            &ControlDirFormat::default(),
+            None,
+        )
+        .unwrap();
+        assert!(matches!(
+            controldir.create_branch(None),
+            Err(Error::NoRepositoryPresent)
+        ));
+        let _repo = controldir.create_repository(None).unwrap();
+        let _branch = controldir.create_branch(Some("foo")).unwrap();
+    }
+
+    #[test]
+    fn test_create_workingtree() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let controldir = create(
+            &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
+            &ControlDirFormat::default(),
+            None,
+        )
+        .unwrap();
+        controldir.create_repository(None).unwrap();
+        controldir.create_branch(None).unwrap();
+        let _wt = controldir.create_workingtree().unwrap();
+    }
+
+    #[test]
+    fn test_branch_names() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let controldir = create(
+            &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
+            &ControlDirFormat::default(),
+            None,
+        )
+        .unwrap();
+        controldir.create_repository(None).unwrap();
+        controldir.create_branch(None).unwrap();
+        assert_eq!(controldir.branch_names().unwrap(), vec!["".to_string()]);
     }
 }
