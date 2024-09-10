@@ -1,11 +1,14 @@
+use crate::branch::Branch;
 use crate::controldir::ControlDir;
 use crate::debian::error::Error;
 use crate::debian::TarballKind;
 use crate::debian::VersionKind;
+use crate::tree::Tree;
 use crate::RevisionId;
 use pyo3::prelude::*;
-use pyo3::types::PyDict;
+use pyo3::types::{PyCFunction, PyDict, PyTuple};
 use std::collections::HashMap;
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 pub struct PristineTarSource(PyObject);
@@ -227,6 +230,12 @@ impl UpstreamBranchSource {
         upstream_branch: &dyn crate::branch::Branch,
         version_kind: Option<VersionKind>,
         local_dir: &ControlDir,
+        create_dist: Option<
+            impl Fn(&dyn Tree, &str, &str, &Path, &Path) -> Result<OsString, Error>
+                + Send
+                + Sync
+                + 'static,
+        >,
     ) -> Result<Self, Error> {
         Python::with_gil(|py| {
             let m = py
@@ -237,6 +246,24 @@ impl UpstreamBranchSource {
             let kwargs = PyDict::new_bound(py);
             kwargs.set_item("version_kind", version_kind.unwrap_or_default())?;
             kwargs.set_item("local_dir", local_dir.to_object(py))?;
+            if let Some(create_dist) = create_dist {
+                let create_dist = move |args: &Bound<'_, PyTuple>,
+                                        _kwargs: Option<&Bound<'_, PyDict>>|
+                      -> PyResult<_> {
+                    let args = args.extract::<(PyObject, String, String, PathBuf, PathBuf)>()?;
+                    create_dist(
+                        &crate::tree::RevisionTree(args.0),
+                        &args.1,
+                        &args.2,
+                        &args.3,
+                        &args.4,
+                    )
+                    .map(|x| x.to_string_lossy().into_owned())
+                    .map_err(|e| e.into())
+                };
+                let create_dist = PyCFunction::new_closure_bound(py, None, None, create_dist)?;
+                kwargs.set_item("create_dist", create_dist)?;
+            }
             Ok(UpstreamBranchSource(
                 cls.call_method("from_branch", (upstream_branch,), Some(&kwargs))?
                     .into(),
@@ -303,8 +330,6 @@ pub fn upstream_version_add_revision(
     })
 }
 
-pub struct PristineTarSource(PyObject);
-
 pub fn get_pristine_tar_source(
     packaging_tree: &dyn Tree,
     packaging_branch: &dyn Branch,
@@ -312,6 +337,9 @@ pub fn get_pristine_tar_source(
     Python::with_gil(|py| {
         let m = py.import_bound("breezy.plugins.debian.upstream").unwrap();
         let cls = m.getattr("get_pristine_tar_source").unwrap();
-        Ok(cls.call1((packaging_tree.to_object(py), packaging_branch.to_object(py)))?)
+        Ok(PristineTarSource(
+            cls.call1((packaging_tree.to_object(py), packaging_branch.to_object(py)))?
+                .into(),
+        ))
     })
 }

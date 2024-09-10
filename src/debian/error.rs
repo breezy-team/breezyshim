@@ -96,3 +96,24 @@ impl From<PyErr> for Error {
         })
     }
 }
+
+impl From<Error> for PyErr {
+    fn from(err: Error) -> PyErr {
+        match err {
+            Error::BrzError(err) => err.into(),
+            Error::BuildFailed => BuildFailedError::new_err(("Build failed",)).into(),
+            Error::UpstreamAlreadyImported(version) => {
+                UpstreamAlreadyImported::new_err((version,)).into()
+            }
+            Error::DistCommandFailed(err) => DistCommandfailed::new_err((err,)).into(),
+            Error::PackageVersionNotPresent { package, version } => {
+                PackageVersionNotPresent::new_err((package, version)).into()
+            }
+            Error::MissingUpstreamTarball { package, version } => {
+                MissingUpstreamTarball::new_err((package, version)).into()
+            }
+            Error::UnreleasedChanges => UnreleasedChanges::new_err(()).into(),
+            Error::ChangeLogError(err) => todo!(),
+        }
+    }
+}
