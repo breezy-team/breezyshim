@@ -249,12 +249,22 @@ impl WorkingTree {
         &self,
         source: &dyn crate::branch::Branch,
         overwrite: Option<bool>,
+        stop_revision: Option<&RevisionId>,
+        local: Option<bool>,
     ) -> Result<(), Error> {
         Python::with_gil(|py| {
             let kwargs = {
                 let kwargs = pyo3::types::PyDict::new_bound(py);
                 if let Some(overwrite) = overwrite {
                     kwargs.set_item("overwrite", overwrite).unwrap();
+                }
+                if let Some(stop_revision) = stop_revision {
+                    kwargs
+                        .set_item("stop_revision", stop_revision.to_object(py))
+                        .unwrap();
+                }
+                if let Some(local) = local {
+                    kwargs.set_item("local", local).unwrap();
                 }
                 kwargs
             };
