@@ -26,31 +26,10 @@ pub fn extract_email_address(e: &str) -> Option<String> {
     }
 }
 
-#[test]
-fn test_parse_username() {
-    assert_eq!(
-        parse_username("John Doe <joe@example.com>"),
-        ("John Doe".to_string(), "joe@example.com".to_string())
-    );
-    assert_eq!(
-        parse_username("John Doe"),
-        ("John Doe".to_string(), "".to_string())
-    );
-}
-
-#[test]
-fn test_extract_email_address() {
-    assert_eq!(
-        extract_email_address("John Doe <joe@example.com>"),
-        Some("joe@example.com".to_string())
-    );
-    assert_eq!(extract_email_address("John Doe"), None);
-}
-
 pub trait ConfigValue: ToPyObject {}
 
 impl ConfigValue for String {}
-impl ConfigValue for str {}
+impl ConfigValue for &str {}
 impl ConfigValue for i64 {}
 impl ConfigValue for bool {}
 
@@ -68,7 +47,7 @@ impl BranchConfig {
         Self(o)
     }
 
-    pub fn set_user_option(&self, key: &str, value: &impl ConfigValue) -> Result<()> {
+    pub fn set_user_option<T: ConfigValue>(&self, key: &str, value: T) -> Result<()> {
         Python::with_gil(|py| -> Result<()> {
             self.0
                 .call_method1(py, "set_user_option", (key, value.to_object(py)))?;
@@ -96,10 +75,9 @@ impl ConfigStack {
         })
     }
 
-    pub fn set(&self, key: &str, value: &impl ConfigValue) -> Result<()> {
+    pub fn set<T: ConfigValue>(&self, key: &str, value: T) -> Result<()> {
         Python::with_gil(|py| -> Result<()> {
-            self.0
-                .call_method1(py, "set", (key, value.to_object(py)))?;
+            self.0.call_method1(py, "set", (key, value.to_object(py)))?;
             Ok(())
         })?;
         Ok(())
@@ -112,21 +90,6 @@ pub fn global_stack() -> Result<ConfigStack> {
         let stack = m.call_method0("GlobalStack")?;
         Ok(ConfigStack::new(stack.to_object(py)))
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serial_test::serial;
-
-    #[test]
-    #[serial]
-    fn test_config_stack() {
-        let env = crate::testing::TestEnv::new();
-        let stack = global_stack().unwrap();
-        stack.get("email").unwrap();
-        std::mem::drop(env);
-    }
 }
 
 pub struct Credentials {
@@ -171,10 +134,10 @@ impl ToPyObject for Credentials {
         dict.set_item("username", &self.username).unwrap();
         dict.set_item("password", &self.password).unwrap();
         dict.set_item("host", &self.host).unwrap();
-        dict.set_item("port", &self.port).unwrap();
+        dict.set_item("port", self.port).unwrap();
         dict.set_item("path", &self.path).unwrap();
         dict.set_item("realm", &self.realm).unwrap();
-        dict.set_item("verify_certificates", &self.verify_certificates)
+        dict.set_item("verify_certificates", self.verify_certificates)
             .unwrap();
         dict.into()
     }
@@ -320,12 +283,48 @@ lazy_static::lazy_static! {
     ;
 }
 
-#[test]
-fn test_credential_store() {
-    let env = crate::testing::TestEnv::new();
-    let store = CREDENTIAL_STORE_REGISTRY
-        .get_credential_store(None)
-        .unwrap();
-    assert!(store.is_none());
-    std::mem::drop(env);
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_credential_store() {
+        fn takes_config_value<T: crate::config::ConfigValue>(_t: T) {}
+
+        takes_config_value("foo");
+        takes_config_value(1);
+        takes_config_value(true);
+        takes_config_value("foo".to_string());
+    }
+
+    use super::*;
+    use serial_test::serial;
+
+    #[test]
+    #[serial]
+    fn test_config_stack() {
+        let env = crate::testing::TestEnv::new();
+        let stack = global_stack().unwrap();
+        stack.get("email").unwrap();
+        std::mem::drop(env);
+    }
+
+    #[test]
+    fn test_parse_username() {
+        assert_eq!(
+            parse_username("John Doe <joe@example.com>"),
+            ("John Doe".to_string(), "joe@example.com".to_string())
+        );
+        assert_eq!(
+            parse_username("John Doe"),
+            ("John Doe".to_string(), "".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_email_address() {
+        assert_eq!(
+            extract_email_address("John Doe <joe@example.com>"),
+            Some("joe@example.com".to_string())
+        );
+        assert_eq!(extract_email_address("John Doe"), None);
+    }
 }
