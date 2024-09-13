@@ -92,7 +92,7 @@ pub trait UpstreamSource: ToPyObject {
     /// A tuple of the latest upstream version and the mangled version.
     fn get_latest_version(
         &self,
-        package: &str,
+        package: Option<&str>,
         current_version: Option<&str>,
     ) -> Result<Option<(String, String)>, Error> {
         Python::with_gil(|py| {
@@ -110,7 +110,7 @@ pub trait UpstreamSource: ToPyObject {
     /// * `version`: Last upstream version since which to retrieve versions
     fn get_recent_versions(
         &self,
-        package: &str,
+        package: Option<&str>,
         since_version: Option<&str>,
     ) -> Box<dyn Iterator<Item = (String, String)>> {
         let mut ret = vec![];
@@ -142,7 +142,7 @@ pub trait UpstreamSource: ToPyObject {
     /// A dictionary mapping component names to revision ids
     fn version_as_revisions(
         &self,
-        package: &str,
+        package: Option<&str>,
         version: &str,
         tarballs: Option<Tarballs>,
     ) -> Result<HashMap<TarballKind, (RevisionId, PathBuf)>, Error> {
@@ -162,7 +162,7 @@ pub trait UpstreamSource: ToPyObject {
     /// * `tarballs` - Tarballs list
     fn has_version(
         &self,
-        package: &str,
+        package: Option<&str>,
         version: &str,
         tarballs: Option<Tarballs>,
     ) -> Result<bool, Error> {
@@ -186,7 +186,7 @@ pub trait UpstreamSource: ToPyObject {
     /// Paths of the fetched tarballs
     fn fetch_tarballs(
         &self,
-        package: &str,
+        package: Option<&str>,
         version: &str,
         target_dir: &Path,
         components: Option<&[TarballKind]>,
@@ -214,7 +214,7 @@ impl UpstreamBranchSource {
 
     pub fn version_as_revision(
         &self,
-        package: &str,
+        package: Option<&str>,
         version: &str,
         tarballs: Option<Tarballs>,
     ) -> Result<(RevisionId, PathBuf), Error> {
@@ -283,7 +283,7 @@ impl PristineTarSource {
     /// * `tarballs` - Tarballs list
     pub fn has_version(
         &self,
-        package: &str,
+        package: Option<&str>,
         version: &str,
         tarballs: Option<Tarballs>,
         try_hard: bool,
