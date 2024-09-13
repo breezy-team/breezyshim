@@ -7,12 +7,17 @@ use pyo3::prelude::*;
 
 pyo3::import_exception!(breezy.plugins.debian.apt_repo, NoAptSources);
 
+lazy_static::lazy_static! {
+    static ref apt_mutex: std::sync::Mutex<()> = std::sync::Mutex::new(());
+}
+
 struct SourceIterator(PyObject);
 
 impl Iterator for SourceIterator {
     type Item = Source;
 
     fn next(&mut self) -> Option<Self::Item> {
+        let _mutex = apt_mutex.lock().unwrap();
         Python::with_gil(|py| {
             let next = self.0.call_method0(py, "__next__");
             match next {
@@ -31,6 +36,7 @@ impl Iterator for PackageIterator {
     type Item = Package;
 
     fn next(&mut self) -> Option<Self::Item> {
+        let _mutex = apt_mutex.lock().unwrap();
         Python::with_gil(|py| {
             let next = self.0.call_method0(py, "__next__");
             match next {
@@ -58,6 +64,7 @@ pub trait Apt: ToPyObject {
         target_directory: &std::path::Path,
         orig_version: Option<&Version>,
     ) -> Result<(), Error> {
+        let _mutex = apt_mutex.lock().unwrap();
         Python::with_gil(|py| {
             let apt = self.to_object(py);
             apt.call_method1(
@@ -84,6 +91,7 @@ pub trait Apt: ToPyObject {
         target_directory: &std::path::Path,
         source_version: Option<&Version>,
     ) -> Result<(), Error> {
+        let _mutex = apt_mutex.lock().unwrap();
         Python::with_gil(|py| {
             let apt = self.to_object(py);
             apt.call_method1(
@@ -97,6 +105,7 @@ pub trait Apt: ToPyObject {
 
     /// Retrieve the binary package from the repository.
     fn iter_sources(&self) -> Box<dyn Iterator<Item = Source>> {
+        let _mutex = apt_mutex.lock().unwrap();
         Python::with_gil(|py| {
             let apt = self.to_object(py);
             let iter = apt.call_method0(py, "iter_sources").unwrap();
@@ -106,6 +115,7 @@ pub trait Apt: ToPyObject {
 
     /// Retrieve the binary package from the repository.
     fn iter_binaries(&self) -> Box<dyn Iterator<Item = Package>> {
+        let _mutex = apt_mutex.lock().unwrap();
         Python::with_gil(|py| {
             let apt = self.to_object(py);
             let iter = apt.call_method0(py, "iter_binaries").unwrap();
@@ -115,6 +125,7 @@ pub trait Apt: ToPyObject {
 
     /// Retrieve source package by name.
     fn iter_source_by_name(&self, name: &str) -> Box<dyn Iterator<Item = Source>> {
+        let _mutex = apt_mutex.lock().unwrap();
         Python::with_gil(|py| {
             let apt = self.to_object(py);
             let iter = apt
@@ -126,6 +137,7 @@ pub trait Apt: ToPyObject {
 
     /// Retrieve binary package by name.
     fn iter_binary_by_name(&self, name: &str) -> Box<dyn Iterator<Item = Package>> {
+        let _mutex = apt_mutex.lock().unwrap();
         Python::with_gil(|py| {
             let apt = self.to_object(py);
             let iter = apt
@@ -148,6 +160,7 @@ impl ToPyObject for LocalApt {
 
 impl LocalApt {
     pub fn new(rootdir: Option<&std::path::Path>) -> Result<Self, Error> {
+        let _mutex = apt_mutex.lock().unwrap();
         Python::with_gil(|py| {
             let m = PyModule::import_bound(py, "breezy.plugins.debian.apt_repo")?;
             let apt = m.getattr("LocalApt")?;
@@ -190,6 +203,7 @@ impl RemoteApt {
         components: Option<Vec<String>>,
         key_path: Option<&std::path::Path>,
     ) -> Result<Self, Error> {
+        let _mutex = apt_mutex.lock().unwrap();
         Python::with_gil(|py| {
             let m = PyModule::import_bound(py, "breezy.plugins.debian.apt_repo")?;
             let apt = m.getattr("RemoteApt")?;
@@ -200,6 +214,7 @@ impl RemoteApt {
     }
 
     pub fn from_string(text: &str, key_path: Option<&std::path::Path>) -> Result<Self, Error> {
+        let _mutex = apt_mutex.lock().unwrap();
         Python::with_gil(|py| {
             let m = PyModule::import_bound(py, "breezy.plugins.debian.apt_repo")?;
             let apt = m.getattr("RemoteApt")?;
@@ -225,10 +240,8 @@ impl Drop for RemoteApt {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serial_test::serial;
 
     #[test]
-    #[serial]
     fn test_local_apt_retrieve_orig() {
         let apt = LocalApt::new(None).unwrap();
         let td = tempfile::tempdir().unwrap();
@@ -254,8 +267,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // Seems to hang sometimes
-    #[serial] // LocalApt appears to crash if initialized concurrently by other tests.
+    #[ignore] // Sometimes hangs
     fn test_local_apt() {
         let apt = LocalApt::new(None).unwrap();
         let package = apt.iter_binaries().next().unwrap();
