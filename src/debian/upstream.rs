@@ -206,10 +206,29 @@ pub trait UpstreamSource: ToPyObject {
 
 impl UpstreamSource for UpstreamBranchSource {}
 
+impl std::fmt::Debug for UpstreamBranchSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UpstreamBranchSource").finish()
+    }
+}
+
 impl UpstreamBranchSource {
     pub fn upstream_branch(&self) -> Box<dyn crate::branch::Branch> {
         let o = Python::with_gil(|py| self.to_object(py).getattr(py, "upstream_branch").unwrap());
         Box::new(crate::branch::RegularBranch::new(o))
+    }
+
+    pub fn revision_tree(
+        &self,
+        source_name: &str,
+        mangled_upstream_version: &str,
+    ) -> Result<crate::tree::RevisionTree, Error> {
+        Python::with_gil(|py| {
+            Ok(self
+                .to_object(py)
+                .call_method1(py, "revision_tree", (source_name, mangled_upstream_version))?
+                .extract(py)?)
+        })
     }
 
     pub fn version_as_revision(
