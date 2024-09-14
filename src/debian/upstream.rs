@@ -224,10 +224,11 @@ impl UpstreamBranchSource {
         mangled_upstream_version: &str,
     ) -> Result<crate::tree::RevisionTree, Error> {
         Python::with_gil(|py| {
-            Ok(self
-                .to_object(py)
-                .call_method1(py, "revision_tree", (source_name, mangled_upstream_version))?
-                .extract(py)?)
+            Ok(crate::tree::RevisionTree(self.to_object(py).call_method1(
+                py,
+                "revision_tree",
+                (source_name, mangled_upstream_version),
+            )?))
         })
     }
 

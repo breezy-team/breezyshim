@@ -89,6 +89,16 @@ impl ToPyObject for VersionKind {
     }
 }
 
+impl std::fmt::Display for VersionKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            VersionKind::Auto => write!(f, "auto"),
+            VersionKind::Snapshot => write!(f, "snapshot"),
+            VersionKind::Release => write!(f, "release"),
+        }
+    }
+}
+
 impl FromPyObject<'_> for VersionKind {
     fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
         let kind = ob.extract::<String>()?;
