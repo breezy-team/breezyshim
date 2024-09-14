@@ -79,6 +79,19 @@ pub enum VersionKind {
     Release,
 }
 
+impl std::str::FromStr for VersionKind {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "auto" => Ok(VersionKind::Auto),
+            "snapshot" => Ok(VersionKind::Snapshot),
+            "release" => Ok(VersionKind::Release),
+            _ => Err(format!("Invalid version kind: {}", s)),
+        }
+    }
+}
+
 impl ToPyObject for VersionKind {
     fn to_object(&self, py: Python) -> PyObject {
         match self {
