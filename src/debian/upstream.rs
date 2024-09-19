@@ -5,11 +5,14 @@ use crate::debian::TarballKind;
 use crate::debian::VersionKind;
 use crate::tree::Tree;
 use crate::RevisionId;
+use debversion::Version;
+use pyo3::types::PyDict;
 use pyo3::prelude::*;
 use pyo3::types::{PyCFunction, PyDict, PyTuple};
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+use crate::tree::RevisionTree;
 
 pub struct PristineTarSource(PyObject);
 
@@ -259,7 +262,7 @@ impl UpstreamBranchSource {
     ) -> Result<Self, Error> {
         Python::with_gil(|py| {
             let m = py
-                .import_bound("breezy.plugins.debian.org.upstream.branch")
+                .import_bound("breezy.plugins.debian.upstream.branch")
                 .unwrap();
             let cls = m.getattr("UpstreamBranchSource").unwrap();
             let upstream_branch = upstream_branch.to_object(py);
@@ -333,7 +336,7 @@ pub fn upstream_version_add_revision(
     let sep = sep.unwrap_or("+");
     Python::with_gil(|py| {
         let m = py
-            .import_bound("breezy.plugins.debian.org.upstream.branch")
+            .import_bound("breezy.plugins.debian.upstream.branch")
             .unwrap();
         let upstream_version_add_revision = m.getattr("upstream_version_add_revision").unwrap();
         Ok(upstream_version_add_revision
@@ -361,5 +364,22 @@ pub fn get_pristine_tar_source(
             cls.call1((packaging_tree.to_object(py), packaging_branch.to_object(py)))?
                 .into(),
         ))
+    })
+}
+
+pub fn run_dist_command(revtree: &RevisionTree, package: Option<&str>, version: &Version, target_dir: &Path, dist_command: &str, include_controldir: bool, subpath: &Path) -> Result<bool, Error> {
+    Python::with_gil(|py| {
+        let m = py.import_bound("breezy.plugins.debian.upstream").unwrap();
+        let run_dist_command = m.getattr("run_dist_command").unwrap();
+        let kwargs = PyDict::new_bound(py);
+        kwargs.set_item("revtree", revtree.to_object(py))?;
+        kwargs.set_item("package", package)?;
+        kwargs.set_item("version", version)?;
+        kwargs.set_item(target_dir, target_dir)?;
+        kwargs.set_item("dist_command", dist_command)?;
+        kwargs.set_item("include_controldir", include_controldir)?;
+        kwargs.set_item("subpath", subpath)?;
+
+        Ok(run_dist_command.call((), Some(&kwargs))?.extract()?)
     })
 }
