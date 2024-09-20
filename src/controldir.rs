@@ -32,6 +32,13 @@ impl ControlDir {
         Self(obj)
     }
 
+    pub fn get_user_url(&self) -> url::Url {
+        Python::with_gil(|py| {
+            let result = self.to_object(py).getattr(py, "user_url").unwrap();
+            url::Url::parse(&result.extract::<String>(py).unwrap()).unwrap()
+        })
+    }
+
     pub fn get_format(&self) -> ControlDirFormat {
         Python::with_gil(|py| {
             let result = self.to_object(py).getattr(py, "_format")?;
