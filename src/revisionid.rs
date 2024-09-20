@@ -28,11 +28,51 @@ impl RevisionId {
     pub fn null() -> Self {
         Self(NULL_REVISION.to_vec())
     }
+
+    pub fn as_str(&self) -> &str {
+        std::str::from_utf8(&self.0).unwrap()
+    }
+}
+
+#[cfg(feature = "sqlx")]
+use sqlx::{postgres::PgTypeInfo, Postgres};
+
+#[cfg(feature = "sqlx")]
+impl sqlx::Type<Postgres> for RevisionId {
+    fn type_info() -> PgTypeInfo {
+        <String as sqlx::Type<sqlx::Postgres>>::type_info()
+    }
+}
+
+#[cfg(feature = "sqlx")]
+impl sqlx::Encode<'_, Postgres> for RevisionId {
+    fn encode_by_ref(
+        &self,
+        buf: &mut sqlx::postgres::PgArgumentBuffer,
+    ) -> Result<sqlx::encode::IsNull, Box<dyn std::error::Error + Send + Sync>> {
+        sqlx::Encode::<Postgres>::encode_by_ref(&self.as_str(), buf)
+    }
+}
+
+#[cfg(feature = "sqlx")]
+impl sqlx::Decode<'_, Postgres> for RevisionId {
+    fn decode(
+        value: sqlx::postgres::PgValueRef<'_>,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let s: &str = sqlx::Decode::<Postgres>::decode(value)?;
+        Ok(RevisionId::from(s.as_bytes()))
+    }
 }
 
 impl From<Vec<u8>> for RevisionId {
     fn from(value: Vec<u8>) -> Self {
         Self(value)
+    }
+}
+
+impl From<&[u8]> for RevisionId {
+    fn from(value: &[u8]) -> Self {
+        Self(value.to_vec())
     }
 }
 
