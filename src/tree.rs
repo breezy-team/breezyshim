@@ -425,6 +425,9 @@ pub trait Tree: ToPyObject {
 
 pub trait MutableTree: Tree {
     fn add(&self, files: &[&Path]) -> Result<(), Error> {
+        for f in files {
+            assert!(f.is_relative());
+        }
         Python::with_gil(|py| -> Result<(), PyErr> {
             self.to_object(py).call_method1(
                 py,
@@ -444,6 +447,7 @@ pub trait MutableTree: Tree {
     }
 
     fn put_file_bytes_non_atomic(&self, path: &Path, data: &[u8]) -> Result<(), Error> {
+        assert!(path.is_relative());
         Python::with_gil(|py| {
             self.to_object(py)
                 .call_method1(py, "put_file_bytes_non_atomic", (path, data))?;
@@ -461,6 +465,7 @@ pub trait MutableTree: Tree {
     }
 
     fn mkdir(&self, path: &Path) -> Result<(), Error> {
+        assert!(path.is_relative());
         Python::with_gil(|py| -> Result<(), PyErr> {
             self.to_object(py).call_method1(py, "mkdir", (path,))?;
             Ok(())
@@ -469,6 +474,9 @@ pub trait MutableTree: Tree {
     }
 
     fn remove(&self, files: &[&std::path::Path]) -> Result<(), Error> {
+        for f in files {
+            assert!(f.is_relative());
+        }
         Python::with_gil(|py| -> Result<(), PyErr> {
             self.to_object(py).call_method1(
                 py,
@@ -644,7 +652,7 @@ mod tests {
             .commit()
             .unwrap();
         assert!(wt.has_filename(&path));
-        wt.remove(&[&path]).unwrap();
+        wt.remove(&[Path::new("foo")]).unwrap();
         assert!(!wt.is_versioned(&path));
         std::mem::drop(td);
     }
