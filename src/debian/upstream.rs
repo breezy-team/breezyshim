@@ -366,7 +366,7 @@ pub fn get_pristine_tar_source(
     })
 }
 
-pub fn run_dist_command(revtree: &RevisionTree, package: Option<&str>, version: &Version, target_dir: &Path, dist_command: &str, include_controldir: bool, subpath: &Path) -> Result<bool, Error> {
+pub fn run_dist_command(revtree: &dyn Tree, package: Option<&str>, version: &Version, target_dir: &Path, dist_command: &str, include_controldir: bool, subpath: &Path) -> Result<bool, Error> {
     Python::with_gil(|py| {
         let m = py.import_bound("breezy.plugins.debian.upstream").unwrap();
         let run_dist_command = m.getattr("run_dist_command").unwrap();

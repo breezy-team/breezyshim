@@ -5,6 +5,7 @@
 //! It mostly wraps the `breezy.plugins.debian` module from the Breezy VCS.
 pub mod apt;
 pub mod debcommit;
+pub mod directory;
 pub mod error;
 pub mod merge_upstream;
 pub mod release;
