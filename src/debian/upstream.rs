@@ -6,7 +6,6 @@ use crate::debian::VersionKind;
 use crate::tree::Tree;
 use crate::RevisionId;
 use debversion::Version;
-use pyo3::types::PyDict;
 use pyo3::prelude::*;
 use pyo3::types::{PyCFunction, PyDict, PyTuple};
 use std::collections::HashMap;
