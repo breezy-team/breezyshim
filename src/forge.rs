@@ -246,6 +246,24 @@ impl MergeProposal {
                 .map_err(|e| e.into())
         })
     }
+
+    pub fn get_merged_by(&self) -> Result<Option<String>, crate::error::Error> {
+        Python::with_gil(|py| {
+            let merged_by = self.0.call_method0(py, "get_merged_by")?;
+            merged_by.extract(py).map_err(|e| e.into())
+        })
+    }
+
+    pub fn get_merged_at(
+        &self,
+    ) -> Result<Option<chrono::DateTime<chrono::Utc>>, crate::error::Error> {
+        Python::with_gil(|py| {
+            let merged_at = self.0.call_method0(py, "get_merged_at")?;
+            merged_at
+                .extract::<Option<chrono::DateTime<chrono::Utc>>>(py)
+                .map_err(|e| e.into())
+        })
+    }
 }
 
 #[pyclass]
