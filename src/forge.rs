@@ -572,6 +572,18 @@ impl Forge {
             Ok(url.parse::<url::Url>().unwrap())
         })
     }
+
+    pub fn get_current_user(&self) -> Result<Option<String>, crate::error::Error> {
+        Python::with_gil(|py| {
+            let user = self
+                .to_object(py)
+                .call_method0(py, "get_current_user")
+                .unwrap()
+                .extract::<Option<String>>(py)
+                .unwrap();
+            Ok(user)
+        })
+    }
 }
 
 impl std::fmt::Debug for Forge {
