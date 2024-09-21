@@ -53,6 +53,7 @@ import_exception!(breezy.plugins.gitlab.forge, GitLabConflict);
 import_exception!(breezy.plugins.gitlab.forge, ProjectCreationTimeout);
 import_exception!(breezy.forge, SourceNotDerivedFromTarget);
 import_exception!(breezy.controldir, BranchReferenceLoop);
+import_exception!(breezy.errors, RedirectRequested);
 
 lazy_static::lazy_static! {
     // Only present in breezy << 4.0
@@ -136,6 +137,11 @@ pub enum Error {
     GitLabConflict(String),
     SourceNotDerivedFromTarget,
     BranchReferenceLoop,
+    RedirectRequested {
+        source: url::Url,
+        target: url::Url,
+        is_permanent: bool,
+    },
 }
 
 impl From<url::ParseError> for Error {
@@ -277,6 +283,17 @@ impl std::fmt::Display for Error {
             Self::GitLabConflict(p) => write!(f, "GitLab conflict: {}", p),
             Self::SourceNotDerivedFromTarget => write!(f, "Source not derived from target"),
             Self::BranchReferenceLoop => write!(f, "Branch reference loop"),
+            Self::RedirectRequested {
+                source,
+                target,
+                is_permanent,
+            } => {
+                write!(
+                    f,
+                    "Redirect requested: {} -> {} (permanent: {})",
+                    source, target, is_permanent
+                )
+            }
         }
     }
 }
@@ -544,6 +561,24 @@ impl From<PyErr> for Error {
                 .unwrap_or(false)
             {
                 Error::ConnectionError(err.to_string())
+            } else if err.is_instance_of::<RedirectRequested>(py) {
+                Error::RedirectRequested {
+                    source: value
+                        .getattr("source")
+                        .unwrap()
+                        .extract::<String>()
+                        .unwrap()
+                        .parse()
+                        .unwrap(),
+                    target: value
+                        .getattr("target")
+                        .unwrap()
+                        .extract::<String>()
+                        .unwrap()
+                        .parse()
+                        .unwrap(),
+                    is_permanent: value.getattr("is_permanent").unwrap().extract().unwrap(),
+                }
             // Intentionally sorted below the more specific errors
             } else if err.is_instance_of::<InvalidHttpResponse>(py) {
                 Error::InvalidHttpResponse(
@@ -673,6 +708,11 @@ impl From<Error> for PyErr {
             Error::GitLabConflict(p) => GitLabConflict::new_err((p,)),
             Error::SourceNotDerivedFromTarget => SourceNotDerivedFromTarget::new_err(()),
             Error::BranchReferenceLoop => BranchReferenceLoop::new_err(()),
+            Error::RedirectRequested {
+                source,
+                target,
+                is_permanent,
+            } => RedirectRequested::new_err((source.to_string(), target.to_string(), is_permanent)),
         }
     }
 }
@@ -1206,5 +1246,19 @@ fn test_already_branch() {
     // Verify that p is an instance of AlreadyBranchError
     Python::with_gil(|py| {
         assert!(p.is_instance_of::<AlreadyBranchError>(py), "{}", p);
+    });
+}
+
+#[test]
+fn test_redirect_requested() {
+    let e = Error::RedirectRequested {
+        source: "http://example.com".parse().unwrap(),
+        target: "http://example.com".parse().unwrap(),
+        is_permanent: true,
+    };
+    let p: PyErr = e.into();
+    // Verify that p is an instance of RedirectRequested
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<RedirectRequested>(py), "{}", p);
     });
 }
