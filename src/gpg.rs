@@ -153,3 +153,48 @@ pub fn bulk_verify_signatures(
         Ok(result)
     })
 }
+
+pub struct GPGContext(PyObject);
+
+pub struct GPGKey {
+    pub fpr: String,
+}
+
+impl FromPyObject<'_> for GPGKey {
+    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
+        Ok(GPGKey {
+            fpr: ob.getattr("fpr").unwrap().extract().unwrap(),
+        })
+    }
+}
+
+impl GPGContext {
+    pub fn new() -> Self {
+        Python::with_gil(|py| {
+            let gpg = PyModule::import_bound(py, "gpg").unwrap();
+            let gpg_context = gpg.getattr("Context").unwrap();
+            let context = gpg_context.call0().unwrap();
+            GPGContext(context.to_object(py))
+        })
+    }
+
+    pub fn keylist(&self, secret: bool) -> Vec<GPGKey> {
+        Python::with_gil(|py| {
+            self.0
+                .call_method1(py, "keylist", (secret,))
+                .unwrap()
+                .extract::<Vec<GPGKey>>(py)
+                .unwrap()
+        })
+    }
+
+    pub fn key_export_minimal(&self, key: &str) -> Vec<u8> {
+        Python::with_gil(|py| {
+            self.0
+                .call_method1(py, "key_export_minimal", (key,))
+                .unwrap()
+                .extract::<Vec<u8>>(py)
+                .unwrap()
+        })
+    }
+}
