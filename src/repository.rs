@@ -3,6 +3,7 @@
 //! A repository is a collection of revisions and their associated data.
 use crate::controldir::ControlDir;
 use crate::delta::TreeDelta;
+use crate::foreign::VcsType;
 use crate::graph::Graph;
 use crate::location::AsLocation;
 use crate::lock::Lock;
@@ -132,6 +133,16 @@ impl ToPyObject for Repository {
 impl Repository {
     pub fn new(obj: PyObject) -> Self {
         Repository(obj)
+    }
+
+    pub fn vcs_type(&self) -> VcsType {
+        Python::with_gil(|py| {
+            if self.to_object(py).getattr(py, "_git").is_ok() {
+                VcsType::Git
+            } else {
+                VcsType::Bazaar
+            }
+        })
     }
 
     pub fn get_user_url(&self) -> url::Url {

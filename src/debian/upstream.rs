@@ -3,6 +3,7 @@ use crate::controldir::ControlDir;
 use crate::debian::error::Error;
 use crate::debian::TarballKind;
 use crate::debian::VersionKind;
+use crate::tree::RevisionTree;
 use crate::tree::Tree;
 use crate::RevisionId;
 use debversion::Version;
@@ -11,7 +12,6 @@ use pyo3::types::{PyCFunction, PyDict, PyTuple};
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
-use crate::tree::RevisionTree;
 
 pub struct PristineTarSource(PyObject);
 
@@ -222,7 +222,7 @@ impl UpstreamBranchSource {
 
     pub fn revision_tree(
         &self,
-        source_name: &str,
+        source_name: Option<&str>,
         mangled_upstream_version: &str,
     ) -> Result<crate::tree::RevisionTree, Error> {
         Python::with_gil(|py| {
@@ -366,7 +366,15 @@ pub fn get_pristine_tar_source(
     })
 }
 
-pub fn run_dist_command(revtree: &dyn Tree, package: Option<&str>, version: &Version, target_dir: &Path, dist_command: &str, include_controldir: bool, subpath: &Path) -> Result<bool, Error> {
+pub fn run_dist_command(
+    revtree: &dyn Tree,
+    package: Option<&str>,
+    version: &Version,
+    target_dir: &Path,
+    dist_command: &str,
+    include_controldir: bool,
+    subpath: &Path,
+) -> Result<bool, Error> {
     Python::with_gil(|py| {
         let m = py.import_bound("breezy.plugins.debian.upstream").unwrap();
         let run_dist_command = m.getattr("run_dist_command").unwrap();

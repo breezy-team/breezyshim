@@ -10,6 +10,7 @@
 //! constraints.
 use crate::controldir::ControlDir;
 use crate::error::Error;
+use crate::foreign::VcsType;
 use crate::lock::Lock;
 use crate::repository::Repository;
 use crate::revisionid::RevisionId;
@@ -34,6 +35,10 @@ impl BranchFormat {
 pub trait Branch: ToPyObject + Send {
     fn format(&self) -> BranchFormat {
         Python::with_gil(|py| BranchFormat(self.to_object(py).getattr(py, "_format").unwrap()))
+    }
+
+    fn vcs_type(&self) -> VcsType {
+        self.repository().vcs_type()
     }
 
     fn revno(&self) -> u32 {

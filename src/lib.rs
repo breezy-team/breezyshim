@@ -29,6 +29,7 @@ pub mod dirty_tracker;
 pub mod error;
 pub mod export;
 pub mod forge;
+pub mod foreign;
 pub mod fossil;
 pub mod git;
 pub mod github;
