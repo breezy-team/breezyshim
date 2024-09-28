@@ -498,7 +498,7 @@ impl Forge {
         Python::with_gil(move |py| {
             let kwargs = PyDict::new_bound(py);
             kwargs.set_item("status", status.to_string())?;
-            let proposals: Vec<PyObject> = self
+            let proposal_iter: PyObject = self
                 .0
                 .call_method_bound(
                     py,
@@ -507,7 +507,23 @@ impl Forge {
                     Some(&kwargs),
                 )?
                 .extract(py)?;
-            Ok(proposals.into_iter().map(MergeProposal::from))
+
+            let mut ret = Vec::new();
+            loop {
+                match proposal_iter.call_method0(py, "__next__") {
+                    Ok(proposal) => {
+                        ret.push(MergeProposal::from(proposal));
+                    }
+                    Err(e) => {
+                        if e.is_instance_of::<pyo3::exceptions::PyStopIteration>(py) {
+                            break;
+                        } else {
+                            return Err(e.into());
+                        }
+                    }
+                }
+            }
+            Ok(ret.into_iter())
         })
     }
 
