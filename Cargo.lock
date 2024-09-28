@@ -97,7 +97,7 @@ dependencies = [
 
 [[package]]
 name = "breezyshim"
-version = "0.1.202"
+version = "0.1.204"
 dependencies = [
  "chrono",
  "ctor",

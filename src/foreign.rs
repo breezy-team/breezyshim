@@ -2,4 +2,9 @@
 pub enum VcsType {
     Bazaar,
     Git,
+    Hg,
+    Svn,
+    Fossil,
+    Darcs,
+    Cvs
 }
