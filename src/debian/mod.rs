@@ -134,6 +134,22 @@ pub enum TarballKind {
     Additional(String),
 }
 
+impl serde::ser::Serialize for TarballKind {
+    fn serialize<S: serde::ser::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            TarballKind::Orig => serializer.serialize_none(),
+            TarballKind::Additional(kind) => serializer.serialize_some(kind),
+        }
+    }
+}
+
+impl<'a> serde::de::Deserialize<'a> for TarballKind {
+    fn deserialize<D: serde::de::Deserializer<'a>>(deserializer: D) -> Result<Self, D::Error> {
+        let kind = Option::<String>::deserialize(deserializer)?;
+        Ok(kind.into())
+    }
+}
+
 impl From<Option<String>> for TarballKind {
     fn from(kind: Option<String>) -> Self {
         match kind {
