@@ -6,5 +6,7 @@ pub enum VcsType {
     Svn,
     Fossil,
     Darcs,
-    Cvs
+    Cvs,
+    Arch,
+    Svk
 }
