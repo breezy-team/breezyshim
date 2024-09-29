@@ -347,7 +347,12 @@ impl From<PyErr> for Error {
             } else if err.is_instance_of::<UnsupportedVcs>(py) {
                 Error::UnsupportedVcs(value.getattr("vcs").unwrap().extract().unwrap())
             } else if err.is_instance_of::<RemoteGitError>(py) {
-                Error::RemoteGitError(value.getattr("msg").unwrap().extract().unwrap())
+                if let Ok(e) = value.getattr("msg").unwrap().extract() {
+                    Error::RemoteGitError(e)
+                } else {
+                    // Just get it from the args tuple
+                    Error::RemoteGitError(value.getattr("args").unwrap().extract().unwrap())
+                }
             } else if err.is_instance_of::<IncompleteRead>(py) {
                 Error::IncompleteRead(
                     value.getattr("partial").unwrap().extract().unwrap(),
