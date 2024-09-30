@@ -304,9 +304,9 @@ dependencies = [
 
 [[package]]
 name = "debian-control"
-version = "0.1.29"
+version = "0.1.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3886b0270f6162e1eed0f81debf79366ff43df2ee5066ab3e3a59bb0b307b89e"
+checksum = "c9597b6d2961a9dda53e20390f5f548fafb315399d059fe92722eae805dcf81a"
 dependencies = [
  "chrono",
  "deb822-lossless",
