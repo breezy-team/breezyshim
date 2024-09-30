@@ -102,7 +102,10 @@ mod tests {
         let env = TestEnv::new();
         assert_eq!(env.home_dir, env.temp_dir.path().join("home"));
         assert_eq!(env.working_dir, env.temp_dir.path().join("test"));
-        assert_eq!(std::env::current_dir().unwrap(), env.working_dir.canonicalize().unwrap());
+        assert_eq!(
+            std::env::current_dir().unwrap(),
+            env.working_dir.canonicalize().unwrap()
+        );
         assert_eq!(
             std::env::var("HOME").unwrap(),
             env.home_dir.to_str().unwrap()

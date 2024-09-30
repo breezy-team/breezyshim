@@ -24,11 +24,9 @@ impl ToPyObject for NullCommitReporter {
     }
 }
 
-pub trait CommitReporter: ToPyObject {
-}
+pub trait CommitReporter: ToPyObject {}
 
-impl CommitReporter for NullCommitReporter {
-}
+impl CommitReporter for NullCommitReporter {}
 
 pub struct ReportCommitToLog(PyObject);
 
@@ -54,8 +52,7 @@ impl ToPyObject for ReportCommitToLog {
     }
 }
 
-impl CommitReporter for ReportCommitToLog {
-}
+impl CommitReporter for ReportCommitToLog {}
 
 #[cfg(test)]
 mod tests {

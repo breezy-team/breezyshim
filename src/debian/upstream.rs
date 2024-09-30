@@ -3,7 +3,6 @@ use crate::controldir::ControlDir;
 use crate::debian::error::Error;
 use crate::debian::TarballKind;
 use crate::debian::VersionKind;
-use crate::tree::RevisionTree;
 use crate::tree::Tree;
 use crate::RevisionId;
 use debversion::Version;

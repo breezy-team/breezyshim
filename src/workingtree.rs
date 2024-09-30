@@ -275,12 +275,24 @@ impl WorkingTree {
         .map(|_| ())
     }
 
-    pub fn safe_relpath_files(&self, file_list: &[&Path], canonicalize: bool, apply_view: bool) -> Result<Vec<PathBuf>, Error> {
+    pub fn safe_relpath_files(
+        &self,
+        file_list: &[&Path],
+        canonicalize: bool,
+        apply_view: bool,
+    ) -> Result<Vec<PathBuf>, Error> {
         Python::with_gil(|py| {
             let result = self.to_object(py).call_method1(
                 py,
                 "safe_relpath_files",
-                (file_list.iter().map(|x| x.to_path_buf()).collect::<Vec<_>>(), canonicalize, apply_view),
+                (
+                    file_list
+                        .iter()
+                        .map(|x| x.to_path_buf())
+                        .collect::<Vec<_>>(),
+                    canonicalize,
+                    apply_view,
+                ),
             )?;
             Ok(result.extract(py)?)
         })

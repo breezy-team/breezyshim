@@ -8,5 +8,5 @@ pub enum VcsType {
     Darcs,
     Cvs,
     Arch,
-    Svk
+    Svk,
 }
