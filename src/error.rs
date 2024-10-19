@@ -395,15 +395,13 @@ impl From<PyErr> for Error {
             } else if err.is_instance_of::<ForgeLoginRequired>(py) {
                 Error::ForgeLoginRequired
             } else if err.is_instance_of::<UnsupportedForge>(py) {
-                Error::UnsupportedForge(
-                    value
-                        .getattr("url")
-                        .unwrap()
-                        .extract::<String>()
-                        .unwrap()
-                        .parse()
-                        .unwrap(),
-                )
+                let branch = value.getattr("branch").unwrap();
+
+                if let Ok(url) = branch.getattr("user_url") {
+                    Error::UnsupportedForge(url.extract::<String>().unwrap().parse().unwrap())
+                } else {
+                    Error::UnsupportedForge(branch.extract::<String>().unwrap().parse().unwrap())
+                }
             } else if err.is_instance_of::<MergeProposalExists>(py) {
                 let source_url: String = value.getattr("url").unwrap().extract().unwrap();
                 let existing_proposal = value.getattr("existing_proposal").unwrap();
