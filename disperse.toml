@@ -1,0 +1,5 @@
+tag-name = "v$VERSION"
+update_version = []
+update-manpage = []
+tarball-location = []
+release-timeout = 5
