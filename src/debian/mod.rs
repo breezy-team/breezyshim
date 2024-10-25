@@ -7,6 +7,7 @@ pub mod apt;
 pub mod debcommit;
 pub mod directory;
 pub mod error;
+pub mod import_dsc;
 pub mod merge_upstream;
 pub mod release;
 pub mod upstream;
