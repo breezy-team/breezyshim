@@ -1,5 +1,8 @@
+use crate::branch::RegularBranch;
+use crate::debian::TarballKind;
 use crate::{branch::Branch, tree::Tree, RevisionId};
 use pyo3::prelude::*;
+use std::{collections::HashMap, path::Path, path::PathBuf};
 
 pub struct DistributionBranchSet(PyObject);
 
@@ -67,6 +70,53 @@ impl DistributionBranch {
             self.0
                 .call_method1(py, "revid_of_version", (version.to_object(py),))?
                 .extract::<RevisionId>(py)
+        })?)
+    }
+
+    pub fn import_package(
+        &self,
+        dsc_path: &Path,
+        apply_patches: bool,
+    ) -> Result<String, crate::debian::Error> {
+        Ok(Python::with_gil(|py| -> PyResult<String> {
+            self.0
+                .call_method1(
+                    py,
+                    "import_package",
+                    (dsc_path.to_object(py), apply_patches),
+                )?
+                .extract::<String>(py)
+        })?)
+    }
+
+    pub fn branch(&self) -> Box<dyn Branch> {
+        Python::with_gil(|py| -> PyResult<Box<dyn Branch>> {
+            Ok(Box::new(RegularBranch::new(self.0.getattr(py, "branch")?)))
+        })
+        .unwrap()
+    }
+
+    pub fn create_empty_upstream_tree(&self, basedir: &Path) -> Result<(), crate::debian::Error> {
+        Python::with_gil(|py| -> PyResult<()> {
+            self.0
+                .call_method1(py, "create_empty_upstream_tree", (basedir.to_object(py),))?;
+            Ok(())
+        })?;
+        Ok(())
+    }
+
+    pub fn extract_upstream_tree(
+        &self,
+        upstream_tips: &HashMap<TarballKind, (RevisionId, PathBuf)>,
+        basedir: &Path,
+    ) -> Result<(), crate::debian::Error> {
+        Ok(Python::with_gil(|py| -> PyResult<()> {
+            self.0.call_method1(
+                py,
+                "extract_upstream_tree",
+                (upstream_tips.to_object(py), basedir.to_object(py)),
+            )?;
+            Ok(())
         })?)
     }
 }
