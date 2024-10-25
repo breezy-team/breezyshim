@@ -1,6 +1,6 @@
 //! The `ControlDir` class provides a high-level interface to control directories,
 //! e.g. ".bzr" or ".git" directories.
-use crate::branch::{py_tag_selector, Branch, RegularBranch};
+use crate::branch::{py_tag_selector, Branch, GenericBranch};
 use crate::error::Error;
 use crate::repository::Repository;
 use crate::transport::Transport;
@@ -89,7 +89,7 @@ impl ControlDir {
                 .to_object(py)
                 .call_method_bound(py, "create_branch", (name,), None)?
                 .extract(py)?;
-            Ok(Box::new(RegularBranch::new(branch)) as Box<dyn Branch>)
+            Ok(Box::new(GenericBranch::new(branch)) as Box<dyn Branch>)
         })
     }
 
@@ -113,7 +113,7 @@ impl ControlDir {
                 .to_object(py)
                 .call_method_bound(py, "open_branch", (branch_name,), None)?
                 .extract(py)?;
-            Ok(Box::new(RegularBranch::new(branch)) as Box<dyn Branch>)
+            Ok(Box::new(GenericBranch::new(branch)) as Box<dyn Branch>)
         })
     }
 
@@ -171,7 +171,7 @@ impl ControlDir {
                 Some(&kwargs),
             )?;
             Ok(
-                Box::new(RegularBranch::new(result.getattr(py, "target_branch")?))
+                Box::new(GenericBranch::new(result.getattr(py, "target_branch")?))
                     as Box<dyn Branch>,
             )
         })
@@ -351,7 +351,7 @@ pub fn open_tree_or_branch(
         )?;
 
         let (tree, branch) = ret.extract::<(Option<PyObject>, PyObject)>(py)?;
-        let branch = Box::new(RegularBranch::new(branch)) as Box<dyn Branch>;
+        let branch = Box::new(GenericBranch::new(branch)) as Box<dyn Branch>;
         let tree = tree.map(WorkingTree);
         Ok((tree, branch))
     })
@@ -501,7 +501,7 @@ pub fn create_branch_convenience(
             (base.to_string(),),
             Some(&kwargs),
         )?;
-        Ok(Box::new(RegularBranch::new(branch.to_object(py))) as Box<dyn Branch>)
+        Ok(Box::new(GenericBranch::new(branch.to_object(py))) as Box<dyn Branch>)
     })
 }
 

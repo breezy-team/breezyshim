@@ -1,4 +1,5 @@
-use crate::branch::RegularBranch;
+use crate::branch::GenericBranch;
+use crate::tree::GenericTree;
 use crate::debian::TarballKind;
 use crate::{branch::Branch, tree::Tree, RevisionId};
 use pyo3::prelude::*;
@@ -89,9 +90,23 @@ impl DistributionBranch {
         })?)
     }
 
+    pub fn tree(&self) -> Option<Box<dyn Tree>> {
+        Python::with_gil(|py| -> PyResult<Option<Box<dyn Tree>>> {
+            let tree = self
+                .0
+                .getattr(py, "tree")?
+                .extract::<Option<PyObject>>(py)?;
+            if tree.is_none() {
+                return Ok(None);
+            }
+            Ok(Some(Box::new(GenericTree::from(tree.unwrap()))))
+        })
+        .unwrap()
+    }
+
     pub fn branch(&self) -> Box<dyn Branch> {
         Python::with_gil(|py| -> PyResult<Box<dyn Branch>> {
-            Ok(Box::new(RegularBranch::new(self.0.getattr(py, "branch")?)))
+            Ok(Box::new(GenericBranch::new(self.0.getattr(py, "branch")?)))
         })
         .unwrap()
     }

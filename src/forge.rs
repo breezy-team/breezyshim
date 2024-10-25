@@ -1,5 +1,5 @@
 //! Code hosting services and merge proposals.
-use crate::branch::{py_tag_selector, Branch, RegularBranch};
+use crate::branch::{py_tag_selector, Branch, GenericBranch};
 use crate::error::Error;
 use crate::revisionid::RevisionId;
 use pyo3::conversion::ToPyObject;
@@ -485,7 +485,7 @@ impl Forge {
                 (main_branch.to_object(py), name),
                 Some(&kwargs),
             )?;
-            Ok(Box::new(RegularBranch::new(branch)) as Box<dyn Branch>)
+            Ok(Box::new(GenericBranch::new(branch)) as Box<dyn Branch>)
         })
     }
 
@@ -559,7 +559,7 @@ impl Forge {
                 .call_method_bound(py, "publish_derived", (), Some(&kwargs))?
                 .extract(py)?;
             Ok((
-                Box::new(RegularBranch::new(b)) as Box<dyn Branch>,
+                Box::new(GenericBranch::new(b)) as Box<dyn Branch>,
                 u.parse::<url::Url>().unwrap(),
             ))
         })

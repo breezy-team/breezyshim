@@ -216,7 +216,7 @@ impl std::fmt::Debug for UpstreamBranchSource {
 impl UpstreamBranchSource {
     pub fn upstream_branch(&self) -> Box<dyn crate::branch::Branch> {
         let o = Python::with_gil(|py| self.to_object(py).getattr(py, "upstream_branch").unwrap());
-        Box::new(crate::branch::RegularBranch::new(o))
+        Box::new(crate::branch::GenericBranch::new(o))
     }
 
     pub fn revision_tree(

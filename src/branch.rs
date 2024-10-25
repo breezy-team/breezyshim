@@ -286,25 +286,25 @@ pub trait Branch: ToPyObject + Send {
 }
 
 #[derive(Clone)]
-pub struct RegularBranch(PyObject);
+pub struct GenericBranch(PyObject);
 
-impl Branch for RegularBranch {}
+impl Branch for GenericBranch {}
 
-impl ToPyObject for RegularBranch {
+impl ToPyObject for GenericBranch {
     fn to_object(&self, py: Python) -> PyObject {
         self.0.to_object(py)
     }
 }
 
-impl RegularBranch {
+impl GenericBranch {
     pub fn new(obj: PyObject) -> Self {
-        RegularBranch(obj)
+        GenericBranch(obj)
     }
 }
 
-impl FromPyObject<'_> for RegularBranch {
+impl FromPyObject<'_> for GenericBranch {
     fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(RegularBranch(ob.to_object(ob.py())))
+        Ok(GenericBranch(ob.to_object(ob.py())))
     }
 }
 
@@ -358,7 +358,7 @@ pub fn open(url: &url::Url) -> Result<Box<dyn Branch>, Error> {
         let m = py.import_bound("breezy.branch").unwrap();
         let c = m.getattr("Branch").unwrap();
         let r = c.call_method1("open", (url.to_string(),))?;
-        Ok(Box::new(RegularBranch(r.to_object(py))) as Box<dyn Branch>)
+        Ok(Box::new(GenericBranch(r.to_object(py))) as Box<dyn Branch>)
     })
 }
 
@@ -372,7 +372,7 @@ pub fn open_containing(url: &url::Url) -> Result<(Box<dyn Branch>, String), Erro
             .extract()?;
 
         Ok((
-            Box::new(RegularBranch(b.to_object(py))) as Box<dyn Branch>,
+            Box::new(GenericBranch(b.to_object(py))) as Box<dyn Branch>,
             p,
         ))
     })
@@ -385,6 +385,6 @@ pub fn open_from_transport(
         let m = py.import_bound("breezy.branch").unwrap();
         let c = m.getattr("Branch").unwrap();
         let r = c.call_method1("open_from_transport", (transport.to_object(py),))?;
-        Ok(Box::new(RegularBranch(r.to_object(py))) as Box<dyn Branch>)
+        Ok(Box::new(GenericBranch(r.to_object(py))) as Box<dyn Branch>)
     })
 }

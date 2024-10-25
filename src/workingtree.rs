@@ -1,5 +1,5 @@
 //! Working trees
-use crate::branch::{Branch, RegularBranch};
+use crate::branch::{Branch, GenericBranch};
 use crate::controldir::ControlDir;
 use crate::error::Error;
 use crate::tree::{MutableTree, RevisionTree, Tree};
@@ -113,7 +113,7 @@ impl WorkingTree {
     pub fn branch(&self) -> Box<dyn Branch> {
         Python::with_gil(|py| {
             let branch = self.to_object(py).getattr(py, "branch").unwrap();
-            Box::new(RegularBranch::new(branch)) as Box<dyn Branch>
+            Box::new(GenericBranch::new(branch)) as Box<dyn Branch>
         })
     }
 

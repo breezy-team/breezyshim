@@ -423,6 +423,22 @@ pub trait Tree: ToPyObject {
     }
 }
 
+pub struct GenericTree(PyObject);
+
+impl ToPyObject for GenericTree {
+    fn to_object(&self, py: Python) -> PyObject {
+        self.0.clone_ref(py)
+    }
+}
+
+impl From<PyObject> for GenericTree {
+    fn from(obj: PyObject) -> Self {
+        GenericTree(obj)
+    }
+}
+
+impl Tree for GenericTree {}
+
 pub trait MutableTree: Tree {
     fn add(&self, files: &[&Path]) -> Result<(), Error> {
         for f in files {
