@@ -21,7 +21,7 @@ patchkit = "0.1"
 log = "0.4"
 debian-control = { version = ">= 0.1.14", optional = true, features = ["python-debian"] }
 dirty-tracker = { version = "0.3", optional = true }
-debian-changelog = { version = "0.1.12", optional = true }
+debian-changelog = { version = "0.2.0", optional = true }
 difflib = { version = "0.4.0", optional = true }
 percent-encoding = "2.3.1"
 sqlx = { version = ">=0.8", optional = true }
