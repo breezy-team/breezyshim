@@ -1,6 +1,5 @@
 use crate::branch::GenericBranch;
 use crate::debian::TarballKind;
-use crate::tree::GenericTree;
 use crate::tree::WorkingTree;
 use crate::{branch::Branch, tree::Tree, RevisionId};
 use pyo3::prelude::*;
@@ -92,7 +91,7 @@ impl DistributionBranch {
     }
 
     pub fn tree(&self) -> Option<WorkingTree> {
-        Python::with_gil(|py| -> PyResult<Option<Box<dyn Tree>>> {
+        Python::with_gil(|py| -> PyResult<Option<WorkingTree>> {
             let tree = self
                 .0
                 .getattr(py, "tree")?
@@ -100,7 +99,7 @@ impl DistributionBranch {
             if tree.is_none() {
                 return Ok(None);
             }
-            Ok(Some(WorkingTree::new(tree.unwrap())))
+            Ok(Some(WorkingTree::from(tree.unwrap())))
         })
         .unwrap()
     }
