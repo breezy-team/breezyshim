@@ -275,6 +275,46 @@ impl WorkingTree {
         .map(|_| ())
     }
 
+    pub fn merge_from_branch(
+        &self,
+        source: &dyn Branch,
+        to_revision: Option<&RevisionId>,
+    ) -> Result<(), Error> {
+        Python::with_gil(|py| {
+            let kwargs = {
+                let kwargs = pyo3::types::PyDict::new_bound(py);
+                if let Some(to_revision) = to_revision {
+                    kwargs
+                        .set_item("to_revision", to_revision.to_object(py))
+                        .unwrap();
+                }
+                kwargs
+            };
+            self.to_object(py).call_method_bound(
+                py,
+                "merge_from_branch",
+                (source.to_object(py),),
+                Some(&kwargs),
+            )
+        })
+        .map_err(|e| e.into())
+        .map(|_| ())
+    }
+
+    pub fn update(&self, revision: Option<&RevisionId>) -> Result<(), Error> {
+        Python::with_gil(|py| {
+            let kwargs = {
+                let kwargs = pyo3::types::PyDict::new_bound(py);
+                kwargs.set_item("revision", revision.to_object(py)).unwrap();
+                kwargs
+            };
+            self.to_object(py)
+                .call_method_bound(py, "update", (), Some(&kwargs))
+        })
+        .map_err(|e| e.into())
+        .map(|_| ())
+    }
+
     pub fn safe_relpath_files(
         &self,
         file_list: &[&Path],

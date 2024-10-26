@@ -1,6 +1,7 @@
 use crate::branch::GenericBranch;
-use crate::tree::GenericTree;
 use crate::debian::TarballKind;
+use crate::tree::GenericTree;
+use crate::tree::WorkingTree;
 use crate::{branch::Branch, tree::Tree, RevisionId};
 use pyo3::prelude::*;
 use std::{collections::HashMap, path::Path, path::PathBuf};
@@ -90,7 +91,7 @@ impl DistributionBranch {
         })?)
     }
 
-    pub fn tree(&self) -> Option<Box<dyn Tree>> {
+    pub fn tree(&self) -> Option<WorkingTree> {
         Python::with_gil(|py| -> PyResult<Option<Box<dyn Tree>>> {
             let tree = self
                 .0
@@ -99,7 +100,7 @@ impl DistributionBranch {
             if tree.is_none() {
                 return Ok(None);
             }
-            Ok(Some(Box::new(GenericTree::from(tree.unwrap()))))
+            Ok(Some(WorkingTree::new(tree.unwrap())))
         })
         .unwrap()
     }
@@ -108,6 +109,17 @@ impl DistributionBranch {
         Python::with_gil(|py| -> PyResult<Box<dyn Branch>> {
             Ok(Box::new(GenericBranch::new(self.0.getattr(py, "branch")?)))
         })
+        .unwrap()
+    }
+
+    pub fn pristine_upstream_source(&self) -> crate::debian::upstream::PristineTarSource {
+        Python::with_gil(
+            |py| -> PyResult<crate::debian::upstream::PristineTarSource> {
+                Ok(crate::debian::upstream::PristineTarSource::from(
+                    self.0.getattr(py, "pristine_upstream_source")?,
+                ))
+            },
+        )
         .unwrap()
     }
 
