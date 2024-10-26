@@ -54,6 +54,7 @@ import_exception!(breezy.plugins.gitlab.forge, ProjectCreationTimeout);
 import_exception!(breezy.forge, SourceNotDerivedFromTarget);
 import_exception!(breezy.controldir, BranchReferenceLoop);
 import_exception!(breezy.errors, RedirectRequested);
+import_exception!(breezy.errors, ConflictsInTree);
 
 lazy_static::lazy_static! {
     // Only present in breezy << 4.0
@@ -142,6 +143,7 @@ pub enum Error {
         target: url::Url,
         is_permanent: bool,
     },
+    ConflictsInTree,
 }
 
 impl From<url::ParseError> for Error {
@@ -281,6 +283,7 @@ impl std::fmt::Display for Error {
                 write!(f, "Project creation timeout: {} after {} seconds", p, t)
             }
             Self::GitLabConflict(p) => write!(f, "GitLab conflict: {}", p),
+            Self::ConflictsInTree => write!(f, "Conflicts in tree"),
             Self::SourceNotDerivedFromTarget => write!(f, "Source not derived from target"),
             Self::BranchReferenceLoop => write!(f, "Branch reference loop"),
             Self::RedirectRequested {
@@ -554,6 +557,8 @@ impl From<PyErr> for Error {
                 )
             } else if err.is_instance_of::<GitLabConflict>(py) {
                 Error::GitLabConflict(value.getattr("reason").unwrap().extract().unwrap())
+            } else if err.is_instance_of::<ConflictsInTree>(py) {
+                Error::ConflictsInTree
             } else if err.is_instance_of::<SourceNotDerivedFromTarget>(py) {
                 Error::SourceNotDerivedFromTarget
             } else if BreezyConnectionError
@@ -709,6 +714,7 @@ impl From<Error> for PyErr {
             Error::ForkingDisabled(p) => ForkingDisabled::new_err((p,)),
             Error::ProjectCreationTimeout(p, t) => ProjectCreationTimeout::new_err((p, t)),
             Error::GitLabConflict(p) => GitLabConflict::new_err((p,)),
+            Error::ConflictsInTree => ConflictsInTree::new_err(()),
             Error::SourceNotDerivedFromTarget => SourceNotDerivedFromTarget::new_err(()),
             Error::BranchReferenceLoop => BranchReferenceLoop::new_err(()),
             Error::RedirectRequested {
@@ -1229,6 +1235,16 @@ fn test_gitlab_conflict() {
     // Verify that p is an instance of GitLabConflict
     Python::with_gil(|py| {
         assert!(p.is_instance_of::<GitLabConflict>(py), "{}", p);
+    });
+}
+
+#[test]
+fn test_conflicts_in_tree() {
+    let e = Error::ConflictsInTree;
+    let p: PyErr = e.into();
+    // Verify that p is an instance of ConflictsInTree
+    Python::with_gil(|py| {
+        assert!(p.is_instance_of::<ConflictsInTree>(py), "{}", p);
     });
 }
 
