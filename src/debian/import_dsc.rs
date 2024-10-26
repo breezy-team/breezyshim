@@ -66,7 +66,7 @@ impl DistributionBranch {
     pub fn revid_of_version(
         &self,
         version: &debversion::Version,
-    ) -> Result<RevisionId, crate::debian::Error> {
+    ) -> Result<RevisionId, crate::debian::error::Error> {
         Ok(Python::with_gil(|py| -> PyResult<RevisionId> {
             self.0
                 .call_method1(py, "revid_of_version", (version.to_object(py),))?
@@ -78,7 +78,7 @@ impl DistributionBranch {
         &self,
         dsc_path: &Path,
         apply_patches: bool,
-    ) -> Result<String, crate::debian::Error> {
+    ) -> Result<String, crate::debian::error::Error> {
         Ok(Python::with_gil(|py| -> PyResult<String> {
             self.0
                 .call_method1(
@@ -122,7 +122,10 @@ impl DistributionBranch {
         .unwrap()
     }
 
-    pub fn create_empty_upstream_tree(&self, basedir: &Path) -> Result<(), crate::debian::Error> {
+    pub fn create_empty_upstream_tree(
+        &self,
+        basedir: &Path,
+    ) -> Result<(), crate::debian::error::Error> {
         Python::with_gil(|py| -> PyResult<()> {
             self.0
                 .call_method1(py, "create_empty_upstream_tree", (basedir.to_object(py),))?;
@@ -135,7 +138,7 @@ impl DistributionBranch {
         &self,
         upstream_tips: &HashMap<TarballKind, (RevisionId, PathBuf)>,
         basedir: &Path,
-    ) -> Result<(), crate::debian::Error> {
+    ) -> Result<(), crate::debian::error::Error> {
         Ok(Python::with_gil(|py| -> PyResult<()> {
             self.0.call_method1(
                 py,
