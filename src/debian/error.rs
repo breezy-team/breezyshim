@@ -1,4 +1,5 @@
 use crate::error::Error as BrzError;
+use debversion::Version;
 use pyo3::import_exception;
 use pyo3::prelude::*;
 
@@ -8,15 +9,27 @@ import_exception!(breezy.plugins.debian.upstream.branch, DistCommandfailed);
 import_exception!(breezy.plugins.debian.upstream, PackageVersionNotPresent);
 import_exception!(breezy.plugins.debian.upstream, MissingUpstreamTarball);
 import_exception!(breezy.plugins.debian.changelog, UnreleasedChanges);
+import_exception!(breezy.plugins.debian.import_dsc, VersionAlreadyImported);
 
 #[derive(Debug)]
 pub enum Error {
     BrzError(BrzError),
     BuildFailed,
     UpstreamAlreadyImported(String),
+    VersionAlreadyImported {
+        package: String,
+        version: Version,
+        tag_name: String,
+    },
     DistCommandFailed(String),
-    PackageVersionNotPresent { package: String, version: String },
-    MissingUpstreamTarball { package: String, version: String },
+    PackageVersionNotPresent {
+        package: String,
+        version: String,
+    },
+    MissingUpstreamTarball {
+        package: String,
+        version: String,
+    },
     UnreleasedChanges,
     ChangeLogError(debian_changelog::Error),
 }
@@ -42,6 +55,17 @@ impl std::fmt::Display for Error {
             }
             Error::UnreleasedChanges => write!(f, "Unreleased changes"),
             Error::ChangeLogError(err) => write!(f, "{}", err),
+            Error::VersionAlreadyImported {
+                package,
+                version,
+                tag_name,
+            } => {
+                write!(
+                    f,
+                    "Version {} of package {} already imported with tag {}",
+                    version, package, tag_name
+                )
+            }
         }
     }
 }
@@ -68,6 +92,13 @@ impl From<PyErr> for Error {
                 if err.is_instance_of::<UpstreamAlreadyImported>(py) {
                     let v = err.value_bound(py);
                     Error::UpstreamAlreadyImported(v.getattr("version").unwrap().extract().unwrap())
+                } else if err.is_instance_of::<VersionAlreadyImported>(py) {
+                    let v = err.value_bound(py);
+                    Error::VersionAlreadyImported {
+                        package: v.getattr("package").unwrap().extract().unwrap(),
+                        version: v.getattr("version").unwrap().extract().unwrap(),
+                        tag_name: v.getattr("tag_name").unwrap().extract().unwrap(),
+                    }
                 } else if err.is_instance_of::<DistCommandfailed>(py) {
                     let v = err.value_bound(py);
                     Error::DistCommandFailed(v.getattr("error").unwrap().extract().unwrap())
@@ -114,6 +145,11 @@ impl From<Error> for PyErr {
             }
             Error::UnreleasedChanges => UnreleasedChanges::new_err(()).into(),
             Error::ChangeLogError(err) => todo!(),
+            Error::VersionAlreadyImported {
+                package,
+                version,
+                tag_name,
+            } => VersionAlreadyImported::new_err((package, version, tag_name)).into(),
         }
     }
 }
