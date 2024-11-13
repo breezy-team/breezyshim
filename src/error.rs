@@ -56,6 +56,7 @@ import_exception!(breezy.forge, SourceNotDerivedFromTarget);
 import_exception!(breezy.controldir, BranchReferenceLoop);
 import_exception!(breezy.errors, RedirectRequested);
 import_exception!(breezy.errors, ConflictsInTree);
+import_exception!(breezy.errors, NoRoundtrippingSupport);
 
 lazy_static::lazy_static! {
     // Only present in breezy << 4.0
@@ -145,6 +146,7 @@ pub enum Error {
         is_permanent: bool,
     },
     ConflictsInTree,
+    NoRoundtrippingSupport,
 }
 
 impl From<url::ParseError> for Error {
@@ -287,6 +289,7 @@ impl std::fmt::Display for Error {
             Self::ConflictsInTree => write!(f, "Conflicts in tree"),
             Self::SourceNotDerivedFromTarget => write!(f, "Source not derived from target"),
             Self::BranchReferenceLoop => write!(f, "Branch reference loop"),
+            Self::NoRoundtrippingSupport => write!(f, "No roundtripping support"),
             Self::RedirectRequested {
                 source,
                 target,
@@ -588,6 +591,8 @@ impl From<PyErr> for Error {
                         .unwrap(),
                     is_permanent: value.getattr("is_permanent").unwrap().extract().unwrap(),
                 }
+            } else if err.is_instance_of::<NoRoundtrippingSupport>(py) {
+                Error::NoRoundtrippingSupport
             // Intentionally sorted below the more specific errors
             } else if err.is_instance_of::<InvalidHttpResponse>(py) {
                 Error::InvalidHttpResponse(
@@ -729,6 +734,9 @@ impl From<Error> for PyErr {
                 target,
                 is_permanent,
             } => RedirectRequested::new_err((source.to_string(), target.to_string(), is_permanent)),
+            Error::NoRoundtrippingSupport => {
+                Python::with_gil(|py| NoRoundtrippingSupport::new_err((py.None(), py.None())))
+            }
         }
     }
 }
