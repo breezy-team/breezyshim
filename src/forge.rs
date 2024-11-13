@@ -277,7 +277,7 @@ impl MergeProposal {
 }
 
 #[pyclass]
-pub struct ProposalBuilder(PyObject, PyObject);
+pub struct ProposalBuilder(PyObject, Py<PyDict>);
 
 impl ProposalBuilder {
     pub fn description(self, description: &str) -> Self {
@@ -334,7 +334,9 @@ impl ProposalBuilder {
     pub fn build(self) -> Result<MergeProposal, crate::error::Error> {
         Python::with_gil(|py| {
             let kwargs = self.1;
-            let proposal = self.0.call_method1(py, "create_proposal", (kwargs,))?;
+            let proposal =
+                self.0
+                    .call_method_bound(py, "create_proposal", (), Some(kwargs.bind(py)))?;
             Ok(MergeProposal::from(proposal))
         })
     }
