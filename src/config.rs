@@ -33,8 +33,13 @@ impl ConfigValue for &str {}
 impl ConfigValue for i64 {}
 impl ConfigValue for bool {}
 
-#[derive(Clone)]
 pub struct BranchConfig(PyObject);
+
+impl Clone for BranchConfig {
+    fn clone(&self) -> Self {
+        Python::with_gil(|py| -> Self { Self(self.0.clone_ref(py)) })
+    }
+}
 
 impl ToPyObject for BranchConfig {
     fn to_object(&self, py: Python) -> PyObject {

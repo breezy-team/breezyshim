@@ -17,8 +17,13 @@ use crate::revisionid::RevisionId;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
-#[derive(Clone)]
 pub struct BranchFormat(PyObject);
+
+impl Clone for BranchFormat {
+    fn clone(&self) -> Self {
+        Python::with_gil(|py| BranchFormat(self.0.clone_ref(py)))
+    }
+}
 
 impl BranchFormat {
     pub fn supports_stacking(&self) -> bool {
@@ -285,8 +290,13 @@ pub trait Branch: ToPyObject + Send {
     }
 }
 
-#[derive(Clone)]
 pub struct GenericBranch(PyObject);
+
+impl Clone for GenericBranch {
+    fn clone(&self) -> Self {
+        Python::with_gil(|py| GenericBranch(self.0.clone_ref(py)))
+    }
+}
 
 impl Branch for GenericBranch {}
 
@@ -308,8 +318,13 @@ impl FromPyObject<'_> for GenericBranch {
     }
 }
 
-#[derive(Clone)]
 pub struct MemoryBranch(PyObject);
+
+impl Clone for MemoryBranch {
+    fn clone(&self) -> Self {
+        Python::with_gil(|py| MemoryBranch(self.0.clone_ref(py)))
+    }
+}
 
 impl ToPyObject for MemoryBranch {
     fn to_object(&self, py: Python) -> PyObject {
@@ -387,4 +402,39 @@ pub fn open_from_transport(
         let r = c.call_method1("open_from_transport", (transport.to_object(py),))?;
         Ok(Box::new(GenericBranch(r.to_object(py))) as Box<dyn Branch>)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_create_and_clone() {
+        let td = tempfile::tempdir().unwrap();
+        let url = url::Url::from_directory_path(td.path()).unwrap();
+        let branch = crate::controldir::create_branch_convenience(
+            &url,
+            None,
+            &crate::controldir::ControlDirFormat::default(),
+        )
+        .unwrap();
+
+        assert_eq!(branch.revno(), 0);
+        assert_eq!(branch.last_revision(), RevisionId::null());
+    }
+
+    #[test]
+    fn test_create_and_clone_memory() {
+        let td = tempfile::tempdir().unwrap();
+        let url = url::Url::from_directory_path(td.path()).unwrap();
+        let branch = crate::controldir::create_branch_convenience(
+            &url,
+            None,
+            &crate::controldir::ControlDirFormat::default(),
+        )
+        .unwrap();
+        let branch = MemoryBranch::new(&branch.repository(), None, &RevisionId::null());
+
+        assert_eq!(branch.last_revision(), RevisionId::null());
+    }
 }

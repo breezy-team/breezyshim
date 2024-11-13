@@ -19,8 +19,13 @@ impl FromPyObject<'_> for TreeChange {
     }
 }
 
-#[derive(Clone)]
 pub struct Conflict(PyObject);
+
+impl Clone for Conflict {
+    fn clone(&self) -> Self {
+        Python::with_gil(|py| Conflict(self.0.clone_ref(py)))
+    }
+}
 
 impl Conflict {
     pub fn associated_filenames(&self) -> Result<Vec<PathBuf>, crate::error::Error> {

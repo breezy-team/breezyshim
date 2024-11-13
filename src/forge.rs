@@ -8,8 +8,13 @@ use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use std::hash::Hash;
 
-#[derive(Clone)]
 pub struct Forge(PyObject);
+
+impl Clone for Forge {
+    fn clone(&self) -> Self {
+        Forge(Python::with_gil(|py| self.0.clone_ref(py)))
+    }
+}
 
 impl From<PyObject> for Forge {
     fn from(obj: PyObject) -> Self {
@@ -96,8 +101,13 @@ impl FromPyObject<'_> for MergeProposalStatus {
     }
 }
 
-#[derive(Clone)]
 pub struct MergeProposal(PyObject);
+
+impl Clone for MergeProposal {
+    fn clone(&self) -> Self {
+        MergeProposal(Python::with_gil(|py| self.0.clone_ref(py)))
+    }
+}
 
 impl From<PyObject> for MergeProposal {
     fn from(obj: PyObject) -> Self {
