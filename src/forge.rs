@@ -540,7 +540,7 @@ impl Forge {
     pub fn publish_derived(
         &self,
         local_branch: &dyn Branch,
-        main_branch: &dyn Branch,
+        base_branch: &dyn Branch,
         name: &str,
         overwrite_existing: Option<bool>,
         owner: Option<&str>,
@@ -550,7 +550,7 @@ impl Forge {
         Python::with_gil(|py| {
             let kwargs = PyDict::new_bound(py);
             kwargs.set_item("local_branch", local_branch.to_object(py))?;
-            kwargs.set_item("main_branch", main_branch.to_object(py))?;
+            kwargs.set_item("base_branch", base_branch.to_object(py))?;
             kwargs.set_item("name", name)?;
             if let Some(overwrite_existing) = overwrite_existing {
                 kwargs.set_item("overwrite_existing", overwrite_existing)?;
