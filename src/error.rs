@@ -600,6 +600,10 @@ impl From<PyErr> for Error {
             } else if err.is_instance_of::<BranchReferenceLoop>(py) {
                 Error::BranchReferenceLoop
             } else {
+                if std::env::var("BRZ_ERROR").is_ok() {
+                    // Print backtrace
+                    err.print(py);
+                }
                 Self::Other(err)
             }
         })
