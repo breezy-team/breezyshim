@@ -544,7 +544,7 @@ impl Forge {
         name: &str,
         overwrite: Option<bool>,
         owner: Option<&str>,
-        stop_revision: Option<&RevisionId>,
+        revision_id: Option<&RevisionId>,
         tag_selector: Option<Box<dyn Fn(String) -> bool>>,
     ) -> Result<(Box<dyn Branch>, url::Url), crate::error::Error> {
         Python::with_gil(|py| {
@@ -558,8 +558,8 @@ impl Forge {
             if let Some(owner) = owner {
                 kwargs.set_item("owner", owner)?;
             }
-            if let Some(stop_revision) = stop_revision {
-                kwargs.set_item("stop_revision", stop_revision)?;
+            if let Some(revision_id) = revision_id {
+                kwargs.set_item("revision_id", revision_id)?;
             }
             if let Some(tag_selector) = tag_selector {
                 kwargs.set_item("tag_selector", py_tag_selector(py, tag_selector)?)?;
