@@ -1,4 +1,5 @@
 //! Error handling for the Breezy Python bindings
+use crate::transform::RawConflict;
 use pyo3::import_exception;
 use pyo3::prelude::*;
 use pyo3::PyErr;
@@ -114,7 +115,7 @@ pub enum Error {
     MissingNestedTree(std::path::PathBuf),
     /// Failed to delete transform temporary directory
     ImmortalLimbo(std::path::PathBuf),
-    MalformedTransform(String),
+    MalformedTransform(Vec<RawConflict>),
     TransformRenameFailed(
         std::path::PathBuf,
         std::path::PathBuf,
@@ -249,7 +250,7 @@ impl std::fmt::Display for Error {
                 "Failed to delete transform temporary directory: {}",
                 p.display()
             ),
-            Self::MalformedTransform(e) => write!(f, "Malformed transform: {}", e),
+            Self::MalformedTransform(e) => write!(f, "Malformed transform: {:?}", e),
             Self::TransformRenameFailed(a, b, c, d) => write!(
                 f,
                 "Transform rename failed: {} -> {}: {}: {}",
@@ -690,7 +691,9 @@ impl From<Error> for PyErr {
                 MissingNestedTree::new_err((p.to_string_lossy().to_string(),))
             }
             Error::ImmortalLimbo(p) => ImmortalLimbo::new_err((p.to_string_lossy().to_string(),)),
-            Error::MalformedTransform(conflicts) => MalformedTransform::new_err((conflicts,)),
+            Error::MalformedTransform(conflicts) => {
+                MalformedTransform::new_err((Python::with_gil(|py| conflicts.to_object(py)),))
+            }
             Error::TransformRenameFailed(from_path, to_path, why, error) => {
                 TransformRenameFailed::new_err((
                     from_path.to_string_lossy().to_string(),
@@ -1134,7 +1137,8 @@ fn test_immortal_limbo() {
 
 #[test]
 fn test_malformed_transform() {
-    let e = Error::MalformedTransform("foo".to_string());
+    let e = Error::MalformedTransform(vec![]);
+
     let p: PyErr = e.into();
     // Verify that p is an instance of MalformedTransform
     Python::with_gil(|py| {

@@ -659,13 +659,15 @@ pub fn get_forge_by_hostname(hostname: &str) -> Result<Forge, Error> {
     })
 }
 
-pub fn determine_title(description: &str) -> String {
+pub fn determine_title(description: &str) -> Result<String, String> {
     Python::with_gil(|py| {
         let m = py.import_bound("breezy.forge").unwrap();
         let title = m.call_method1("determine_title", (description,)).unwrap();
-        title.extract::<String>()
+        match title.extract::<String>() {
+            Ok(title) => Ok(title),
+            Err(e) => Err(e.to_string()),
+        }
     })
-    .unwrap()
 }
 
 pub fn iter_forge_instances() -> impl Iterator<Item = Forge> {
