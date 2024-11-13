@@ -542,7 +542,7 @@ impl Forge {
         local_branch: &dyn Branch,
         base_branch: &dyn Branch,
         name: &str,
-        overwrite_existing: Option<bool>,
+        overwrite: Option<bool>,
         owner: Option<&str>,
         stop_revision: Option<&RevisionId>,
         tag_selector: Option<Box<dyn Fn(String) -> bool>>,
@@ -552,8 +552,8 @@ impl Forge {
             kwargs.set_item("local_branch", local_branch.to_object(py))?;
             kwargs.set_item("base_branch", base_branch.to_object(py))?;
             kwargs.set_item("name", name)?;
-            if let Some(overwrite_existing) = overwrite_existing {
-                kwargs.set_item("overwrite_existing", overwrite_existing)?;
+            if let Some(overwrite) = overwrite {
+                kwargs.set_item("overwrite", overwrite)?;
             }
             if let Some(owner) = owner {
                 kwargs.set_item("owner", owner)?;
