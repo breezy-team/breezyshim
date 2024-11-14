@@ -57,6 +57,7 @@ import_exception!(breezy.controldir, BranchReferenceLoop);
 import_exception!(breezy.errors, RedirectRequested);
 import_exception!(breezy.errors, ConflictsInTree);
 import_exception!(breezy.errors, NoRoundtrippingSupport);
+import_exception!(breezy.errors, NoCompatibleInter);
 
 lazy_static::lazy_static! {
     // Only present in breezy << 4.0
@@ -147,6 +148,7 @@ pub enum Error {
     },
     ConflictsInTree,
     NoRoundtrippingSupport,
+    NoCompatibleInter,
 }
 
 impl From<url::ParseError> for Error {
@@ -290,6 +292,7 @@ impl std::fmt::Display for Error {
             Self::SourceNotDerivedFromTarget => write!(f, "Source not derived from target"),
             Self::BranchReferenceLoop => write!(f, "Branch reference loop"),
             Self::NoRoundtrippingSupport => write!(f, "No roundtripping support"),
+            Self::NoCompatibleInter => write!(f, "No compatible inter"),
             Self::RedirectRequested {
                 source,
                 target,
@@ -593,6 +596,8 @@ impl From<PyErr> for Error {
                 }
             } else if err.is_instance_of::<NoRoundtrippingSupport>(py) {
                 Error::NoRoundtrippingSupport
+            } else if err.is_instance_of::<NoCompatibleInter>(py) {
+                Error::NoCompatibleInter
             // Intentionally sorted below the more specific errors
             } else if err.is_instance_of::<InvalidHttpResponse>(py) {
                 Error::InvalidHttpResponse(
@@ -736,6 +741,9 @@ impl From<Error> for PyErr {
             } => RedirectRequested::new_err((source.to_string(), target.to_string(), is_permanent)),
             Error::NoRoundtrippingSupport => {
                 Python::with_gil(|py| NoRoundtrippingSupport::new_err((py.None(), py.None())))
+            }
+            Error::NoCompatibleInter => {
+                Python::with_gil(|py| NoCompatibleInter::new_err((py.None(), py.None())))
             }
         }
     }
