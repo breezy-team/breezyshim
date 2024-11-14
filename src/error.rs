@@ -57,7 +57,7 @@ import_exception!(breezy.controldir, BranchReferenceLoop);
 import_exception!(breezy.errors, RedirectRequested);
 import_exception!(breezy.errors, ConflictsInTree);
 import_exception!(breezy.errors, NoRoundtrippingSupport);
-import_exception!(breezy.errors, NoCompatibleInter);
+import_exception!(breezy.inter, NoCompatibleInter);
 
 lazy_static::lazy_static! {
     // Only present in breezy << 4.0
