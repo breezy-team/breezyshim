@@ -662,7 +662,10 @@ pub fn get_forge_by_hostname(hostname: &str) -> Result<Forge, Error> {
 pub fn determine_title(description: &str) -> Result<String, String> {
     Python::with_gil(|py| {
         let m = py.import_bound("breezy.forge").unwrap();
-        let title = m.call_method1("determine_title", (description,)).unwrap();
+        let title = match m.call_method1("determine_title", (description,)) {
+            Ok(title) => title,
+            Err(e) => return Err(e.to_string()),
+        };
         match title.extract::<String>() {
             Ok(title) => Ok(title),
             Err(e) => Err(e.to_string()),
@@ -698,4 +701,23 @@ pub fn get_proposal_by_url(url: &url::Url) -> Result<MergeProposal, Error> {
         let proposal = m.call_method1("get_proposal_by_url", (url.to_string(),))?;
         Ok(MergeProposal::from(proposal.to_object(py)))
     })
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_determine_title() {
+        let description = "This is a test description";
+        let title = super::determine_title(description).unwrap();
+        assert_eq!(title, "This is a test description");
+    }
+
+    #[test]
+    fn test_determine_title_invalid() {
+        let description = "";
+        assert_eq!(
+            "ValueError: ",
+            super::determine_title(description).unwrap_err()
+        );
+    }
 }
