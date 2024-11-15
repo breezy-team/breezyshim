@@ -7,6 +7,7 @@ use url::Url;
 
 import_exception!(breezy.errors, UnknownFormatError);
 import_exception!(breezy.errors, NotBranchError);
+import_exception!(breezy.errors, ReadOnlyError);
 import_exception!(breezy.controldir, NoColocatedBranchSupport);
 import_exception!(breezy.errors, DependencyNotPresent);
 import_exception!(breezy.errors, PermissionDenied);
@@ -149,6 +150,7 @@ pub enum Error {
     ConflictsInTree,
     NoRoundtrippingSupport,
     NoCompatibleInter,
+    ReadOnly,
 }
 
 impl From<url::ParseError> for Error {
@@ -293,6 +295,7 @@ impl std::fmt::Display for Error {
             Self::BranchReferenceLoop => write!(f, "Branch reference loop"),
             Self::NoRoundtrippingSupport => write!(f, "No roundtripping support"),
             Self::NoCompatibleInter => write!(f, "No compatible inter"),
+            Self::ReadOnly => write!(f, "Read-only"),
             Self::RedirectRequested {
                 source,
                 target,
@@ -576,6 +579,8 @@ impl From<PyErr> for Error {
                 .unwrap_or(false)
             {
                 Error::ConnectionError(err.to_string())
+            } else if err.is_instance_of::<ReadOnlyError>(py) {
+                Error::ReadOnly
             } else if err.is_instance_of::<RedirectRequested>(py) {
                 Error::RedirectRequested {
                     source: value
@@ -734,6 +739,7 @@ impl From<Error> for PyErr {
             Error::ConflictsInTree => ConflictsInTree::new_err(()),
             Error::SourceNotDerivedFromTarget => SourceNotDerivedFromTarget::new_err(()),
             Error::BranchReferenceLoop => BranchReferenceLoop::new_err(()),
+            Error::ReadOnly => Python::with_gil(|py| ReadOnlyError::new_err((py.None(),))),
             Error::RedirectRequested {
                 source,
                 target,
