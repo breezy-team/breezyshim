@@ -17,7 +17,7 @@ lazy_static = "1.4.0"
 chrono = "0.4"
 ctor = { version = ">=0.1", optional = true }
 lazy-regex = ">=2"
-patchkit = "0.1"
+patchkit = ">=0.1.9"
 log = "0.4"
 debian-control = { version = ">= 0.1.14", optional = true, features = ["python-debian"] }
 dirty-tracker = { version = "0.3", optional = true }
@@ -51,7 +51,7 @@ workspace = true
 features = [ "serde",]
 
 [workspace.dependencies]
-pyo3 = { version = ">=0.22", features = ["py-clone", "chrono"] }
+pyo3 = { version = "0.22", features = ["chrono"] }
 
 [dev-dependencies]
 maplit = "1"

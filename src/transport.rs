@@ -104,7 +104,11 @@ pub fn get_transport(
         let kwargs = PyDict::new_bound(py);
         kwargs.set_item(
             "possible_transports",
-            possible_transports.map(|t| t.iter().map(|t| t.0.clone()).collect::<Vec<PyObject>>()),
+            possible_transports.map(|t| {
+                t.iter()
+                    .map(|t| t.0.clone_ref(py))
+                    .collect::<Vec<PyObject>>()
+            }),
         )?;
         let o = urlutils.call_method("get_transport", (url.to_string(),), Some(&kwargs))?;
         Ok(Transport(o.to_object(py)))

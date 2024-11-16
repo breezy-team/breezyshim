@@ -476,7 +476,9 @@ impl AsFormat for &str {
 
 impl AsFormat for &ControlDirFormat {
     fn as_format(&self) -> Option<ControlDirFormat> {
-        Some(ControlDirFormat(self.0.clone()))
+        Some(Python::with_gil(|py| {
+            ControlDirFormat(self.0.clone_ref(py))
+        }))
     }
 }
 

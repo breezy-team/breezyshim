@@ -1,7 +1,7 @@
 //! Patching support for Breezy.
 use crate::transform::TreeTransform;
 use crate::tree::Tree;
-use patchkit::patch::{HunkLine, UnifiedPatch};
+use patchkit::unified::{HunkLine, UnifiedPatch};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyList};
 
@@ -119,9 +119,9 @@ impl Tree for AppliedPatches {}
 
 #[cfg(test)]
 mod applied_patches_tests {
+    use super::*;
     use crate::controldir::ControlDirFormat;
     use crate::tree::Tree;
-    use patchkit::patch::UnifiedPatch;
     use serial_test::serial;
 
     #[test]
@@ -141,7 +141,7 @@ mod applied_patches_tests {
             .reporter(&crate::commit::NullCommitReporter::new())
             .commit()
             .unwrap();
-        let patch = UnifiedPatch::parse_patch(patchkit::parse::splitlines(
+        let patch = UnifiedPatch::parse_patch(patchkit::unified::splitlines(
             br#"--- a/a
 +++ b/a
 @@ -1 +1 @@
@@ -177,7 +177,7 @@ mod applied_patches_tests {
             .message("Add a")
             .commit()
             .unwrap();
-        let patch = patchkit::patch::UnifiedPatch::parse_patch(patchkit::parse::splitlines(
+        let patch = UnifiedPatch::parse_patch(patchkit::unified::splitlines(
             br#"--- a/a
 +++ /dev/null
 @@ -1 +0,0 @@
@@ -207,7 +207,7 @@ mod applied_patches_tests {
             .message("Add a")
             .commit()
             .unwrap();
-        let patch = patchkit::patch::UnifiedPatch::parse_patch(patchkit::parse::splitlines(
+        let patch = UnifiedPatch::parse_patch(patchkit::unified::splitlines(
             br#"--- /dev/null
 +++ b/b
 @@ -0,0 +1 @@

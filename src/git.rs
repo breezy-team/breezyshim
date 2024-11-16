@@ -73,6 +73,8 @@ impl ToPyObject for BareLocalGitControlDirFormat {
 
 impl crate::controldir::AsFormat for BareLocalGitControlDirFormat {
     fn as_format(&self) -> Option<crate::controldir::ControlDirFormat> {
-        Some(crate::controldir::ControlDirFormat::from(self.0.clone()))
+        Some(Python::with_gil(|py| {
+            crate::controldir::ControlDirFormat::from(self.0.clone_ref(py))
+        }))
     }
 }

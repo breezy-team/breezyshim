@@ -276,9 +276,9 @@ dependencies = [
 
 [[package]]
 name = "deb822-lossless"
-version = "0.2.3"
+version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa97e4203c48920d02bdfc0cc5db80eb39785f03e88c2b27c024e6a1ffce02c4"
+checksum = "812bb5c8052a89edc6d45d1bc3b3400e8186dd166e9b0a9520bfa5a2bd8477ee"
 dependencies = [
  "deb822-derive",
  "pyo3",
@@ -304,9 +304,9 @@ dependencies = [
 
 [[package]]
 name = "debian-control"
-version = "0.1.39"
+version = "0.1.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3367f1dc94222cb9cf16e07c782e442b1928a26dd8dcee3aa4d2dbd32ca11d21"
+checksum = "c8a22cedff98f1dde7406971869258ec8837728042cdcd9daf5795b6bc5becb5"
 dependencies = [
  "chrono",
  "deb822-lossless",
@@ -902,9 +902,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.162"
+version = "0.2.164"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "18d287de67fe55fd7e1581fe933d965a5a9477b38e949cfa9f8574ef01506398"
+checksum = "433bfe06b8c75da9b2e3fbea6e5329ff87748f0b144ef75306e674c3f6f7c13f"
 
 [[package]]
 name = "libm"
@@ -1130,9 +1130,9 @@ checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
 name = "patchkit"
-version = "0.1.8"
+version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1628449e4d9f7e8501e9389daf6242adfd8284c2364a3f2a87e16176756b6768"
+checksum = "eeb23e4c6b118129db3c1d9ab32a00bd1dc4b04b5517f346bb9a03e3e29d3937"
 dependencies = [
  "chrono",
  "lazy-regex",
@@ -1450,9 +1450,9 @@ dependencies = [
 
 [[package]]
 name = "scc"
-version = "2.2.4"
+version = "2.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d8d25269dd3a12467afe2e510f69fb0b46b698e5afb296b59f2145259deaf8e8"
+checksum = "66b202022bb57c049555430e11fc22fea12909276a80a4c3d368da36ac1d88ed"
 dependencies = [
  "sdd",
 ]
