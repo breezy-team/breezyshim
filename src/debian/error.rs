@@ -144,7 +144,7 @@ impl From<Error> for PyErr {
                 MissingUpstreamTarball::new_err((package, version)).into()
             }
             Error::UnreleasedChanges => UnreleasedChanges::new_err(()).into(),
-            Error::ChangeLogError(err) => todo!(),
+            Error::ChangeLogError(_err) => todo!(),
             Error::VersionAlreadyImported {
                 package,
                 version,

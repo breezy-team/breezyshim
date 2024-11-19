@@ -111,13 +111,12 @@ mod tests {
 
         let tree = create_standalone_workingtree(td.path(), &ControlDirFormat::default()).unwrap();
         let mut tracker = DirtyTreeTracker::new(tree.clone());
-        tree.commit(
-            "Dummy",
-            Some(true),
-            Some("Joe Example <joe@example.com>"),
-            None,
-        )
-        .unwrap();
+        tree.build_commit()
+            .message("Dummy")
+            .committer("Joe Example <joe@example.com")
+            .allow_pointless(true)
+            .commit()
+            .unwrap();
         assert_eq!(tracker.relpaths(), Some(std::collections::HashSet::new()));
         assert_eq!(tracker.state(), State::Clean);
         assert_eq!(tracker.paths(), Some(std::collections::HashSet::new()));
@@ -168,13 +167,12 @@ mod tests {
         std::fs::create_dir(&subdir).unwrap();
         let mut tracker =
             DirtyTreeTracker::new_in_subpath(tree.clone(), std::path::Path::new("subdir"));
-        tree.commit(
-            "Dummy",
-            Some(true),
-            Some("Joe Example <joe@example.com>)"),
-            None,
-        )
-        .unwrap();
+        tree.build_commit()
+            .message("Dummy")
+            .committer("Joe Example <joe@example.com>")
+            .allow_pointless(true)
+            .commit()
+            .unwrap();
         assert_eq!(tracker.relpaths(), Some(std::collections::HashSet::new()));
         assert_eq!(tracker.state(), State::Clean);
         assert_eq!(tracker.paths(), Some(std::collections::HashSet::new()));
