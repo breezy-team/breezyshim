@@ -1,6 +1,6 @@
 [package]
 name = "breezyshim"
-version = "0.1.226"
+version = "0.1.227"
 edition = "2021"
 license = "GPL-2.0+"
 description = "Rust shim around the Breezy Python API"
@@ -17,7 +17,7 @@ lazy_static = "1.4.0"
 chrono = "0.4"
 ctor = { version = ">=0.1", optional = true }
 lazy-regex = ">=2"
-patchkit = ">=0.1.9"
+patchkit = "0.2"
 log = "0.4"
 debian-control = { version = ">= 0.1.14", optional = true, features = ["python-debian"] }
 dirty-tracker = { version = "0.3", optional = true }
