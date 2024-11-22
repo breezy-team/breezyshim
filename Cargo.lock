@@ -265,9 +265,9 @@ dependencies = [
 
 [[package]]
 name = "deb822-derive"
-version = "0.1.1"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "748a085d8df55ab7d27495f8a2873db6faea5c30d789dfe420b7debcbc1eff04"
+checksum = "7b6e5cafe61e77421a090e2a33b8a2e4e2ff1b106fd906ebade111307064d981"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -276,14 +276,14 @@ dependencies = [
 
 [[package]]
 name = "deb822-lossless"
-version = "0.1.27"
+version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a3282376f8ff540293a247cc4b875d00c95de27ac8049e8e388bc5752659af7"
+checksum = "812bb5c8052a89edc6d45d1bc3b3400e8186dd166e9b0a9520bfa5a2bd8477ee"
 dependencies = [
  "deb822-derive",
  "pyo3",
  "regex",
- "rowan",
+ "rowan 0.16.0",
  "serde",
 ]
 
@@ -297,23 +297,23 @@ dependencies = [
  "debversion",
  "lazy-regex",
  "log",
- "rowan",
+ "rowan 0.15.16",
  "textwrap",
  "whoami",
 ]
 
 [[package]]
 name = "debian-control"
-version = "0.1.37"
+version = "0.1.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c9597b6d2961a9dda53e20390f5f548fafb315399d059fe92722eae805dcf81a"
+checksum = "c8a22cedff98f1dde7406971869258ec8837728042cdcd9daf5795b6bc5becb5"
 dependencies = [
  "chrono",
  "deb822-lossless",
  "debversion",
  "pyo3",
  "regex",
- "rowan",
+ "rowan 0.16.0",
  "url",
 ]
 
@@ -1226,6 +1226,18 @@ name = "rowan"
 version = "0.15.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0a542b0253fa46e632d27a1dc5cf7b930de4df8659dc6e720b647fc72147ae3d"
+dependencies = [
+ "countme",
+ "hashbrown",
+ "rustc-hash",
+ "text-size",
+]
+
+[[package]]
+name = "rowan"
+version = "0.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "028acc0aeb6c46a4e4390928ef6ec0f4b7e9432f37bd4129a976e77f86f93322"
 dependencies = [
  "countme",
  "hashbrown",
