@@ -654,12 +654,14 @@ pub use crate::workingtree::WorkingTree;
 mod tests {
     use super::*;
     use crate::controldir::{create_standalone_workingtree, ControlDirFormat};
+    use serial_test::serial;
 
     #[test]
+    #[serial]
     fn test_remove() {
-        let td = tempfile::tempdir().unwrap();
-        let wt = create_standalone_workingtree(td.path(), &ControlDirFormat::default()).unwrap();
-        let path = td.path().join("foo");
+        let env = crate::testing::TestEnv::new();
+        let wt = create_standalone_workingtree(std::path::Path::new("."), &ControlDirFormat::default()).unwrap();
+        let path = std::path::Path::new("foo");
         std::fs::write(&path, b"").unwrap();
         wt.add(&[(std::path::Path::new("foo"))]).unwrap();
         wt.build_commit()
@@ -670,6 +672,6 @@ mod tests {
         assert!(wt.has_filename(&path));
         wt.remove(&[Path::new("foo")]).unwrap();
         assert!(!wt.is_versioned(&path));
-        std::mem::drop(td);
+        std::mem::drop(env);
     }
 }
