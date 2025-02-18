@@ -25,7 +25,7 @@ jobs:
     - run: sudo apt -y install bzr devscripts libapt-pkg-dev
       if: "matrix.os == 'ubuntu-latest'"
     - run: python -m pip install breezy launchpadlib
-    - run: python -m pip install "bzr+lp:brz-debian" python_apt@git+https://salsa.debian.org/apt-team/python-apt.git@2.5.0
+    - run: python -m pip install "git+https://github.com/breezy-team/breezy-debian" python_apt@git+https://salsa.debian.org/apt-team/python-apt
       if: "matrix.os == 'ubuntu-latest'"
     - name: Build
       run: cargo build --verbose
