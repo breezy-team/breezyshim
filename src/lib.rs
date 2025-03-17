@@ -8,12 +8,16 @@
 //!
 //! # Example
 //!
-//! ```
+//! ```no_run
 //! use breezyshim::branch::open as open_branch;
 //! breezyshim::plugin::load_plugins();
 //! let b = open_branch(&"https://code.launchpad.net/brz".parse().unwrap()).unwrap();
 //! println!("Last revision: {:?}", b.last_revision());
 //! ```
+
+// Necessary for pyo3, which uses the gil-refs feature in macros
+// which is not defined in breezyshim
+#![allow(unexpected_cfgs)]
 
 pub mod bazaar;
 pub mod branch;
