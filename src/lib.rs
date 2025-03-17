@@ -8,7 +8,7 @@
 //!
 //! # Example
 //!
-//! ```
+//! ```no_run
 //! use breezyshim::branch::open as open_branch;
 //! breezyshim::plugin::load_plugins();
 //! let b = open_branch(&"https://code.launchpad.net/brz".parse().unwrap()).unwrap();
