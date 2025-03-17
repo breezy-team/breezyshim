@@ -15,6 +15,10 @@
 //! println!("Last revision: {:?}", b.last_revision());
 //! ```
 
+// Necessary for pyo3, which uses the gil-refs feature in macros
+// which is not defined in breezyshim
+#![allow(unexpected_cfgs)]
+
 pub mod bazaar;
 pub mod branch;
 pub mod clean_tree;
