@@ -12,7 +12,7 @@ include = ["src/*.rs", "Cargo.toml", "COPYING.txt", "src/*/*.rs"]
 
 [dependencies]
 pyo3-filelike = ">=0.1"
-tempfile = "3.19.0"
+tempfile = "3.19.1"
 lazy_static = "1.4.0"
 chrono = "0.4"
 ctor = { version = ">=0.1", optional = true }
