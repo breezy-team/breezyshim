@@ -32,8 +32,7 @@ pub fn login(url: &url::Url) {
 
 pub fn uris() -> PyResult<std::collections::HashMap<String, String>> {
     Python::with_gil(|py| {
-        let m = py.import_bound("launchpadlib")?;
-        match m.getattr("uris") {
+        match py.import_bound("launchpadlib.uris") {
             Ok(lp_uris) => lp_uris
                 .getattr("web_roots")
                 .unwrap()
@@ -45,6 +44,16 @@ pub fn uris() -> PyResult<std::collections::HashMap<String, String>> {
             Err(e) => {
                 panic!("Failed to import launchpadlib: {}", e);
             }
-        }
-    })
+        }})
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_uris() {
+        let uris = uris().unwrap();
+        assert!(uris.contains_key("production"));
+    }
 }
