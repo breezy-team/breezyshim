@@ -46,6 +46,7 @@ pub mod graph;
 pub mod hooks;
 pub mod interrepository;
 pub mod intertree;
+#[cfg(feature = "launchpad")]
 pub mod launchpad;
 pub mod location;
 pub mod lock;
