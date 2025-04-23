@@ -48,7 +48,7 @@ impl std::str::FromStr for Kind {
             "symlink" => Ok(Kind::Symlink),
             "tree-reference" => Ok(Kind::TreeReference),
             n => {
-                return Err(format!("Invalid kind: {}", n));
+                Err(format!("Invalid kind: {}", n))
             }
         }
     }
