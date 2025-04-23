@@ -47,9 +47,7 @@ impl std::str::FromStr for Kind {
             "directory" => Ok(Kind::Directory),
             "symlink" => Ok(Kind::Symlink),
             "tree-reference" => Ok(Kind::TreeReference),
-            n => {
-                return Err(format!("Invalid kind: {}", n));
-            }
+            n => Err(format!("Invalid kind: {}", n)),
         }
     }
 }
@@ -660,7 +658,9 @@ mod tests {
     #[serial]
     fn test_remove() {
         let env = crate::testing::TestEnv::new();
-        let wt = create_standalone_workingtree(std::path::Path::new("."), &ControlDirFormat::default()).unwrap();
+        let wt =
+            create_standalone_workingtree(std::path::Path::new("."), &ControlDirFormat::default())
+                .unwrap();
         let path = std::path::Path::new("foo");
         std::fs::write(&path, b"").unwrap();
         wt.add(&[(std::path::Path::new("foo"))]).unwrap();

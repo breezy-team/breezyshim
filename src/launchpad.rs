@@ -31,20 +31,19 @@ pub fn login(url: &url::Url) {
 }
 
 pub fn uris() -> PyResult<std::collections::HashMap<String, String>> {
-    Python::with_gil(|py| {
-        match py.import_bound("launchpadlib.uris") {
-            Ok(lp_uris) => lp_uris
-                .getattr("web_roots")
-                .unwrap()
-                .extract::<std::collections::HashMap<String, String>>(),
-            Err(e) if e.is_instance_of::<pyo3::exceptions::PyModuleNotFoundError>(py) => {
-                log::warn!("launchpadlib is not installed, unable to log in to launchpad");
-                Ok(std::collections::HashMap::new())
-            }
-            Err(e) => {
-                panic!("Failed to import launchpadlib: {}", e);
-            }
-        }})
+    Python::with_gil(|py| match py.import_bound("launchpadlib.uris") {
+        Ok(lp_uris) => lp_uris
+            .getattr("web_roots")
+            .unwrap()
+            .extract::<std::collections::HashMap<String, String>>(),
+        Err(e) if e.is_instance_of::<pyo3::exceptions::PyModuleNotFoundError>(py) => {
+            log::warn!("launchpadlib is not installed, unable to log in to launchpad");
+            Ok(std::collections::HashMap::new())
+        }
+        Err(e) => {
+            panic!("Failed to import launchpadlib: {}", e);
+        }
+    })
 }
 
 #[cfg(test)]

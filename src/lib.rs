@@ -18,6 +18,8 @@
 // Necessary for pyo3, which uses the gil-refs feature in macros
 // which is not defined in breezyshim
 #![allow(unexpected_cfgs)]
+// TODO: Fix large error enum variants by boxing large fields
+#![allow(clippy::result_large_err)]
 
 pub mod bazaar;
 pub mod branch;
@@ -124,20 +126,15 @@ pub fn init() {
                 if e.is_instance_of::<PyImportError>(py) {
                     panic!("Breezy is not installed. Please install Breezy first.");
                 } else {
-                    Err::<(), pyo3::PyErr>(e).unwrap();
-                    unreachable!()
+                    panic!("{}", e);
                 }
             }
         });
 
         if (major, minor, micro) < MINIMUM_VERSION {
             panic!(
-                "Breezy version {} is too old, please upgrade to at least {}.",
-                format!("{}.{}.{}", major, minor, micro),
-                format!(
-                    "{}.{}.{}",
-                    MINIMUM_VERSION.0, MINIMUM_VERSION.1, MINIMUM_VERSION.2
-                )
+                "Breezy version {}.{}.{} is too old, please upgrade to at least {}.{}.{}.",
+                major, minor, micro, MINIMUM_VERSION.0, MINIMUM_VERSION.1, MINIMUM_VERSION.2
             );
         }
 

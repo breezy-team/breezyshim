@@ -12,6 +12,12 @@ impl NullCommitReporter {
     }
 }
 
+impl Default for NullCommitReporter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl From<PyObject> for NullCommitReporter {
     fn from(obj: PyObject) -> Self {
         NullCommitReporter(obj)
