@@ -134,8 +134,7 @@ pub fn init() {
         if (major, minor, micro) < MINIMUM_VERSION {
             panic!(
                 "Breezy version {}.{}.{} is too old, please upgrade to at least {}.{}.{}.",
-                major, minor, micro,
-                MINIMUM_VERSION.0, MINIMUM_VERSION.1, MINIMUM_VERSION.2
+                major, minor, micro, MINIMUM_VERSION.0, MINIMUM_VERSION.1, MINIMUM_VERSION.2
             );
         }
 
