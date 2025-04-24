@@ -13,7 +13,7 @@ pub fn login(url: &url::Url) {
 
         let lp_api = py.import_bound("breezy.plugins.launchpad.lp_api")?;
 
-        let lp_uris = uris()?;
+        let lp_uris = launchpadlib::uris()?;
 
         let lp_service_root = lp_uris
             .iter()
@@ -28,31 +28,4 @@ pub fn login(url: &url::Url) {
         Ok(())
     })
     .unwrap()
-}
-
-pub fn uris() -> PyResult<std::collections::HashMap<String, String>> {
-    Python::with_gil(|py| match py.import_bound("launchpadlib.uris") {
-        Ok(lp_uris) => lp_uris
-            .getattr("web_roots")
-            .unwrap()
-            .extract::<std::collections::HashMap<String, String>>(),
-        Err(e) if e.is_instance_of::<pyo3::exceptions::PyModuleNotFoundError>(py) => {
-            log::warn!("launchpadlib is not installed, unable to log in to launchpad");
-            Ok(std::collections::HashMap::new())
-        }
-        Err(e) => {
-            panic!("Failed to import launchpadlib: {}", e);
-        }
-    })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_uris() {
-        let uris = uris().unwrap();
-        assert!(uris.contains_key("production"));
-    }
 }
