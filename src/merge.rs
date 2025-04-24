@@ -3,7 +3,7 @@ use crate::branch::Branch;
 use crate::graph::Graph;
 use crate::hooks::HookDict;
 use crate::transform::TreeTransform;
-use crate::tree::Tree;
+use crate::tree::PyTree;
 use crate::RevisionId;
 use pyo3::import_exception;
 use pyo3::prelude::*;
@@ -40,7 +40,7 @@ impl From<PyObject> for Merger {
 }
 
 impl Merger {
-    pub fn new(branch: &dyn Branch, this_tree: &dyn Tree, revision_graph: &Graph) -> Self {
+    pub fn new<T: PyTree>(branch: &dyn Branch, this_tree: &T, revision_graph: &Graph) -> Self {
         Python::with_gil(|py| {
             let m = py.import_bound("breezy.merge").unwrap();
             let cls = m.getattr("Merger").unwrap();
@@ -122,8 +122,8 @@ impl Merger {
         })
     }
 
-    pub fn from_revision_ids(
-        other_tree: &dyn Tree,
+    pub fn from_revision_ids<T: PyTree>(
+        other_tree: &T,
         other_branch: &dyn Branch,
         other: &RevisionId,
         tree_branch: &dyn Branch,

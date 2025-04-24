@@ -2,12 +2,15 @@
 use crate::branch::{Branch, GenericBranch};
 use crate::controldir::ControlDir;
 use crate::error::Error;
-use crate::tree::{MutableTree, RevisionTree, Tree};
+use crate::tree::{RevisionTree};
 use crate::RevisionId;
 use pyo3::prelude::*;
 use std::path::{Path, PathBuf};
 
 pub struct WorkingTree(pub PyObject);
+
+impl crate::tree::PyTree for WorkingTree {}
+impl crate::tree::PyMutableTree for WorkingTree {}
 
 impl Clone for WorkingTree {
     fn clone(&self) -> Self {
@@ -361,13 +364,5 @@ pub fn open_containing(path: &Path) -> Result<(WorkingTree, PathBuf), Error> {
 impl From<PyObject> for WorkingTree {
     fn from(obj: PyObject) -> Self {
         WorkingTree(obj)
-    }
-}
-
-impl Tree for WorkingTree {}
-
-impl MutableTree for WorkingTree {
-    fn as_tree(&self) -> &dyn Tree {
-        self
     }
 }

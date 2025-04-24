@@ -1,11 +1,10 @@
 //! Operations between two trees.
 use crate::delta::TreeDelta;
-use crate::tree::Tree;
 use pyo3::prelude::*;
 
 pub struct InterTree(PyObject);
 
-pub fn get(source: &dyn Tree, target: &dyn Tree) -> InterTree {
+pub fn get<S: crate::tree::PyTree, T: crate::tree::PyTree>(source: &S, target: &T) -> InterTree {
     Python::with_gil(|py| {
         let source = source.to_object(py);
         let target = target.to_object(py);

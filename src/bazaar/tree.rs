@@ -1,9 +1,9 @@
 //! Inventory trees
 use crate::error::Error;
-use crate::tree::{MutableTree, Path};
+use crate::tree::Path;
 use pyo3::prelude::*;
 
-pub trait MutableInventoryTree: MutableTree {
+pub trait MutableInventoryTree: crate::tree::PyMutableTree {
     fn add(&self, paths: &[&Path], file_ids: &[crate::bazaar::FileId]) -> Result<(), Error> {
         Python::with_gil(|py| {
             self.to_object(py)
