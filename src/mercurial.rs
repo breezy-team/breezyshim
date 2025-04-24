@@ -2,7 +2,6 @@
 //!
 //! This allows detecting Mercurial repositories, but does not provide any
 //! functionality to interact with them.
-use crate::controldir::Prober;
 use pyo3::exceptions::PyModuleNotFoundError;
 use pyo3::prelude::*;
 
@@ -42,7 +41,13 @@ impl ToPyObject for SmartHgProber {
     }
 }
 
-impl Prober for SmartHgProber {}
+impl std::fmt::Debug for SmartHgProber {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_fmt(format_args!("SmartHgProber({:?})", self.0))
+    }
+}
+
+impl crate::controldir::PyProber for SmartHgProber {}
 
 #[cfg(test)]
 mod tests {

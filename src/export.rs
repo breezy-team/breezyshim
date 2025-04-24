@@ -1,11 +1,10 @@
 //! Export a tree to a directory.
-use crate::tree::Tree;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use std::path::Path;
 
-pub fn export(
-    tree: &dyn Tree,
+pub fn export<T: crate::tree::PyTree>(
+    tree: &T,
     target: &std::path::Path,
     subdir: Option<&std::path::Path>,
 ) -> Result<(), crate::error::Error> {

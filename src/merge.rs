@@ -1,9 +1,9 @@
 //! Tree merging.
-use crate::branch::Branch;
+use crate::branch::PyBranch;
 use crate::graph::Graph;
 use crate::hooks::HookDict;
 use crate::transform::TreeTransform;
-use crate::tree::Tree;
+use crate::tree::PyTree;
 use crate::RevisionId;
 use pyo3::import_exception;
 use pyo3::prelude::*;
@@ -40,7 +40,7 @@ impl From<PyObject> for Merger {
 }
 
 impl Merger {
-    pub fn new(branch: &dyn Branch, this_tree: &dyn Tree, revision_graph: &Graph) -> Self {
+    pub fn new<T: PyTree, B: PyBranch>(branch: &B, this_tree: &T, revision_graph: &Graph) -> Self {
         Python::with_gil(|py| {
             let m = py.import_bound("breezy.merge").unwrap();
             let cls = m.getattr("Merger").unwrap();
@@ -75,10 +75,10 @@ impl Merger {
         .map_err(Into::into)
     }
 
-    pub fn set_other_revision(
+    pub fn set_other_revision<B: PyBranch>(
         &mut self,
         other_revision: &RevisionId,
-        other_branch: &dyn Branch,
+        other_branch: &B,
     ) -> Result<(), crate::error::Error> {
         Python::with_gil(|py| {
             self.0.call_method1(
@@ -90,10 +90,10 @@ impl Merger {
         })
     }
 
-    pub fn set_base_revision(
+    pub fn set_base_revision<B: PyBranch>(
         &mut self,
         base_revision: &RevisionId,
-        base_branch: &dyn Branch,
+        base_branch: &B,
     ) -> Result<(), crate::error::Error> {
         Python::with_gil(|py| {
             self.0.call_method1(
@@ -122,11 +122,11 @@ impl Merger {
         })
     }
 
-    pub fn from_revision_ids(
-        other_tree: &dyn Tree,
-        other_branch: &dyn Branch,
+    pub fn from_revision_ids<T: PyTree, B1: PyBranch, B2: PyBranch>(
+        other_tree: &T,
+        other_branch: &B1,
         other: &RevisionId,
-        tree_branch: &dyn Branch,
+        tree_branch: &B2,
     ) -> Result<Self, Error> {
         Python::with_gil(|py| {
             let m = py.import_bound("breezy.merge").unwrap();

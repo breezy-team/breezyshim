@@ -1,9 +1,9 @@
-use crate::branch::Branch;
-use crate::controldir::ControlDir;
+use crate::branch::{Branch, PyBranch};
+use crate::controldir::{ControlDir, PyControlDir};
 use crate::debian::error::Error;
 use crate::debian::TarballKind;
 use crate::debian::VersionKind;
-use crate::tree::Tree;
+use crate::tree::{PyTree, Tree};
 use crate::RevisionId;
 use debversion::Version;
 use pyo3::prelude::*;
@@ -82,7 +82,9 @@ impl IntoPy<PyObject> for Tarball {
     }
 }
 
-pub trait UpstreamSource: ToPyObject {
+pub trait PyUpstreamSource: ToPyObject + std::any::Any + std::fmt::Debug {}
+
+pub trait UpstreamSource: std::fmt::Debug {
     /// Check what the latest upstream version is.
     ///
     /// # Arguments
@@ -91,6 +93,71 @@ pub trait UpstreamSource: ToPyObject {
     ///
     /// # Returns
     /// A tuple of the latest upstream version and the mangled version.
+    fn get_latest_version(
+        &self,
+        package: Option<&str>,
+        current_version: Option<&str>,
+    ) -> Result<Option<(String, String)>, Error>;
+
+    /// Retrieve recent version strings.
+    ///
+    /// # Arguments
+    /// * `package`: Name of the package
+    /// * `version`: Last upstream version since which to retrieve versions
+    fn get_recent_versions(
+        &self,
+        package: Option<&str>,
+        since_version: Option<&str>,
+    ) -> Box<dyn Iterator<Item = (String, String)>>;
+
+    /// Lookup the revision ids for a particular version.
+    ///
+    /// # Arguments
+    /// * `package` - Package name
+    /// * `version` - Version string
+    ///
+    /// # Returns
+    /// A dictionary mapping component names to revision ids
+    fn version_as_revisions(
+        &self,
+        package: Option<&str>,
+        version: &str,
+        tarballs: Option<Tarballs>,
+    ) -> Result<HashMap<TarballKind, (RevisionId, PathBuf)>, Error>;
+
+    /// Check whether this upstream source contains a particular package.
+    ///
+    /// # Arguments
+    /// * `package` - Package name
+    /// * `version` - Version string
+    /// * `tarballs` - Tarballs list
+    fn has_version(
+        &self,
+        package: Option<&str>,
+        version: &str,
+        tarballs: Option<Tarballs>,
+    ) -> Result<bool, Error>;
+
+    /// Fetch the source tarball for a particular version.
+    ///
+    /// # Arguments
+    /// * `package` - Name of the package
+    /// * `version` - Version string of the version to fetch
+    /// * `target_dir` - Directory in which to store the tarball
+    /// * `components` - List of component names to fetch; may be None,
+    ///
+    /// # Returns
+    /// Paths of the fetched tarballs
+    fn fetch_tarballs(
+        &self,
+        package: Option<&str>,
+        version: &str,
+        target_dir: &Path,
+        components: Option<&[TarballKind]>,
+    ) -> Result<Vec<PathBuf>, Error>;
+}
+
+impl<T: PyUpstreamSource> UpstreamSource for T {
     fn get_latest_version(
         &self,
         package: Option<&str>,
@@ -104,11 +171,6 @@ pub trait UpstreamSource: ToPyObject {
         })
     }
 
-    /// Retrieve recent version strings.
-    ///
-    /// # Arguments
-    /// * `package`: Name of the package
-    /// * `version`: Last upstream version since which to retrieve versions
     fn get_recent_versions(
         &self,
         package: Option<&str>,
@@ -133,14 +195,6 @@ pub trait UpstreamSource: ToPyObject {
         Box::new(ret.into_iter())
     }
 
-    /// Lookup the revision ids for a particular version.
-    ///
-    /// # Arguments
-    /// * `package` - Package name
-    /// * `version` - Version string
-    ///
-    /// # Returns
-    /// A dictionary mapping component names to revision ids
     fn version_as_revisions(
         &self,
         package: Option<&str>,
@@ -155,12 +209,6 @@ pub trait UpstreamSource: ToPyObject {
         })
     }
 
-    /// Check whether this upstream source contains a particular package.
-    ///
-    /// # Arguments
-    /// * `package` - Package name
-    /// * `version` - Version string
-    /// * `tarballs` - Tarballs list
     fn has_version(
         &self,
         package: Option<&str>,
@@ -175,16 +223,6 @@ pub trait UpstreamSource: ToPyObject {
         })
     }
 
-    /// Fetch the source tarball for a particular version.
-    ///
-    /// # Arguments
-    /// * `package` - Name of the package
-    /// * `version` - Version string of the version to fetch
-    /// * `target_dir` - Directory in which to store the tarball
-    /// * `components` - List of component names to fetch; may be None,
-    ///
-    /// # Returns
-    /// Paths of the fetched tarballs
     fn fetch_tarballs(
         &self,
         package: Option<&str>,
@@ -205,7 +243,35 @@ pub trait UpstreamSource: ToPyObject {
     }
 }
 
-impl UpstreamSource for UpstreamBranchSource {}
+pub struct GenericUpstreamSource(PyObject);
+
+impl ToPyObject for GenericUpstreamSource {
+    fn to_object(&self, py: Python) -> PyObject {
+        self.0.to_object(py)
+    }
+}
+
+impl FromPyObject<'_> for GenericUpstreamSource {
+    fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
+        Ok(GenericUpstreamSource(obj.to_object(obj.py())))
+    }
+}
+
+impl PyUpstreamSource for GenericUpstreamSource {}
+
+impl GenericUpstreamSource {
+    pub fn new(obj: PyObject) -> Self {
+        Self(obj)
+    }
+}
+
+impl std::fmt::Debug for GenericUpstreamSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_fmt(format_args!("GenericUpstreamSource({:?})", self.0))
+    }
+}
+
+impl PyUpstreamSource for UpstreamBranchSource {}
 
 impl std::fmt::Debug for UpstreamBranchSource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -248,11 +314,11 @@ impl UpstreamBranchSource {
     }
 
     pub fn from_branch(
-        upstream_branch: &dyn crate::branch::Branch,
+        upstream_branch: &dyn PyBranch,
         version_kind: Option<VersionKind>,
-        local_dir: &ControlDir,
+        local_dir: &dyn PyControlDir,
         create_dist: Option<
-            impl Fn(&dyn Tree, &str, &str, &Path, &Path) -> Result<OsString, Error>
+            impl Fn(&dyn PyTree, &str, &str, &Path, &Path) -> Result<OsString, Error>
                 + Send
                 + Sync
                 + 'static,
@@ -293,7 +359,13 @@ impl UpstreamBranchSource {
     }
 }
 
-impl UpstreamSource for PristineTarSource {}
+impl PyUpstreamSource for PristineTarSource {}
+
+impl std::fmt::Debug for PristineTarSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_fmt(format_args!("PristineTarSource({:?})", self.0))
+    }
+}
 
 impl PristineTarSource {
     /// Check whether this upstream source contains a particular package.
@@ -326,7 +398,7 @@ impl PristineTarSource {
 /// * `revid` - Revision id of the revision
 /// * `sep` - Separator to use when adding snapshot
 pub fn upstream_version_add_revision(
-    upstream_branch: &dyn crate::branch::Branch,
+    upstream_branch: &dyn PyBranch,
     version_string: &str,
     revid: &RevisionId,
     sep: Option<&str>,
@@ -352,8 +424,8 @@ pub fn upstream_version_add_revision(
 }
 
 pub fn get_pristine_tar_source(
-    packaging_tree: &dyn Tree,
-    packaging_branch: &dyn Branch,
+    packaging_tree: &dyn PyTree,
+    packaging_branch: &dyn PyBranch,
 ) -> Result<PristineTarSource, Error> {
     Python::with_gil(|py| {
         let m = py.import_bound("breezy.plugins.debian.upstream").unwrap();
@@ -366,7 +438,7 @@ pub fn get_pristine_tar_source(
 }
 
 pub fn run_dist_command(
-    revtree: &dyn Tree,
+    revtree: &dyn PyTree,
     package: Option<&str>,
     version: &Version,
     target_dir: &Path,

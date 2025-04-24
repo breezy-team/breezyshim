@@ -1,5 +1,5 @@
 //! Tree transformation API.
-use crate::tree::{PathBuf, Tree};
+use crate::tree::{PathBuf, PyTree};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyTuple;
@@ -52,7 +52,7 @@ impl Conflict {
         })
     }
 
-    pub fn cleanup(&self, tree: &dyn Tree) -> Result<(), crate::error::Error> {
+    pub fn cleanup<T: PyTree>(&self, tree: &T) -> Result<(), crate::error::Error> {
         Python::with_gil(|py| {
             self.0.call_method1(py, "cleanup", (tree.to_object(py),))?;
             Ok(())
@@ -73,8 +73,6 @@ impl From<PyObject> for PreviewTree {
         PreviewTree(ob)
     }
 }
-
-impl Tree for PreviewTree {}
 
 impl TreeTransform {
     pub fn finalize(&self) -> Result<(), crate::error::Error> {

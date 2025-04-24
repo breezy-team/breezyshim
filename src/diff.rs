@@ -1,12 +1,11 @@
 //! Generation of unified diffs between trees.
-use crate::tree::Tree;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use std::io::Write;
 
-pub fn show_diff_trees(
-    tree1: &dyn Tree,
-    tree2: &dyn Tree,
+pub fn show_diff_trees<T: crate::tree::PyTree, U: crate::tree::PyTree>(
+    tree1: &T,
+    tree2: &U,
     mut w: impl Write,
     old_label: Option<&str>,
     new_label: Option<&str>,

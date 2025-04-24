@@ -1,5 +1,4 @@
 //! Trees
-use crate::branch::Branch;
 use crate::error::Error;
 use crate::lock::Lock;
 use crate::revisionid::RevisionId;
@@ -140,7 +139,51 @@ impl FromPyObject<'_> for TreeEntry {
     }
 }
 
-pub trait Tree: ToPyObject {
+pub trait Tree {
+    fn get_tag_dict(&self) -> Result<std::collections::HashMap<String, RevisionId>, Error>;
+    fn get_file(&self, path: &Path) -> Result<Box<dyn std::io::Read>, Error>;
+    fn get_file_text(&self, path: &Path) -> Result<Vec<u8>, Error>;
+    fn get_file_lines(&self, path: &Path) -> Result<Vec<Vec<u8>>, Error>;
+    fn lock_read(&self) -> Result<Lock, Error>;
+
+    fn has_filename(&self, path: &Path) -> bool;
+
+    fn get_symlink_target(&self, path: &Path) -> Result<PathBuf, Error>;
+
+    fn get_parent_ids(&self) -> Result<Vec<RevisionId>, Error>;
+    fn is_ignored(&self, path: &Path) -> Option<String>;
+    fn kind(&self, path: &Path) -> Result<Kind, Error>;
+    fn is_versioned(&self, path: &Path) -> bool;
+
+    fn iter_changes(
+        &self,
+        other: &dyn PyTree,
+        specific_files: Option<&[&Path]>,
+        want_unversioned: Option<bool>,
+        require_versioned: Option<bool>,
+    ) -> Result<Box<dyn Iterator<Item = Result<TreeChange, Error>>>, Error>;
+
+    fn has_versioned_directories(&self) -> bool;
+
+    fn preview_transform(&self) -> Result<crate::transform::TreeTransform, Error>;
+
+    fn list_files(
+        &self,
+        include_root: Option<bool>,
+        from_dir: Option<&Path>,
+        recursive: Option<bool>,
+        recurse_nested: Option<bool>,
+    ) -> Result<Box<dyn Iterator<Item = Result<(PathBuf, bool, Kind, TreeEntry), Error>>>, Error>;
+
+    fn iter_child_entries(
+        &self,
+        path: &std::path::Path,
+    ) -> Result<Box<dyn Iterator<Item = Result<(PathBuf, Kind, TreeEntry), Error>>>, Error>;
+}
+
+pub trait PyTree: ToPyObject + std::any::Any {}
+
+impl<T: PyTree + ?Sized> Tree for T {
     fn get_tag_dict(&self) -> Result<std::collections::HashMap<String, RevisionId>, Error> {
         Python::with_gil(|py| {
             let branch = self.to_object(py).getattr(py, "branch")?;
@@ -247,7 +290,7 @@ pub trait Tree: ToPyObject {
 
     fn iter_changes(
         &self,
-        other: &dyn Tree,
+        other: &dyn PyTree,
         specific_files: Option<&[&Path]>,
         want_unversioned: Option<bool>,
         require_versioned: Option<bool>,
@@ -435,9 +478,21 @@ impl From<PyObject> for GenericTree {
     }
 }
 
-impl Tree for GenericTree {}
+impl PyTree for GenericTree {}
 
 pub trait MutableTree: Tree {
+    fn add(&self, files: &[&Path]) -> Result<(), Error>;
+    fn lock_write(&self) -> Result<Lock, Error>;
+    fn put_file_bytes_non_atomic(&self, path: &Path, data: &[u8]) -> Result<(), Error>;
+    fn has_changes(&self) -> std::result::Result<bool, Error>;
+    fn mkdir(&self, path: &Path) -> Result<(), Error>;
+    fn remove(&self, files: &[&std::path::Path]) -> Result<(), Error>;
+    fn as_tree(&self) -> &dyn Tree;
+}
+
+pub trait PyMutableTree: PyTree {}
+
+impl<T: PyMutableTree> MutableTree for T {
     fn add(&self, files: &[&Path]) -> Result<(), Error> {
         for f in files {
             assert!(f.is_relative());
@@ -502,7 +557,9 @@ pub trait MutableTree: Tree {
         .map_err(|e| e.into())
     }
 
-    fn as_tree(&self) -> &dyn Tree;
+    fn as_tree(&self) -> &dyn Tree {
+        self
+    }
 }
 
 pub struct RevisionTree(pub PyObject);
@@ -513,7 +570,7 @@ impl ToPyObject for RevisionTree {
     }
 }
 
-impl Tree for RevisionTree {}
+impl PyTree for RevisionTree {}
 
 impl Clone for RevisionTree {
     fn clone(&self) -> Self {
@@ -522,10 +579,10 @@ impl Clone for RevisionTree {
 }
 
 impl RevisionTree {
-    pub fn repository(&self) -> crate::repository::Repository {
+    pub fn repository(&self) -> crate::repository::GenericRepository {
         Python::with_gil(|py| {
             let repository = self.to_object(py).getattr(py, "_repository").unwrap();
-            crate::repository::Repository::new(repository)
+            crate::repository::GenericRepository::new(repository)
         })
     }
 
@@ -623,8 +680,8 @@ impl ToPyObject for MemoryTree {
     }
 }
 
-impl From<&dyn Branch> for MemoryTree {
-    fn from(branch: &dyn Branch) -> Self {
+impl<B: crate::branch::PyBranch> From<&B> for MemoryTree {
+    fn from(branch: &B) -> Self {
         Python::with_gil(|py| {
             MemoryTree(
                 branch
@@ -638,13 +695,9 @@ impl From<&dyn Branch> for MemoryTree {
     }
 }
 
-impl Tree for MemoryTree {}
+impl PyTree for MemoryTree {}
 
-impl MutableTree for MemoryTree {
-    fn as_tree(&self) -> &dyn Tree {
-        self
-    }
-}
+impl PyMutableTree for MemoryTree {}
 
 pub use crate::workingtree::WorkingTree;
 

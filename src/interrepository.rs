@@ -1,44 +1,90 @@
 //! Operations between repositories.
 use crate::error::Error;
-use crate::repository::Repository;
+use crate::repository::{GenericRepository, PyRepository};
 use crate::RevisionId;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict};
 use std::collections::HashMap;
 
-pub struct PyInterRepository(PyObject);
+pub trait PyInterRepository: ToPyObject + std::any::Any + std::fmt::Debug {}
 
-impl ToPyObject for PyInterRepository {
+pub struct GenericInterRepository(PyObject);
+
+impl ToPyObject for GenericInterRepository {
     fn to_object(&self, py: Python) -> PyObject {
-        self.0.clone_ref(py)
+        self.0.to_object(py)
     }
 }
 
-impl InterRepository for PyInterRepository {}
+impl FromPyObject<'_> for GenericInterRepository {
+    fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
+        Ok(GenericInterRepository(obj.to_object(obj.py())))
+    }
+}
 
-pub fn get(source: &Repository, target: &Repository) -> Result<Box<dyn InterRepository>, Error> {
+impl PyInterRepository for GenericInterRepository {}
+
+impl GenericInterRepository {
+    pub fn new(obj: PyObject) -> Self {
+        Self(obj)
+    }
+}
+
+impl std::fmt::Debug for GenericInterRepository {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_fmt(format_args!("GenericInterRepository({:?})", self.0))
+    }
+}
+
+pub fn get<S: PyRepository, T: PyRepository>(
+    source: &S,
+    target: &T,
+) -> Result<Box<dyn InterRepository>, Error> {
     Python::with_gil(|py| {
         let m = py.import_bound("breezy.repository")?;
         let interrepo = m.getattr("InterRepository")?;
         let inter_repository =
             interrepo.call_method1("get", (source.to_object(py), target.to_object(py)))?;
-        Ok(Box::new(PyInterRepository(inter_repository.to_object(py))) as Box<dyn InterRepository>)
+        Ok(
+            Box::new(GenericInterRepository::new(inter_repository.to_object(py)))
+                as Box<dyn InterRepository>,
+        )
     })
 }
 
-pub trait InterRepository: ToPyObject {
-    fn get_source(&self) -> Repository {
-        Python::with_gil(|py| -> PyResult<Repository> {
+pub trait InterRepository: std::fmt::Debug {
+    fn get_source(&self) -> GenericRepository;
+    fn get_target(&self) -> GenericRepository;
+
+    // TODO: This should really be on InterGitRepository
+    fn fetch_refs(
+        &self,
+        get_changed_refs: std::sync::Mutex<
+            Box<
+                dyn FnMut(
+                        &HashMap<Vec<u8>, (Vec<u8>, Option<RevisionId>)>,
+                    ) -> HashMap<Vec<u8>, (Vec<u8>, Option<RevisionId>)>
+                    + Send,
+            >,
+        >,
+        lossy: bool,
+        overwrite: bool,
+    ) -> Result<(), Error>;
+}
+
+impl<T: PyInterRepository> InterRepository for T {
+    fn get_source(&self) -> GenericRepository {
+        Python::with_gil(|py| -> PyResult<GenericRepository> {
             let source = self.to_object(py).getattr(py, "source")?;
-            Ok(Repository::new(source.to_object(py)))
+            Ok(GenericRepository::new(source.to_object(py)))
         })
         .unwrap()
     }
 
-    fn get_target(&self) -> Repository {
-        Python::with_gil(|py| -> PyResult<Repository> {
+    fn get_target(&self) -> GenericRepository {
+        Python::with_gil(|py| -> PyResult<GenericRepository> {
             let target = self.to_object(py).getattr(py, "target")?;
-            Ok(Repository::new(target.to_object(py)))
+            Ok(GenericRepository::new(target.to_object(py)))
         })
         .unwrap()
     }

@@ -1,5 +1,5 @@
 //! GPG related functions and types.
-use crate::repository::Repository;
+use crate::repository::PyRepository;
 use crate::RevisionId;
 use pyo3::import_exception;
 use pyo3::prelude::*;
@@ -114,8 +114,8 @@ impl VerificationResult {
     }
 }
 
-pub fn bulk_verify_signatures(
-    repository: &Repository,
+pub fn bulk_verify_signatures<R: PyRepository>(
+    repository: &R,
     revids: &[&RevisionId],
     strategy: &GPGStrategy,
 ) -> Result<Vec<(RevisionId, VerificationResult)>, Error> {

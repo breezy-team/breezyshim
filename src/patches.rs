@@ -1,6 +1,5 @@
 //! Patching support for Breezy.
 use crate::transform::TreeTransform;
-use crate::tree::Tree;
 use patchkit::unified::{HunkLine, UnifiedPatch};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyList};
@@ -81,8 +80,8 @@ pub fn apply_patches(
 pub struct AppliedPatches(PyObject, PyObject);
 
 impl AppliedPatches {
-    pub fn new(
-        tree: &dyn Tree,
+    pub fn new<T: crate::tree::PyTree>(
+        tree: &T,
         patches: Vec<UnifiedPatch>,
         prefix: Option<usize>,
     ) -> crate::Result<Self> {
@@ -115,7 +114,7 @@ impl ToPyObject for AppliedPatches {
     }
 }
 
-impl Tree for AppliedPatches {}
+impl crate::tree::PyTree for AppliedPatches {}
 
 #[cfg(test)]
 mod applied_patches_tests {

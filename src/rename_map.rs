@@ -1,10 +1,10 @@
 //! Detect renames between two trees based on file contents.
-use crate::tree::{MutableTree, Tree};
+use crate::tree::{PyMutableTree, PyTree};
 use pyo3::prelude::*;
 
-pub fn guess_renames(
-    from_tree: &dyn Tree,
-    mutable_tree: &dyn MutableTree,
+pub fn guess_renames<T: PyTree, U: PyMutableTree>(
+    from_tree: &T,
+    mutable_tree: &U,
 ) -> Result<(), crate::error::Error> {
     pyo3::Python::with_gil(|py| -> Result<(), pyo3::PyErr> {
         let m = py.import_bound("breezy.rename_map")?;

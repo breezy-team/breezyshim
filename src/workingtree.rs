@@ -1,13 +1,16 @@
 //! Working trees
-use crate::branch::{Branch, GenericBranch};
-use crate::controldir::ControlDir;
+use crate::branch::{Branch, GenericBranch, PyBranch};
+use crate::controldir::{ControlDir, GenericControlDir};
 use crate::error::Error;
-use crate::tree::{MutableTree, RevisionTree, Tree};
+use crate::tree::RevisionTree;
 use crate::RevisionId;
 use pyo3::prelude::*;
 use std::path::{Path, PathBuf};
 
 pub struct WorkingTree(pub PyObject);
+
+impl crate::tree::PyTree for WorkingTree {}
+impl crate::tree::PyMutableTree for WorkingTree {}
 
 impl Clone for WorkingTree {
     fn clone(&self) -> Self {
@@ -68,7 +71,7 @@ impl CommitBuilder {
         self
     }
 
-    pub fn reporter(self, reporter: &dyn crate::commit::CommitReporter) -> Self {
+    pub fn reporter(self, reporter: &dyn crate::commit::PyCommitReporter) -> Self {
         Python::with_gil(|py| {
             self.1.bind(py).set_item("reporter", reporter).unwrap();
         });
@@ -110,18 +113,18 @@ impl WorkingTree {
     }
 
     /// Return the branch for this working tree.
-    pub fn branch(&self) -> Box<dyn Branch> {
+    pub fn branch(&self) -> GenericBranch {
         Python::with_gil(|py| {
             let branch = self.to_object(py).getattr(py, "branch").unwrap();
-            Box::new(GenericBranch::new(branch)) as Box<dyn Branch>
+            GenericBranch::new(branch)
         })
     }
 
     /// Return the control directory for this working tree.
-    pub fn controldir(&self) -> ControlDir {
+    pub fn controldir(&self) -> Box<dyn ControlDir> {
         Python::with_gil(|py| {
             let controldir = self.to_object(py).getattr(py, "controldir").unwrap();
-            ControlDir::new(controldir)
+            Box::new(GenericControlDir::new(controldir)) as Box<dyn ControlDir>
         })
     }
 
@@ -245,9 +248,9 @@ impl WorkingTree {
         })
     }
 
-    pub fn pull(
+    pub fn pull<B: PyBranch>(
         &self,
-        source: &dyn crate::branch::Branch,
+        source: &B,
         overwrite: Option<bool>,
         stop_revision: Option<&RevisionId>,
         local: Option<bool>,
@@ -275,9 +278,9 @@ impl WorkingTree {
         .map(|_| ())
     }
 
-    pub fn merge_from_branch(
+    pub fn merge_from_branch<B: PyBranch>(
         &self,
-        source: &dyn Branch,
+        source: &B,
         to_revision: Option<&RevisionId>,
     ) -> Result<(), Error> {
         Python::with_gil(|py| {
@@ -361,13 +364,5 @@ pub fn open_containing(path: &Path) -> Result<(WorkingTree, PathBuf), Error> {
 impl From<PyObject> for WorkingTree {
     fn from(obj: PyObject) -> Self {
         WorkingTree(obj)
-    }
-}
-
-impl Tree for WorkingTree {}
-
-impl MutableTree for WorkingTree {
-    fn as_tree(&self) -> &dyn Tree {
-        self
     }
 }

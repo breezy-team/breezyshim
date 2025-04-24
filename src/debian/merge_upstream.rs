@@ -1,8 +1,8 @@
-use crate::branch::Branch;
+use crate::branch::PyBranch;
 use crate::debian::error::Error;
-use crate::debian::upstream::UpstreamSource;
+use crate::debian::upstream::PyUpstreamSource;
 use crate::debian::TarballKind;
-use crate::tree::Tree;
+use crate::tree::PyTree;
 use crate::workingtree::WorkingTree;
 use crate::RevisionId;
 use pyo3::prelude::*;
@@ -34,7 +34,7 @@ pub fn do_import(
     package: &str,
     version: &str,
     current_version: Option<&str>,
-    upstream_branch: &dyn Branch,
+    upstream_branch: &dyn PyBranch,
     upstream_revisions: HashMap<TarballKind, (RevisionId, PathBuf)>,
     merge_type: Option<&str>,
     force: bool,
@@ -65,7 +65,7 @@ pub fn do_import(
 
 pub fn get_tarballs(
     orig_dir: &Path,
-    tree: &dyn Tree,
+    tree: &dyn PyTree,
     package: &str,
     version: &str,
     locations: &[&Path],
@@ -86,7 +86,7 @@ pub fn get_tarballs(
 }
 
 pub fn get_existing_imported_upstream_revids(
-    upstream_source: &dyn UpstreamSource,
+    upstream_source: &dyn PyUpstreamSource,
     package: &str,
     new_upstream_version: &str,
 ) -> Result<Vec<(TarballKind, String, RevisionId, Option<bool>, PathBuf)>, Error> {
