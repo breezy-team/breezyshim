@@ -71,7 +71,7 @@ impl CommitBuilder {
         self
     }
 
-    pub fn reporter(self, reporter: &dyn crate::commit::CommitReporter) -> Self {
+    pub fn reporter(self, reporter: &dyn crate::commit::PyCommitReporter) -> Self {
         Python::with_gil(|py| {
             self.1.bind(py).set_item("reporter", reporter).unwrap();
         });
