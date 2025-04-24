@@ -581,10 +581,10 @@ impl Clone for RevisionTree {
 }
 
 impl RevisionTree {
-    pub fn repository(&self) -> crate::repository::Repository {
+    pub fn repository(&self) -> crate::repository::GenericRepository {
         Python::with_gil(|py| {
             let repository = self.to_object(py).getattr(py, "_repository").unwrap();
-            crate::repository::Repository::new(repository)
+            crate::repository::GenericRepository::new(repository)
         })
     }
 

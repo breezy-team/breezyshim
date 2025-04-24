@@ -12,7 +12,7 @@ use crate::controldir::ControlDir;
 use crate::error::Error;
 use crate::foreign::VcsType;
 use crate::lock::Lock;
-use crate::repository::Repository;
+use crate::repository::{Repository, GenericRepository, PyRepository};
 use crate::revisionid::RevisionId;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
@@ -44,7 +44,7 @@ pub trait Branch: ToPyObject {
     fn lock_read(&self) -> Result<Lock, crate::error::Error>;
     fn lock_write(&self) -> Result<Lock, crate::error::Error>;
     fn tags(&self) -> Result<crate::tags::Tags, crate::error::Error>;
-    fn repository(&self) -> Repository;
+    fn repository(&self) -> GenericRepository;
     fn last_revision(&self) -> RevisionId;
     fn name(&self) -> Option<String>;
     fn basis_tree(&self) -> Result<crate::tree::RevisionTree, crate::error::Error>;
@@ -122,9 +122,9 @@ impl<T: PyBranch> Branch for T {
         })
     }
 
-    fn repository(&self) -> Repository {
+    fn repository(&self) -> GenericRepository {
         Python::with_gil(|py| {
-            Repository::new(self.to_object(py).getattr(py, "repository").unwrap())
+            GenericRepository::new(self.to_object(py).getattr(py, "repository").unwrap())
         })
     }
 
@@ -377,7 +377,7 @@ impl ToPyObject for MemoryBranch {
 impl PyBranch for MemoryBranch {}
 
 impl MemoryBranch {
-    pub fn new(repository: &Repository, revno: Option<u32>, revid: &RevisionId) -> Self {
+    pub fn new<R: PyRepository>(repository: &R, revno: Option<u32>, revid: &RevisionId) -> Self {
         Python::with_gil(|py| {
             let mb_cls = py
                 .import_bound("breezy.memorybranch")

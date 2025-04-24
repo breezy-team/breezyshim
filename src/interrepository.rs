@@ -1,6 +1,6 @@
 //! Operations between repositories.
 use crate::error::Error;
-use crate::repository::Repository;
+use crate::repository::{GenericRepository, PyRepository};
 use crate::RevisionId;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict};
@@ -16,7 +16,7 @@ impl ToPyObject for PyInterRepository {
 
 impl InterRepository for PyInterRepository {}
 
-pub fn get(source: &Repository, target: &Repository) -> Result<Box<dyn InterRepository>, Error> {
+pub fn get<S: PyRepository, T: PyRepository>(source: &S, target: &T) -> Result<Box<dyn InterRepository>, Error> {
     Python::with_gil(|py| {
         let m = py.import_bound("breezy.repository")?;
         let interrepo = m.getattr("InterRepository")?;
@@ -27,18 +27,18 @@ pub fn get(source: &Repository, target: &Repository) -> Result<Box<dyn InterRepo
 }
 
 pub trait InterRepository: ToPyObject {
-    fn get_source(&self) -> Repository {
-        Python::with_gil(|py| -> PyResult<Repository> {
+    fn get_source(&self) -> GenericRepository {
+        Python::with_gil(|py| -> PyResult<GenericRepository> {
             let source = self.to_object(py).getattr(py, "source")?;
-            Ok(Repository::new(source.to_object(py)))
+            Ok(GenericRepository::new(source.to_object(py)))
         })
         .unwrap()
     }
 
-    fn get_target(&self) -> Repository {
-        Python::with_gil(|py| -> PyResult<Repository> {
+    fn get_target(&self) -> GenericRepository {
+        Python::with_gil(|py| -> PyResult<GenericRepository> {
             let target = self.to_object(py).getattr(py, "target")?;
-            Ok(Repository::new(target.to_object(py)))
+            Ok(GenericRepository::new(target.to_object(py)))
         })
         .unwrap()
     }
