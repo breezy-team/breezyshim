@@ -45,14 +45,17 @@ pub fn get<S: PyRepository, T: PyRepository>(
         let interrepo = m.getattr("InterRepository")?;
         let inter_repository =
             interrepo.call_method1("get", (source.to_object(py), target.to_object(py)))?;
-        Ok(Box::new(GenericInterRepository::new(inter_repository.to_object(py))) as Box<dyn InterRepository>)
+        Ok(
+            Box::new(GenericInterRepository::new(inter_repository.to_object(py)))
+                as Box<dyn InterRepository>,
+        )
     })
 }
 
 pub trait InterRepository: std::fmt::Debug {
     fn get_source(&self) -> GenericRepository;
     fn get_target(&self) -> GenericRepository;
-    
+
     // TODO: This should really be on InterGitRepository
     fn fetch_refs(
         &self,
