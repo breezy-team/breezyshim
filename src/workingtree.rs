@@ -1,6 +1,6 @@
 //! Working trees
 use crate::branch::{Branch, GenericBranch, PyBranch};
-use crate::controldir::ControlDir;
+use crate::controldir::{ControlDir, GenericControlDir};
 use crate::error::Error;
 use crate::tree::RevisionTree;
 use crate::RevisionId;
@@ -121,10 +121,10 @@ impl WorkingTree {
     }
 
     /// Return the control directory for this working tree.
-    pub fn controldir(&self) -> ControlDir {
+    pub fn controldir(&self) -> Box<dyn ControlDir> {
         Python::with_gil(|py| {
             let controldir = self.to_object(py).getattr(py, "controldir").unwrap();
-            ControlDir::new(controldir)
+            Box::new(GenericControlDir::new(controldir)) as Box<dyn ControlDir>
         })
     }
 

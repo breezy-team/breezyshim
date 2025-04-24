@@ -120,6 +120,7 @@ impl crate::tree::PyTree for AppliedPatches {}
 mod applied_patches_tests {
     use super::*;
     use crate::controldir::ControlDirFormat;
+    use crate::tree::Tree;
     use serial_test::serial;
 
     #[test]

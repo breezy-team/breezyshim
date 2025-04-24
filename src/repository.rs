@@ -1,7 +1,7 @@
 //! Repository handling
 //!
 //! A repository is a collection of revisions and their associated data.
-use crate::controldir::ControlDir;
+use crate::controldir::{ControlDir, GenericControlDir};
 use crate::delta::TreeDelta;
 use crate::foreign::VcsType;
 use crate::graph::Graph;
@@ -47,7 +47,7 @@ pub trait Repository {
     ) -> Result<(), crate::error::Error>;
     fn revision_tree(&self, revid: &RevisionId) -> Result<RevisionTree, crate::error::Error>;
     fn get_graph(&self) -> Graph;
-    fn controldir(&self) -> ControlDir;
+    fn controldir(&self) -> Box<dyn ControlDir>;
     fn format(&self) -> RepositoryFormat;
     fn iter_revisions(
         &self,
@@ -246,8 +246,8 @@ impl<T: PyRepository> Repository for T {
         Python::with_gil(|py| Graph::from(self.to_object(py).call_method0(py, "get_graph").unwrap()))
     }
 
-    fn controldir(&self) -> ControlDir {
-        Python::with_gil(|py| ControlDir::new(self.to_object(py).getattr(py, "controldir").unwrap()))
+    fn controldir(&self) -> Box<dyn ControlDir> {
+        Python::with_gil(|py| Box::new(GenericControlDir::new(self.to_object(py).getattr(py, "controldir").unwrap())) as Box<dyn ControlDir>)
     }
 
     fn format(&self) -> RepositoryFormat {
@@ -349,7 +349,7 @@ pub fn open(base: impl AsLocation) -> Result<GenericRepository, crate::error::Er
 #[cfg(test)]
 mod repository_tests {
     use crate::controldir::ControlDirFormat;
-    use super::{Repository, GenericRepository};
+    use super::GenericRepository;
 
     #[test]
     fn test_simple() {

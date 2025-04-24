@@ -8,7 +8,7 @@
 //!
 //! Breezy supports several different types of branches, each with different capabilities and
 //! constraints.
-use crate::controldir::ControlDir;
+use crate::controldir::{ControlDir, GenericControlDir};
 use crate::error::Error;
 use crate::foreign::VcsType;
 use crate::lock::Lock;
@@ -49,7 +49,7 @@ pub trait Branch: ToPyObject {
     fn name(&self) -> Option<String>;
     fn basis_tree(&self) -> Result<crate::tree::RevisionTree, crate::error::Error>;
     fn get_user_url(&self) -> url::Url;
-    fn controldir(&self) -> ControlDir;
+    fn controldir(&self) -> Box<dyn ControlDir>;
 
     fn push(
         &self,
@@ -69,7 +69,7 @@ pub trait Branch: ToPyObject {
     fn get_config(&self) -> crate::config::BranchConfig;
     fn get_config_stack(&self) -> crate::config::ConfigStack;
 
-    fn sprout(&self, to_controldir: &ControlDir, to_branch_name: &str) -> Result<(), Error>;
+    fn sprout(&self, to_controldir: &dyn ControlDir, to_branch_name: &str) -> Result<(), Error>;
     fn create_checkout(
         &self,
         to_location: &std::path::Path,
@@ -168,9 +168,9 @@ impl<T: PyBranch> Branch for T {
         })
     }
 
-    fn controldir(&self) -> ControlDir {
+    fn controldir(&self) -> Box<dyn ControlDir> {
         Python::with_gil(|py| {
-            ControlDir::new(self.to_object(py).getattr(py, "controldir").unwrap())
+            Box::new(GenericControlDir::new(self.to_object(py).getattr(py, "controldir").unwrap())) as Box<dyn ControlDir>
         })
     }
 
@@ -290,7 +290,7 @@ impl<T: PyBranch> Branch for T {
         })
     }
 
-    fn sprout(&self, to_controldir: &ControlDir, to_branch_name: &str) -> Result<(), Error> {
+    fn sprout(&self, to_controldir: &dyn ControlDir, to_branch_name: &str) -> Result<(), Error> {
         Python::with_gil(|py| {
             let kwargs = PyDict::new_bound(py);
             kwargs.set_item("name", to_branch_name)?;
