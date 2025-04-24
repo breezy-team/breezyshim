@@ -1,5 +1,5 @@
 use crate::debian::apt::Apt;
-use crate::tree::Tree;
+use crate::tree::PyTree;
 use debversion::Version;
 use pyo3::prelude::*;
 
@@ -21,7 +21,7 @@ pub enum UpToDateStatus {
 }
 
 pub fn check_up_to_date(
-    tree: &dyn Tree,
+    tree: &dyn PyTree,
     subpath: &std::path::Path,
     apt: &impl Apt,
 ) -> PyResult<UpToDateStatus> {

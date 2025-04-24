@@ -98,7 +98,7 @@ impl GenericControlDir {
     }
 }
 
-impl<T: PyControlDir> ControlDir for T {
+impl<T: PyControlDir + ?Sized> ControlDir for T {
     fn get_user_url(&self) -> url::Url {
         Python::with_gil(|py| {
             let result = self.to_object(py).getattr(py, "user_url").unwrap();

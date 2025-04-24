@@ -1,7 +1,7 @@
 use crate::branch::GenericBranch;
 use crate::debian::TarballKind;
 use crate::tree::WorkingTree;
-use crate::{branch::Branch, tree::Tree, RevisionId};
+use crate::{branch::{Branch, PyBranch}, tree::PyTree, RevisionId};
 use pyo3::prelude::*;
 use std::{collections::HashMap, path::Path, path::PathBuf};
 
@@ -42,10 +42,10 @@ impl ToPyObject for DistributionBranch {
 
 impl DistributionBranch {
     pub fn new(
-        branch: &dyn Branch,
-        pristine_upstream_branch: &dyn Branch,
-        tree: Option<&dyn Tree>,
-        pristine_upstream_tree: Option<&dyn Tree>,
+        branch: &dyn PyBranch,
+        pristine_upstream_branch: &dyn PyBranch,
+        tree: Option<&dyn PyTree>,
+        pristine_upstream_tree: Option<&dyn PyTree>,
     ) -> Self {
         Python::with_gil(|py| {
             let m = py.import_bound("breezy.plugins.debian.import_dsc").unwrap();

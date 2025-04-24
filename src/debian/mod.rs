@@ -19,8 +19,8 @@ pub const DEFAULT_RESULT_DIR: &str = "..";
 
 use crate::debian::error::Error as DebianError;
 use crate::error::Error;
-use crate::tree::{Tree, WorkingTree};
-use crate::Branch;
+use crate::tree::{PyTree, Tree, WorkingTree};
+use crate::branch::{Branch, PyBranch};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -192,7 +192,7 @@ impl IntoPy<PyObject> for TarballKind {
 pub fn build_helper(
     local_tree: &WorkingTree,
     subpath: &std::path::Path,
-    branch: &dyn Branch,
+    branch: &dyn PyBranch,
     target_dir: &std::path::Path,
     builder: &str,
     guess_upstream_branch_url: bool,
@@ -231,8 +231,8 @@ pub fn build_helper(
 /// # Returns
 /// The name of the debian tag.
 pub fn tree_debian_tag_name(
-    tree: &dyn Tree,
-    branch: &dyn Branch,
+    tree: &dyn PyTree,
+    branch: &dyn PyBranch,
     subpath: Option<&std::path::Path>,
     vendor: Option<Vendor>,
 ) -> Result<String, Error> {

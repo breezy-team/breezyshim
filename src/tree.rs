@@ -155,9 +155,9 @@ pub trait Tree {
     fn kind(&self, path: &Path) -> Result<Kind, Error>;
     fn is_versioned(&self, path: &Path) -> bool;
 
-    fn iter_changes<U: PyTree>(
+    fn iter_changes(
         &self,
-        other: &U,
+        other: &dyn PyTree,
         specific_files: Option<&[&Path]>,
         want_unversioned: Option<bool>,
         require_versioned: Option<bool>,
@@ -183,7 +183,7 @@ pub trait Tree {
 
 pub trait PyTree: ToPyObject + std::any::Any {}
 
-impl<T: PyTree> Tree for T {
+impl<T: PyTree + ?Sized> Tree for T {
     fn get_tag_dict(&self) -> Result<std::collections::HashMap<String, RevisionId>, Error> {
         Python::with_gil(|py| {
             let branch = self.to_object(py).getattr(py, "branch")?;
@@ -288,9 +288,9 @@ impl<T: PyTree> Tree for T {
         })
     }
 
-    fn iter_changes<U: PyTree>(
+    fn iter_changes(
         &self,
-        other: &U,
+        other: &dyn PyTree,
         specific_files: Option<&[&Path]>,
         want_unversioned: Option<bool>,
         require_versioned: Option<bool>,
@@ -487,9 +487,7 @@ pub trait MutableTree: Tree {
     fn has_changes(&self) -> std::result::Result<bool, Error>;
     fn mkdir(&self, path: &Path) -> Result<(), Error>;
     fn remove(&self, files: &[&std::path::Path]) -> Result<(), Error>;
-    fn as_tree(&self) -> &Self {
-        self
-    }
+    fn as_tree(&self) -> &dyn Tree;
 }
 
 pub trait PyMutableTree: PyTree {}
@@ -559,7 +557,7 @@ impl<T: PyMutableTree> MutableTree for T {
         .map_err(|e| e.into())
     }
 
-    fn as_tree(&self) -> &Self {
+    fn as_tree(&self) -> &dyn Tree {
         self
     }
 }

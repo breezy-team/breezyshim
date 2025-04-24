@@ -1,8 +1,9 @@
-use crate::commit::CommitReporter;
+use crate::branch::Branch;
+use crate::commit::PyCommitReporter;
 use crate::debian::error::Error;
 use crate::debian::{suite_to_distribution, Vendor};
 use crate::error::Error as BrzError;
-use crate::tree::{Kind, Path, Tree, WorkingTree};
+use crate::tree::{Kind, Path, PyTree, Tree, WorkingTree};
 use crate::RevisionId;
 use debian_changelog::ChangeLog;
 
@@ -44,7 +45,7 @@ pub fn debcommit_release(
     };
     let tag_name = if let Ok(tag_name) = crate::debian::tree_debian_tag_name(
         tree,
-        tree.branch().as_ref(),
+        &tree.branch(),
         Some(subpath),
         Some(vendor),
     ) {
@@ -65,8 +66,8 @@ pub fn debcommit_release(
 }
 
 pub fn changelog_changes(
-    tree: &dyn Tree,
-    basis_tree: &dyn Tree,
+    tree: &dyn PyTree,
+    basis_tree: &dyn PyTree,
     cl_path: &Path,
 ) -> Result<Option<Vec<String>>, BrzError> {
     let mut changes = vec![];
@@ -142,8 +143,8 @@ pub fn strip_changelog_message(changes: &[&str]) -> Vec<String> {
 }
 
 pub fn changelog_commit_message(
-    tree: &dyn Tree,
-    basis_tree: &dyn Tree,
+    tree: &dyn PyTree,
+    basis_tree: &dyn PyTree,
     path: &Path,
 ) -> Result<String, BrzError> {
     let changes = changelog_changes(tree, basis_tree, path)?;
@@ -175,7 +176,7 @@ pub fn debcommit(
     committer: Option<&str>,
     subpath: &Path,
     paths: Option<&[&Path]>,
-    reporter: Option<&dyn CommitReporter>,
+    reporter: Option<&dyn PyCommitReporter>,
     message: Option<&str>,
 ) -> Result<RevisionId, BrzError> {
     let message = message.map_or_else(

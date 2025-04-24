@@ -1,6 +1,6 @@
 //! Debian package releasing
 use crate::error::Error;
-use crate::tree::MutableTree;
+use crate::tree::PyMutableTree;
 use pyo3::prelude::*;
 
 #[derive(Debug)]
@@ -27,7 +27,7 @@ impl std::fmt::Display for ReleaseError {
 impl std::error::Error for ReleaseError {}
 
 pub fn release(
-    local_tree: &dyn MutableTree,
+    local_tree: &dyn PyMutableTree,
     subpath: &std::path::Path,
 ) -> Result<String, ReleaseError> {
     pyo3::import_exception!(debmutate.reformatting, GeneratedFile);

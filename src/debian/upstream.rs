@@ -1,9 +1,9 @@
-use crate::branch::Branch;
-use crate::controldir::ControlDir;
+use crate::branch::{Branch, PyBranch};
+use crate::controldir::{ControlDir, PyControlDir};
 use crate::debian::error::Error;
 use crate::debian::TarballKind;
 use crate::debian::VersionKind;
-use crate::tree::Tree;
+use crate::tree::{PyTree, Tree};
 use crate::RevisionId;
 use debversion::Version;
 use pyo3::prelude::*;
@@ -314,11 +314,11 @@ impl UpstreamBranchSource {
     }
 
     pub fn from_branch(
-        upstream_branch: &dyn crate::branch::Branch,
+        upstream_branch: &dyn PyBranch,
         version_kind: Option<VersionKind>,
-        local_dir: &ControlDir,
+        local_dir: &dyn PyControlDir,
         create_dist: Option<
-            impl Fn(&dyn Tree, &str, &str, &Path, &Path) -> Result<OsString, Error>
+            impl Fn(&dyn PyTree, &str, &str, &Path, &Path) -> Result<OsString, Error>
                 + Send
                 + Sync
                 + 'static,
@@ -398,7 +398,7 @@ impl PristineTarSource {
 /// * `revid` - Revision id of the revision
 /// * `sep` - Separator to use when adding snapshot
 pub fn upstream_version_add_revision(
-    upstream_branch: &dyn crate::branch::Branch,
+    upstream_branch: &dyn PyBranch,
     version_string: &str,
     revid: &RevisionId,
     sep: Option<&str>,
@@ -424,8 +424,8 @@ pub fn upstream_version_add_revision(
 }
 
 pub fn get_pristine_tar_source(
-    packaging_tree: &dyn Tree,
-    packaging_branch: &dyn Branch,
+    packaging_tree: &dyn PyTree,
+    packaging_branch: &dyn PyBranch,
 ) -> Result<PristineTarSource, Error> {
     Python::with_gil(|py| {
         let m = py.import_bound("breezy.plugins.debian.upstream").unwrap();
@@ -438,7 +438,7 @@ pub fn get_pristine_tar_source(
 }
 
 pub fn run_dist_command(
-    revtree: &dyn Tree,
+    revtree: &dyn PyTree,
     package: Option<&str>,
     version: &Version,
     target_dir: &Path,

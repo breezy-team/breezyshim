@@ -113,10 +113,10 @@ impl WorkingTree {
     }
 
     /// Return the branch for this working tree.
-    pub fn branch(&self) -> Box<dyn Branch> {
+    pub fn branch(&self) -> GenericBranch {
         Python::with_gil(|py| {
             let branch = self.to_object(py).getattr(py, "branch").unwrap();
-            Box::new(GenericBranch::new(branch)) as Box<dyn Branch>
+            GenericBranch::new(branch)
         })
     }
 
