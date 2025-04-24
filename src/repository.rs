@@ -207,13 +207,17 @@ impl<T: PyRepository> Repository for T {
 
     fn user_transport(&self) -> crate::transport::Transport {
         Python::with_gil(|py| {
-            crate::transport::Transport::new(self.to_object(py).getattr(py, "user_transport").unwrap())
+            crate::transport::Transport::new(
+                self.to_object(py).getattr(py, "user_transport").unwrap(),
+            )
         })
     }
 
     fn control_transport(&self) -> crate::transport::Transport {
         Python::with_gil(|py| {
-            crate::transport::Transport::new(self.to_object(py).getattr(py, "control_transport").unwrap())
+            crate::transport::Transport::new(
+                self.to_object(py).getattr(py, "control_transport").unwrap(),
+            )
         })
     }
 
@@ -237,17 +241,25 @@ impl<T: PyRepository> Repository for T {
 
     fn revision_tree(&self, revid: &RevisionId) -> Result<RevisionTree, crate::error::Error> {
         Python::with_gil(|py| {
-            let o = self.to_object(py).call_method1(py, "revision_tree", (revid.clone(),))?;
+            let o = self
+                .to_object(py)
+                .call_method1(py, "revision_tree", (revid.clone(),))?;
             Ok(RevisionTree(o))
         })
     }
 
     fn get_graph(&self) -> Graph {
-        Python::with_gil(|py| Graph::from(self.to_object(py).call_method0(py, "get_graph").unwrap()))
+        Python::with_gil(|py| {
+            Graph::from(self.to_object(py).call_method0(py, "get_graph").unwrap())
+        })
     }
 
     fn controldir(&self) -> Box<dyn ControlDir> {
-        Python::with_gil(|py| Box::new(GenericControlDir::new(self.to_object(py).getattr(py, "controldir").unwrap())) as Box<dyn ControlDir>)
+        Python::with_gil(|py| {
+            Box::new(GenericControlDir::new(
+                self.to_object(py).getattr(py, "controldir").unwrap(),
+            )) as Box<dyn ControlDir>
+        })
     }
 
     fn format(&self) -> RepositoryFormat {
@@ -348,8 +360,8 @@ pub fn open(base: impl AsLocation) -> Result<GenericRepository, crate::error::Er
 
 #[cfg(test)]
 mod repository_tests {
-    use crate::controldir::ControlDirFormat;
     use super::GenericRepository;
+    use crate::controldir::ControlDirFormat;
 
     #[test]
     fn test_simple() {

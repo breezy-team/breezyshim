@@ -8,11 +8,11 @@
 //!
 //! Breezy supports several different types of branches, each with different capabilities and
 //! constraints.
-use crate::controldir::{ControlDir, GenericControlDir};
+use crate::controldir::{ControlDir, GenericControlDir, PyControlDir};
 use crate::error::Error;
 use crate::foreign::VcsType;
 use crate::lock::Lock;
-use crate::repository::{Repository, GenericRepository, PyRepository};
+use crate::repository::{GenericRepository, PyRepository, Repository};
 use crate::revisionid::RevisionId;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
@@ -37,7 +37,7 @@ impl BranchFormat {
     }
 }
 
-pub trait Branch: ToPyObject {
+pub trait Branch {
     fn format(&self) -> BranchFormat;
     fn vcs_type(&self) -> VcsType;
     fn revno(&self) -> u32;
@@ -53,13 +53,13 @@ pub trait Branch: ToPyObject {
 
     fn push(
         &self,
-        remote_branch: &dyn Branch,
+        remote_branch: &dyn PyBranch,
         overwrite: bool,
         stop_revision: Option<&RevisionId>,
         tag_selector: Option<Box<dyn Fn(String) -> bool>>,
     ) -> Result<(), crate::error::Error>;
 
-    fn pull(&self, source_branch: &dyn Branch, overwrite: Option<bool>) -> Result<(), Error>;
+    fn pull(&self, source_branch: &dyn PyBranch, overwrite: Option<bool>) -> Result<(), Error>;
     fn get_parent(&self) -> Option<String>;
     fn set_parent(&mut self, parent: &str);
     fn get_public_branch(&self) -> Option<String>;
@@ -69,7 +69,7 @@ pub trait Branch: ToPyObject {
     fn get_config(&self) -> crate::config::BranchConfig;
     fn get_config_stack(&self) -> crate::config::ConfigStack;
 
-    fn sprout(&self, to_controldir: &dyn ControlDir, to_branch_name: &str) -> Result<(), Error>;
+    fn sprout(&self, to_controldir: &dyn PyControlDir, to_branch_name: &str) -> Result<(), Error>;
     fn create_checkout(
         &self,
         to_location: &std::path::Path,
@@ -170,13 +170,15 @@ impl<T: PyBranch> Branch for T {
 
     fn controldir(&self) -> Box<dyn ControlDir> {
         Python::with_gil(|py| {
-            Box::new(GenericControlDir::new(self.to_object(py).getattr(py, "controldir").unwrap())) as Box<dyn ControlDir>
+            Box::new(GenericControlDir::new(
+                self.to_object(py).getattr(py, "controldir").unwrap(),
+            )) as Box<dyn ControlDir>
         })
     }
 
     fn push(
         &self,
-        remote_branch: &dyn Branch,
+        remote_branch: &dyn PyBranch,
         overwrite: bool,
         stop_revision: Option<&RevisionId>,
         tag_selector: Option<Box<dyn Fn(String) -> bool>>,
@@ -200,7 +202,7 @@ impl<T: PyBranch> Branch for T {
         })
     }
 
-    fn pull(&self, source_branch: &dyn Branch, overwrite: Option<bool>) -> Result<(), Error> {
+    fn pull(&self, source_branch: &dyn PyBranch, overwrite: Option<bool>) -> Result<(), Error> {
         Python::with_gil(|py| {
             let kwargs = PyDict::new_bound(py);
             if let Some(overwrite) = overwrite {
@@ -290,7 +292,7 @@ impl<T: PyBranch> Branch for T {
         })
     }
 
-    fn sprout(&self, to_controldir: &dyn ControlDir, to_branch_name: &str) -> Result<(), Error> {
+    fn sprout(&self, to_controldir: &dyn PyControlDir, to_branch_name: &str) -> Result<(), Error> {
         Python::with_gil(|py| {
             let kwargs = PyDict::new_bound(py);
             kwargs.set_item("name", to_branch_name)?;

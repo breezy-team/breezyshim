@@ -16,7 +16,10 @@ impl ToPyObject for PyInterRepository {
 
 impl InterRepository for PyInterRepository {}
 
-pub fn get<S: PyRepository, T: PyRepository>(source: &S, target: &T) -> Result<Box<dyn InterRepository>, Error> {
+pub fn get<S: PyRepository, T: PyRepository>(
+    source: &S,
+    target: &T,
+) -> Result<Box<dyn InterRepository>, Error> {
     Python::with_gil(|py| {
         let m = py.import_bound("breezy.repository")?;
         let interrepo = m.getattr("InterRepository")?;

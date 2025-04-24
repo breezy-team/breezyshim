@@ -1,5 +1,5 @@
 //! Code hosting services and merge proposals.
-use crate::branch::{py_tag_selector, Branch, GenericBranch};
+use crate::branch::{py_tag_selector, Branch, GenericBranch, PyBranch};
 use crate::error::Error;
 use crate::revisionid::RevisionId;
 use pyo3::conversion::ToPyObject;
@@ -355,7 +355,7 @@ impl Forge {
         })
     }
 
-    pub fn get_web_url(&self, branch: &dyn Branch) -> Result<url::Url, crate::error::Error> {
+    pub fn get_web_url<B: PyBranch>(&self, branch: &B) -> Result<url::Url, crate::error::Error> {
         Python::with_gil(|py| {
             let url = self
                 .to_object(py)
@@ -435,10 +435,10 @@ impl Forge {
         })
     }
 
-    pub fn get_proposer(
+    pub fn get_proposer<B1: PyBranch, B2: PyBranch>(
         &self,
-        from_branch: &dyn Branch,
-        to_branch: &dyn Branch,
+        from_branch: &B1,
+        to_branch: &B2,
     ) -> Result<ProposalBuilder, crate::error::Error> {
         Python::with_gil(|py| {
             Ok(ProposalBuilder(
@@ -476,9 +476,9 @@ impl Forge {
         Ok(ret.into_iter())
     }
 
-    pub fn get_derived_branch(
+    pub fn get_derived_branch<B: PyBranch>(
         &self,
-        main_branch: &dyn Branch,
+        main_branch: &B,
         name: &str,
         owner: Option<&str>,
         preferred_schemes: Option<&[&str]>,
@@ -503,8 +503,8 @@ impl Forge {
 
     pub fn iter_proposals(
         &self,
-        source_branch: &dyn Branch,
-        target_branch: &dyn Branch,
+        source_branch: &dyn PyBranch,
+        target_branch: &dyn PyBranch,
         status: MergeProposalStatus,
     ) -> Result<impl Iterator<Item = MergeProposal>, crate::error::Error> {
         Python::with_gil(move |py| {
@@ -541,8 +541,8 @@ impl Forge {
 
     pub fn publish_derived(
         &self,
-        local_branch: &dyn Branch,
-        base_branch: &dyn Branch,
+        local_branch: &dyn PyBranch,
+        base_branch: &dyn PyBranch,
         name: &str,
         overwrite: Option<bool>,
         owner: Option<&str>,
@@ -577,7 +577,7 @@ impl Forge {
         })
     }
 
-    pub fn get_push_url(&self, branch: &dyn Branch) -> url::Url {
+    pub fn get_push_url(&self, branch: &dyn PyBranch) -> url::Url {
         Python::with_gil(|py| {
             let url = self
                 .to_object(py)
@@ -643,7 +643,7 @@ impl ToPyObject for Forge {
     }
 }
 
-pub fn get_forge(branch: &dyn Branch) -> Result<Forge, Error> {
+pub fn get_forge(branch: &dyn PyBranch) -> Result<Forge, Error> {
     Python::with_gil(|py| {
         let m = py.import_bound("breezy.forge").unwrap();
         let forge = m.call_method1("get_forge", (branch.to_object(py),))?;
