@@ -1,5 +1,5 @@
 //! Detect renames between two trees based on file contents.
-use crate::tree::{PyTree, PyMutableTree};
+use crate::tree::{PyMutableTree, PyTree};
 use pyo3::prelude::*;
 
 pub fn guess_renames<T: PyTree, U: PyMutableTree>(

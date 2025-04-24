@@ -1,5 +1,6 @@
 //! Patching support for Breezy.
 use crate::transform::TreeTransform;
+use crate::tree::Tree;
 use patchkit::unified::{HunkLine, UnifiedPatch};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyList};

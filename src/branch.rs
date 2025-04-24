@@ -37,7 +37,49 @@ impl BranchFormat {
     }
 }
 
-pub trait Branch: ToPyObject + Send {
+pub trait Branch: ToPyObject {
+    fn format(&self) -> BranchFormat;
+    fn vcs_type(&self) -> VcsType;
+    fn revno(&self) -> u32;
+    fn lock_read(&self) -> Result<Lock, crate::error::Error>;
+    fn lock_write(&self) -> Result<Lock, crate::error::Error>;
+    fn tags(&self) -> Result<crate::tags::Tags, crate::error::Error>;
+    fn repository(&self) -> Repository;
+    fn last_revision(&self) -> RevisionId;
+    fn name(&self) -> Option<String>;
+    fn basis_tree(&self) -> Result<crate::tree::RevisionTree, crate::error::Error>;
+    fn get_user_url(&self) -> url::Url;
+    fn controldir(&self) -> ControlDir;
+
+    fn push(
+        &self,
+        remote_branch: &dyn Branch,
+        overwrite: bool,
+        stop_revision: Option<&RevisionId>,
+        tag_selector: Option<Box<dyn Fn(String) -> bool>>,
+    ) -> Result<(), crate::error::Error>;
+
+    fn pull(&self, source_branch: &dyn Branch, overwrite: Option<bool>) -> Result<(), Error>;
+    fn get_parent(&self) -> Option<String>;
+    fn set_parent(&mut self, parent: &str);
+    fn get_public_branch(&self) -> Option<String>;
+    fn get_push_location(&self) -> Option<String>;
+    fn get_submit_branch(&self) -> Option<String>;
+    fn user_transport(&self) -> crate::transport::Transport;
+    fn get_config(&self) -> crate::config::BranchConfig;
+    fn get_config_stack(&self) -> crate::config::ConfigStack;
+
+    fn sprout(&self, to_controldir: &ControlDir, to_branch_name: &str) -> Result<(), Error>;
+    fn create_checkout(
+        &self,
+        to_location: &std::path::Path,
+    ) -> Result<crate::tree::WorkingTree, Error>;
+    fn generate_revision_history(&self, last_revision: &RevisionId) -> Result<(), Error>;
+}
+
+pub trait PyBranch: ToPyObject + Send + std::any::Any {}
+
+impl<T: PyBranch> Branch for T {
     fn format(&self) -> BranchFormat {
         Python::with_gil(|py| BranchFormat(self.to_object(py).getattr(py, "_format").unwrap()))
     }
@@ -298,7 +340,7 @@ impl Clone for GenericBranch {
     }
 }
 
-impl Branch for GenericBranch {}
+impl PyBranch for GenericBranch {}
 
 impl ToPyObject for GenericBranch {
     fn to_object(&self, py: Python) -> PyObject {
@@ -332,7 +374,7 @@ impl ToPyObject for MemoryBranch {
     }
 }
 
-impl Branch for MemoryBranch {}
+impl PyBranch for MemoryBranch {}
 
 impl MemoryBranch {
     pub fn new(repository: &Repository, revno: Option<u32>, revid: &RevisionId) -> Self {

@@ -1,8 +1,8 @@
 //! Working trees
-use crate::branch::{Branch, GenericBranch};
+use crate::branch::{Branch, GenericBranch, PyBranch};
 use crate::controldir::ControlDir;
 use crate::error::Error;
-use crate::tree::{RevisionTree};
+use crate::tree::RevisionTree;
 use crate::RevisionId;
 use pyo3::prelude::*;
 use std::path::{Path, PathBuf};
@@ -248,9 +248,9 @@ impl WorkingTree {
         })
     }
 
-    pub fn pull(
+    pub fn pull<B: PyBranch>(
         &self,
-        source: &dyn crate::branch::Branch,
+        source: &B,
         overwrite: Option<bool>,
         stop_revision: Option<&RevisionId>,
         local: Option<bool>,
@@ -278,9 +278,9 @@ impl WorkingTree {
         .map(|_| ())
     }
 
-    pub fn merge_from_branch(
+    pub fn merge_from_branch<B: PyBranch>(
         &self,
-        source: &dyn Branch,
+        source: &B,
         to_revision: Option<&RevisionId>,
     ) -> Result<(), Error> {
         Python::with_gil(|py| {

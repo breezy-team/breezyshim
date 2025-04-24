@@ -1,5 +1,4 @@
 //! Trees
-use crate::branch::Branch;
 use crate::error::Error;
 use crate::lock::Lock;
 use crate::revisionid::RevisionId;
@@ -182,7 +181,7 @@ pub trait Tree {
     ) -> Result<Box<dyn Iterator<Item = Result<(PathBuf, Kind, TreeEntry), Error>>>, Error>;
 }
 
-pub trait PyTree: ToPyObject + std::any::Any { }
+pub trait PyTree: ToPyObject + std::any::Any {}
 
 impl<T: PyTree> Tree for T {
     fn get_tag_dict(&self) -> Result<std::collections::HashMap<String, RevisionId>, Error> {
@@ -493,7 +492,7 @@ pub trait MutableTree: Tree {
     }
 }
 
-pub trait PyMutableTree: PyTree { }
+pub trait PyMutableTree: PyTree {}
 
 impl<T: PyMutableTree> MutableTree for T {
     fn add(&self, files: &[&Path]) -> Result<(), Error> {
@@ -683,8 +682,8 @@ impl ToPyObject for MemoryTree {
     }
 }
 
-impl From<&dyn Branch> for MemoryTree {
-    fn from(branch: &dyn Branch) -> Self {
+impl<B: crate::branch::PyBranch> From<&B> for MemoryTree {
+    fn from(branch: &B) -> Self {
         Python::with_gil(|py| {
             MemoryTree(
                 branch
