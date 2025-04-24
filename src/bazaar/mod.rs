@@ -1,5 +1,4 @@
 //! Bazaar-specific functionality.
-use crate::controldir::Prober;
 use pyo3::exceptions::PyModuleNotFoundError;
 use pyo3::prelude::*;
 
@@ -141,4 +140,10 @@ impl ToPyObject for RemoteBzrProber {
     }
 }
 
-impl Prober for RemoteBzrProber {}
+impl std::fmt::Debug for RemoteBzrProber {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_fmt(format_args!("RemoteBzrProber({:?})", self.0))
+    }
+}
+
+impl crate::controldir::PyProber for RemoteBzrProber {}

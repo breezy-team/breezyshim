@@ -2,7 +2,6 @@
 //!
 //! This module provides a prober for detecting CVS repositories, but
 //! does not provide any support for interacting with them.
-use crate::controldir::Prober;
 use pyo3::exceptions::PyModuleNotFoundError;
 use pyo3::prelude::*;
 
@@ -40,7 +39,13 @@ impl ToPyObject for CVSProber {
     }
 }
 
-impl Prober for CVSProber {}
+impl std::fmt::Debug for CVSProber {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_fmt(format_args!("CVSProber({:?})", self.0))
+    }
+}
+
+impl crate::controldir::PyProber for CVSProber {}
 
 #[cfg(test)]
 mod tests {

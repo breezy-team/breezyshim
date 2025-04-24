@@ -1,5 +1,4 @@
 //! Git version control system support.
-use crate::controldir::Prober;
 use pyo3::exceptions::PyModuleNotFoundError;
 use pyo3::prelude::*;
 
@@ -41,7 +40,13 @@ impl ToPyObject for RemoteGitProber {
     }
 }
 
-impl Prober for RemoteGitProber {}
+impl std::fmt::Debug for RemoteGitProber {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_fmt(format_args!("RemoteGitProber({:?})", self.0))
+    }
+}
+
+impl crate::controldir::PyProber for RemoteGitProber {}
 
 pub struct BareLocalGitControlDirFormat(PyObject);
 

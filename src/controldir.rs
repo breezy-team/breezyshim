@@ -11,7 +11,34 @@ use crate::location::AsLocation;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
-pub trait Prober: ToPyObject {}
+pub trait PyProber: ToPyObject + std::any::Any + std::fmt::Debug {}
+
+pub trait Prober: std::fmt::Debug {
+    fn probe_transport(&self, transport: &Transport) -> Result<bool, Error>;
+    fn probe(&self, url: &url::Url) -> Result<bool, Error>;
+}
+
+impl<T: PyProber> Prober for T {
+    fn probe_transport(&self, transport: &Transport) -> Result<bool, Error> {
+        Python::with_gil(|py| {
+            let result = self.to_object(py).call_method1(
+                py,
+                "probe_transport",
+                (&transport.to_object(py),),
+            )?;
+            Ok(result.extract(py)?)
+        })
+    }
+
+    fn probe(&self, url: &url::Url) -> Result<bool, Error> {
+        Python::with_gil(|py| {
+            let result = self
+                .to_object(py)
+                .call_method1(py, "probe", (url.to_string(),))?;
+            Ok(result.extract(py)?)
+        })
+    }
+}
 
 pub trait PyControlDir: ToPyObject + std::any::Any + std::fmt::Debug {}
 
@@ -455,7 +482,7 @@ pub fn create_on_transport(
 
 pub fn open_containing_from_transport(
     transport: &Transport,
-    probers: Option<&[&dyn Prober]>,
+    probers: Option<&[&dyn PyProber]>,
 ) -> Result<(Box<dyn ControlDir>, String), Error> {
     Python::with_gil(|py| {
         let m = py.import_bound("breezy.controldir")?;
@@ -484,7 +511,7 @@ pub fn open_containing_from_transport(
 
 pub fn open_from_transport(
     transport: &Transport,
-    probers: Option<&[&dyn Prober]>,
+    probers: Option<&[&dyn PyProber]>,
 ) -> Result<Box<dyn ControlDir>, Error> {
     Python::with_gil(|py| {
         let m = py.import_bound("breezy.controldir")?;
@@ -578,14 +605,35 @@ pub fn create_standalone_workingtree(
     })
 }
 
-pub fn all_probers() -> Vec<Box<dyn Prober>> {
-    struct PyProber(PyObject);
-    impl ToPyObject for PyProber {
-        fn to_object(&self, py: Python) -> PyObject {
-            self.0.clone_ref(py)
-        }
+pub struct GenericProber(PyObject);
+
+impl ToPyObject for GenericProber {
+    fn to_object(&self, py: Python) -> PyObject {
+        self.0.to_object(py)
     }
-    impl Prober for PyProber {}
+}
+
+impl FromPyObject<'_> for GenericProber {
+    fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
+        Ok(GenericProber(obj.to_object(obj.py())))
+    }
+}
+
+impl PyProber for GenericProber {}
+
+impl GenericProber {
+    pub fn new(obj: PyObject) -> Self {
+        Self(obj)
+    }
+}
+
+impl std::fmt::Debug for GenericProber {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_fmt(format_args!("Prober({:?})", self.0))
+    }
+}
+
+pub fn all_probers() -> Vec<Box<dyn Prober>> {
     Python::with_gil(|py| -> PyResult<Vec<Box<dyn Prober>>> {
         let m = py.import_bound("breezy.controldir")?;
         let cdf = m.getattr("ControlDirFormat")?;
@@ -594,7 +642,7 @@ pub fn all_probers() -> Vec<Box<dyn Prober>> {
             .extract::<Vec<PyObject>>()?;
         Ok(probers
             .into_iter()
-            .map(|p| Box::new(PyProber(p)) as Box<dyn Prober>)
+            .map(|p| Box::new(GenericProber::new(p)) as Box<dyn Prober>)
             .collect::<Vec<_>>())
     })
     .unwrap()

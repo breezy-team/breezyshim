@@ -2,7 +2,6 @@
 //!
 //! This module provides a prober for Subversion repositories, but no actual
 //! implementation is provided.
-use crate::controldir::Prober;
 use pyo3::exceptions::PyModuleNotFoundError;
 use pyo3::prelude::*;
 
@@ -42,7 +41,13 @@ impl ToPyObject for SvnRepositoryProber {
     }
 }
 
-impl Prober for SvnRepositoryProber {}
+impl std::fmt::Debug for SvnRepositoryProber {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_fmt(format_args!("SvnRepositoryProber({:?})", self.0))
+    }
+}
+
+impl crate::controldir::PyProber for SvnRepositoryProber {}
 
 #[cfg(test)]
 mod tests {

@@ -2,7 +2,6 @@
 //!
 //! This module provides a prober for Darcs repositories. It can detect
 //! darcs repositories but does not provide any additional functionality.
-use crate::controldir::Prober;
 use pyo3::exceptions::PyModuleNotFoundError;
 use pyo3::prelude::*;
 
@@ -40,7 +39,13 @@ impl ToPyObject for DarcsProber {
     }
 }
 
-impl Prober for DarcsProber {}
+impl std::fmt::Debug for DarcsProber {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_fmt(format_args!("DarcsProber({:?})", self.0))
+    }
+}
+
+impl crate::controldir::PyProber for DarcsProber {}
 
 #[cfg(test)]
 mod tests {

@@ -2,7 +2,6 @@
 //!
 //! This module provides a prober for detecting Fossil repositories, but
 //! currently does not provide any additional functionality.
-use crate::controldir::Prober;
 use pyo3::exceptions::PyModuleNotFoundError;
 use pyo3::prelude::*;
 
@@ -42,7 +41,13 @@ impl ToPyObject for RemoteFossilProber {
     }
 }
 
-impl Prober for RemoteFossilProber {}
+impl std::fmt::Debug for RemoteFossilProber {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_fmt(format_args!("RemoteFossilProber({:?})", self.0))
+    }
+}
+
+impl crate::controldir::PyProber for RemoteFossilProber {}
 
 #[cfg(test)]
 mod tests {
