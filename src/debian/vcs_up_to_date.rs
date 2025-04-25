@@ -3,23 +3,43 @@ use crate::tree::PyTree;
 use debversion::Version;
 use pyo3::prelude::*;
 
+/// Status of a Debian package in version control compared to the archive.
 #[derive(PartialEq, Eq)]
 pub enum UpToDateStatus {
+    /// The package in version control is up to date with the archive.
     UpToDate,
+    /// The package is missing a changelog file.
     MissingChangelog,
+    /// The package does not exist in the archive.
     PackageMissingInArchive {
+        /// The name of the package that is missing.
         package: String,
     },
+    /// The version in the tree does not exist in the archive.
     TreeVersionNotInArchive {
+        /// The version found in the tree.
         tree_version: Version,
+        /// The versions available in the archive.
         archive_versions: Vec<Version>,
     },
+    /// There's a newer version in the archive than in the tree.
     NewArchiveVersion {
+        /// The newest version in the archive.
         archive_version: Version,
+        /// The version in the tree.
         tree_version: Version,
     },
 }
 
+/// Check if a Debian package in version control is up to date with the archive.
+///
+/// # Arguments
+/// * `tree` - The tree containing the Debian package
+/// * `subpath` - The path to the Debian directory in the tree
+/// * `apt` - The APT interface to use for checking archive versions
+///
+/// # Returns
+/// The status of the package compared to the archive
 pub fn check_up_to_date(
     tree: &dyn PyTree,
     subpath: &std::path::Path,

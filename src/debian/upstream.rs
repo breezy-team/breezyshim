@@ -12,6 +12,10 @@ use std::collections::HashMap;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
+/// Source for pristine tarballs.
+///
+/// This struct represents a source for pristine tarballs stored
+/// in a pristine-tar branch.
 pub struct PristineTarSource(PyObject);
 
 impl From<PyObject> for PristineTarSource {
@@ -47,12 +51,20 @@ impl ToPyObject for UpstreamBranchSource {
     }
 }
 
+/// Information about a tarball file.
+///
+/// This struct contains metadata about a tarball file, including its
+/// filename, component kind, and MD5 hash.
 pub struct Tarball {
+    /// The filename of the tarball.
     pub filename: String,
+    /// The kind of component this tarball represents.
     pub component: TarballKind,
+    /// The MD5 hash of the tarball.
     pub md5: String,
 }
 
+/// A collection of tarballs.
 pub type Tarballs = Vec<Tarball>;
 
 impl FromPyObject<'_> for Tarball {
@@ -82,8 +94,15 @@ impl IntoPy<PyObject> for Tarball {
     }
 }
 
+/// Trait for Python-based upstream sources.
+///
+/// This trait is implemented by wrappers around Python upstream source objects.
 pub trait PyUpstreamSource: ToPyObject + std::any::Any + std::fmt::Debug {}
 
+/// Trait for upstream sources.
+///
+/// This trait defines the interface for working with upstream sources,
+/// which provide access to upstream versions of packages.
 pub trait UpstreamSource: std::fmt::Debug {
     /// Check what the latest upstream version is.
     ///
@@ -243,6 +262,10 @@ impl<T: PyUpstreamSource> UpstreamSource for T {
     }
 }
 
+/// A generic wrapper around any Python upstream source object.
+///
+/// This struct provides a way to interact with any upstream source
+/// from Python code, regardless of its specific implementation.
 pub struct GenericUpstreamSource(PyObject);
 
 impl ToPyObject for GenericUpstreamSource {
@@ -260,6 +283,10 @@ impl FromPyObject<'_> for GenericUpstreamSource {
 impl PyUpstreamSource for GenericUpstreamSource {}
 
 impl GenericUpstreamSource {
+    /// Create a new generic upstream source from a Python object.
+    ///
+    /// # Arguments
+    /// * `obj` - The Python object representing an upstream source.
     pub fn new(obj: PyObject) -> Self {
         Self(obj)
     }
@@ -280,11 +307,23 @@ impl std::fmt::Debug for UpstreamBranchSource {
 }
 
 impl UpstreamBranchSource {
+    /// Get the upstream branch associated with this source.
+    ///
+    /// # Returns
+    /// A branch object representing the upstream branch.
     pub fn upstream_branch(&self) -> Box<dyn crate::branch::Branch> {
         let o = Python::with_gil(|py| self.to_object(py).getattr(py, "upstream_branch").unwrap());
         Box::new(crate::branch::GenericBranch::new(o))
     }
 
+    /// Get a revision tree for a specific upstream version.
+    ///
+    /// # Arguments
+    /// * `source_name` - Optional name of the source package
+    /// * `mangled_upstream_version` - The mangled version string of the upstream version
+    ///
+    /// # Returns
+    /// A revision tree object or an error
     pub fn revision_tree(
         &self,
         source_name: Option<&str>,
@@ -299,6 +338,15 @@ impl UpstreamBranchSource {
         })
     }
 
+    /// Get the revision ID for a specific upstream version.
+    ///
+    /// # Arguments
+    /// * `package` - Optional name of the source package
+    /// * `version` - Version string of the upstream version
+    /// * `tarballs` - Optional list of tarballs
+    ///
+    /// # Returns
+    /// A tuple containing the revision ID and path, or an error
     pub fn version_as_revision(
         &self,
         package: Option<&str>,
@@ -313,6 +361,16 @@ impl UpstreamBranchSource {
         })
     }
 
+    /// Create an upstream branch source from a branch.
+    ///
+    /// # Arguments
+    /// * `upstream_branch` - The upstream branch to use
+    /// * `version_kind` - Optional kind of version to use
+    /// * `local_dir` - The local control directory
+    /// * `create_dist` - Optional function to create a distribution
+    ///
+    /// # Returns
+    /// A new upstream branch source or an error
     pub fn from_branch(
         upstream_branch: &dyn PyBranch,
         version_kind: Option<VersionKind>,
@@ -423,6 +481,14 @@ pub fn upstream_version_add_revision(
     })
 }
 
+/// Get a pristine-tar source for a packaging branch.
+///
+/// # Arguments
+/// * `packaging_tree` - The packaging tree
+/// * `packaging_branch` - The packaging branch
+///
+/// # Returns
+/// A pristine-tar source or an error
 pub fn get_pristine_tar_source(
     packaging_tree: &dyn PyTree,
     packaging_branch: &dyn PyBranch,
@@ -437,6 +503,19 @@ pub fn get_pristine_tar_source(
     })
 }
 
+/// Run a distribution command to create a source tarball.
+///
+/// # Arguments
+/// * `revtree` - The revision tree to run the command in
+/// * `package` - Optional name of the package
+/// * `version` - Version of the package
+/// * `target_dir` - Directory to store the result in
+/// * `dist_command` - Command to run to create the distribution
+/// * `include_controldir` - Whether to include the control directory
+/// * `subpath` - Subpath within the tree
+///
+/// # Returns
+/// Whether the command succeeded or an error
 pub fn run_dist_command(
     revtree: &dyn PyTree,
     package: Option<&str>,

@@ -2,6 +2,10 @@
 use launchpadlib::uris;
 use pyo3::prelude::*;
 
+/// Log in to Launchpad using the provided URL.
+///
+/// This function authenticates the user with Launchpad via OAuth, allowing
+/// subsequent API calls to be made with the authenticated user's credentials.
 pub fn login(url: &url::Url) {
     Python::with_gil(|py| -> PyResult<()> {
         let m = py.import_bound("breezy.plugins.launchpad.cmds")?;

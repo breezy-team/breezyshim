@@ -3,9 +3,12 @@ use crate::error::Error;
 use crate::tree::PyMutableTree;
 use pyo3::prelude::*;
 
+/// Errors that can occur when releasing a Debian package.
 #[derive(Debug)]
 pub enum ReleaseError {
+    /// The file was generated and shouldn't be modified directly.
     GeneratedFile,
+    /// An error from the underlying Breezy library.
     BrzError(Error),
 }
 
@@ -26,6 +29,17 @@ impl std::fmt::Display for ReleaseError {
 
 impl std::error::Error for ReleaseError {}
 
+/// Release a Debian package by updating the changelog.
+///
+/// This function updates the changelog to mark the package as released,
+/// setting the appropriate fields like the release date.
+///
+/// # Arguments
+/// * `local_tree` - The tree containing the package to release
+/// * `subpath` - Path to the debian directory within the tree
+///
+/// # Returns
+/// The version string of the released package, or an error
 pub fn release(
     local_tree: &dyn PyMutableTree,
     subpath: &std::path::Path,

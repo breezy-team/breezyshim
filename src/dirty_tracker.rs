@@ -3,6 +3,10 @@ use crate::tree::WorkingTree;
 use dirty_tracker::DirtyTracker;
 pub use dirty_tracker::State;
 
+/// Tracks changes in a working tree.
+///
+/// This struct provides functionality to efficiently detect which files have been
+/// modified in a working tree.
 pub struct DirtyTreeTracker {
     tracker: DirtyTracker,
     tree: WorkingTree,
@@ -21,6 +25,9 @@ impl DirtyTreeTracker {
         }
     }
 
+    /// Create a new DirtyTreeTracker for a specific subpath within a WorkingTree.
+    ///
+    /// This allows tracking changes only within a specific subdirectory of the working tree.
     pub fn new_in_subpath(tree: WorkingTree, subpath: &std::path::Path) -> Self {
         let base = tree.basedir();
         let tracker = DirtyTracker::new(&base.join(subpath)).unwrap();

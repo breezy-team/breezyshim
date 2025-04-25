@@ -4,17 +4,27 @@
 //!
 //! It mostly wraps the `breezy.plugins.debian` module from the Breezy VCS.
 pub mod apt;
+/// Module for working with Debian commit messages and tagging.
 pub mod debcommit;
+/// Module for working with Debian directory structures.
 pub mod directory;
+/// Module defining errors specific to Debian functionality.
 pub mod error;
+/// Module for importing Debian source packages (dsc files).
 pub mod import_dsc;
+/// Module for merging upstream changes into Debian packages.
 pub mod merge_upstream;
 pub mod release;
+/// Module for working with upstream sources in Debian packages.
 pub mod upstream;
+/// Module for checking if a Debian package in version control is up to date with the archive.
 pub mod vcs_up_to_date;
 
+/// Default directory for building Debian packages.
 pub const DEFAULT_BUILD_DIR: &str = "../build-area";
+/// Default directory for orig tarballs.
 pub const DEFAULT_ORIG_DIR: &str = "..";
+/// Default directory for build results.
 pub const DEFAULT_RESULT_DIR: &str = "..";
 
 use crate::branch::{Branch, PyBranch};
@@ -28,10 +38,17 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
+/// Represents different Debian-based distributions/vendors.
+///
+/// This enum is used to differentiate between various Debian-based
+/// distributions when working with packages.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Vendor {
+    /// The Debian distribution.
     Debian,
+    /// The Ubuntu distribution.
     Ubuntu,
+    /// The Kali Linux distribution.
     Kali,
 }
 
@@ -73,11 +90,18 @@ impl FromPyObject<'_> for Vendor {
     }
 }
 
+/// Kinds of upstream version handling.
+///
+/// This enum represents the different ways an upstream version can be handled,
+/// particularly when determining version numbers for packages.
 #[derive(Debug, Clone, PartialEq, Eq, std::hash::Hash, Default)]
 pub enum VersionKind {
+    /// Automatically determine the kind of version.
     #[default]
     Auto,
+    /// Use snapshot versioning (typically includes a revision identifier).
     Snapshot,
+    /// Use release versioning (clean version without revision identifiers).
     Release,
 }
 
@@ -129,9 +153,15 @@ impl FromPyObject<'_> for VersionKind {
     }
 }
 
+/// Kind of tarball in a Debian source package.
+///
+/// Debian source packages can include multiple tarballs: the main orig tarball
+/// and additional component tarballs. This enum represents those types.
 #[derive(Debug, Clone, PartialEq, Eq, std::hash::Hash)]
 pub enum TarballKind {
+    /// The main original upstream tarball.
     Orig,
+    /// An additional component tarball with the specified component name.
     Additional(String),
 }
 
@@ -189,6 +219,19 @@ impl IntoPy<PyObject> for TarballKind {
     }
 }
 
+/// Helper function to build a Debian package.
+///
+/// # Arguments
+/// * `local_tree` - The working tree containing the Debian package
+/// * `subpath` - Path to the debian directory within the tree
+/// * `branch` - Branch containing the package
+/// * `target_dir` - Directory to store build results
+/// * `builder` - Name of the build tool to use
+/// * `guess_upstream_branch_url` - Whether to guess the upstream branch URL
+/// * `apt_repo` - Optional APT repository to use
+///
+/// # Returns
+/// A map of result file types to their paths, or an error
 pub fn build_helper(
     local_tree: &WorkingTree,
     subpath: &std::path::Path,
