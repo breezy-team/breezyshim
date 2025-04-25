@@ -61,7 +61,9 @@ import_exception!(breezy.errors, NoRoundtrippingSupport);
 import_exception!(breezy.inter, NoCompatibleInter);
 
 lazy_static::lazy_static! {
-    // Only present in breezy << 4.0
+    /// Static reference to the BreezyConnectionError class, if it exists.
+    ///
+    /// This is only present in Breezy versions before 4.0.
     pub static ref BreezyConnectionError: Option<PyObject> = { Python::with_gil(|py| {
         let m = py.import_bound("breezy.errors").unwrap();
         m.getattr("ConnectionError").ok().map(|x| x.to_object(py))
@@ -69,87 +71,159 @@ lazy_static::lazy_static! {
 };
 }
 
+/// Error type for the Breezy Rust wrapper.
+///
+/// This enum represents the various errors that can occur when using the Breezy
+/// API through this Rust wrapper. Each variant corresponds to a specific error
+/// condition, with many mapping directly to Python exceptions from the Breezy
+/// library.
 #[derive(Debug)]
 pub enum Error {
+    /// A Python error that doesn't map to a specific variant.
     Other(PyErr),
+    /// An unknown format was encountered.
     UnknownFormat(String),
+    /// The specified path is not a branch.
     NotBranchError(String, Option<String>),
+    /// The repository format doesn't support colocated branches.
     NoColocatedBranchSupport,
+    /// A required dependency is not present.
     DependencyNotPresent(String, String),
+    /// Permission was denied when accessing a path.
     PermissionDenied(std::path::PathBuf, Option<String>),
+    /// The specified protocol is not supported.
     UnsupportedProtocol(String, Option<String>),
+    /// A redirect could not be followed.
     UnusableRedirect(String, String, String),
+    /// A connection error occurred.
     ConnectionError(String),
+    /// The specified URL is invalid.
     InvalidURL(String, Option<String>),
+    /// An error occurred during transport.
     TransportError(String),
+    /// The specified format is not supported.
     UnsupportedFormat(String),
+    /// The specified version control system is not supported.
     UnsupportedVcs(String),
+    /// An error occurred when interacting with a remote Git repository.
     RemoteGitError(String),
+    /// A read operation did not complete (partial read).
     IncompleteRead(Vec<u8>, Option<usize>),
+    /// An error occurred with line endings in a file.
     LineEndingError(String),
+    /// An invalid HTTP response was received.
     InvalidHttpResponse(
         String,
         String,
         Option<String>,
         std::collections::HashMap<String, String>,
     ),
+    /// A control directory already exists at the specified path.
     AlreadyControlDir(std::path::PathBuf),
+    /// A branch already exists at the specified path.
     AlreadyBranch(std::path::PathBuf),
+    /// The branches have diverged.
     DivergedBranches,
+    /// The workspace has uncommitted changes.
     WorkspaceDirty(std::path::PathBuf),
+    /// The specified file does not exist.
     NoSuchFile(std::path::PathBuf),
+    /// The commit would not change anything.
     PointlessCommit,
+    /// No user identity has been configured.
     NoWhoami,
+    /// The specified tag does not exist.
     NoSuchTag(String),
+    /// The specified tag already exists.
     TagAlreadyExists(String),
+    /// A socket error occurred.
     Socket(std::io::Error),
+    /// Login to the forge is required.
     ForgeLoginRequired,
+    /// The specified forge is not supported.
     UnsupportedForge(url::Url),
+    /// A project already exists on the forge.
     ForgeProjectExists(String),
+    /// A merge proposal already exists.
     MergeProposalExists(url::Url, Option<url::Url>),
+    /// The operation is not supported.
     UnsupportedOperation(String, String),
+    /// A protected branch hook declined the push.
     ProtectedBranchHookDeclined(String),
+    /// No repository is present at the specified location.
     NoRepositoryPresent,
+    /// Failed to acquire a lock.
     LockFailed(String),
+    /// A file already exists at the specified path.
     FileExists(std::path::PathBuf, Option<String>),
+    /// Lock contention occurred.
     LockContention(String, String),
+    /// The requested operation is not implemented.
     NotImplemented,
+    /// The specified revision is not in the tree.
     NoSuchRevisionInTree(crate::RevisionId),
+    /// A nested tree is missing at the specified path.
     MissingNestedTree(std::path::PathBuf),
-    /// Failed to delete transform temporary directory
+    /// Failed to delete transform temporary directory.
     ImmortalLimbo(std::path::PathBuf),
+    /// The transform is malformed.
     MalformedTransform(Vec<RawConflict>),
+    /// Failed to rename a file during a transform operation.
     TransformRenameFailed(
         std::path::PathBuf,
         std::path::PathBuf,
         String,
         std::io::Error,
     ),
+    /// An unexpected HTTP status code was received.
     UnexpectedHttpStatus {
+        /// The URL that was requested.
         url: url::Url,
+        /// The HTTP status code that was received.
         code: u16,
+        /// Additional information about the error.
         extra: Option<String>,
+        /// The HTTP headers that were received.
         headers: std::collections::HashMap<String, String>,
     },
+    /// A timeout occurred.
     Timeout,
+    /// A bad HTTP request was made.
     BadHttpRequest(Url, String),
+    /// The transport is not possible.
     TransportNotPossible(String),
+    /// The format is not compatible.
     IncompatibleFormat(String, String),
+    /// The specified revision does not exist.
     NoSuchRevision(crate::RevisionId),
+    /// The specified project does not exist.
     NoSuchProject(String),
+    /// Forking is disabled for the specified project.
     ForkingDisabled(String),
+    /// The project creation timed out.
     ProjectCreationTimeout(String, chrono::Duration),
+    /// A conflict occurred in GitLab.
     GitLabConflict(String),
+    /// The source branch is not derived from the target branch.
     SourceNotDerivedFromTarget,
+    /// A loop was detected in branch references.
     BranchReferenceLoop,
+    /// A redirect was requested.
     RedirectRequested {
+        /// The source URL.
         source: url::Url,
+        /// The target URL.
         target: url::Url,
+        /// Whether the redirect is permanent.
         is_permanent: bool,
     },
+    /// There are conflicts in the tree.
     ConflictsInTree,
+    /// The operation does not support roundtripping.
     NoRoundtrippingSupport,
+    /// No compatible inter-repository implementation was found.
     NoCompatibleInter,
+    /// The resource is read-only.
     ReadOnly,
 }
 

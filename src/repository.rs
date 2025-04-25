@@ -15,6 +15,10 @@ use pyo3::exceptions::PyStopIteration;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
+/// Represents the format of a repository.
+///
+/// Different repository formats have different capabilities, such as
+/// support for content hash keys (CHKs).
 pub struct RepositoryFormat(PyObject);
 
 impl Clone for RepositoryFormat {
@@ -24,6 +28,11 @@ impl Clone for RepositoryFormat {
 }
 
 impl RepositoryFormat {
+    /// Check if this repository format supports content hash keys (CHKs).
+    ///
+    /// # Returns
+    ///
+    /// `true` if the format supports CHKs, `false` otherwise
     pub fn supports_chks(&self) -> bool {
         Python::with_gil(|py| {
             self.0
@@ -35,44 +44,116 @@ impl RepositoryFormat {
     }
 }
 
+/// Trait for repository operations.
+///
+/// This trait defines the operations that can be performed on a repository,
+/// such as fetching revisions, getting a revision tree, or looking up revisions.
 pub trait Repository {
+    /// Get the version control system type for this repository.
     fn vcs_type(&self) -> VcsType;
+
+    /// Get the user-facing URL for this repository.
     fn get_user_url(&self) -> url::Url;
+
+    /// Get a transport for the user-facing URL.
     fn user_transport(&self) -> crate::transport::Transport;
+
+    /// Get a transport for the control directory.
     fn control_transport(&self) -> crate::transport::Transport;
+
+    /// Fetch revisions from another repository.
+    ///
+    /// # Arguments
+    ///
+    /// * `other_repository` - The repository to fetch from
+    /// * `stop_revision` - Optional revision to stop fetching at
     fn fetch<R: PyRepository>(
         &self,
         other_repository: &R,
         stop_revision: Option<&RevisionId>,
     ) -> Result<(), crate::error::Error>;
+
+    /// Get a revision tree for a specific revision.
+    ///
+    /// # Arguments
+    ///
+    /// * `revid` - The revision ID to get the tree for
     fn revision_tree(&self, revid: &RevisionId) -> Result<RevisionTree, crate::error::Error>;
+
+    /// Get the revision graph for this repository.
     fn get_graph(&self) -> Graph;
+
+    /// Get the control directory for this repository.
     fn controldir(&self) -> Box<dyn ControlDir>;
+
+    /// Get the repository format.
     fn format(&self) -> RepositoryFormat;
+
+    /// Iterate over revisions with the given IDs.
+    ///
+    /// # Arguments
+    ///
+    /// * `revision_ids` - The revision IDs to iterate over
     fn iter_revisions(
         &self,
         revision_ids: Vec<RevisionId>,
     ) -> impl Iterator<Item = (RevisionId, Option<Revision>)>;
+
+    /// Get revision deltas for the given revisions.
+    ///
+    /// # Arguments
+    ///
+    /// * `revs` - The revisions to get deltas for
+    /// * `specific_files` - Optional list of specific files to get deltas for
     fn get_revision_deltas(
         &self,
         revs: &[Revision],
         specific_files: Option<&[&std::path::Path]>,
     ) -> impl Iterator<Item = TreeDelta>;
+
+    /// Get a specific revision.
+    ///
+    /// # Arguments
+    ///
+    /// * `revision_id` - The revision ID to get
     fn get_revision(&self, revision_id: &RevisionId) -> Result<Revision, crate::error::Error>;
+
+    /// Look up a Bazaar revision ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `revision_id` - The revision ID to look up
     fn lookup_bzr_revision_id(
         &self,
         revision_id: &RevisionId,
     ) -> Result<(Vec<u8>,), crate::error::Error>;
+
+    /// Look up a foreign revision ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `foreign_revid` - The foreign revision ID to look up
     fn lookup_foreign_revision_id(
         &self,
         foreign_revid: &[u8],
     ) -> Result<RevisionId, crate::error::Error>;
+
+    /// Lock the repository for reading.
     fn lock_read(&self) -> Result<Lock, crate::error::Error>;
+
+    /// Lock the repository for writing.
     fn lock_write(&self) -> Result<Lock, crate::error::Error>;
 }
 
+/// Trait for types that can be converted to Python repository objects.
+///
+/// This trait is implemented by types that represent Breezy repositories
+/// and can be converted to Python objects.
 pub trait PyRepository: ToPyObject + std::any::Any {}
 
+/// Generic wrapper for a Python repository object.
+///
+/// This struct provides a Rust interface to a Breezy repository object.
 pub struct GenericRepository(PyObject);
 
 impl Clone for GenericRepository {
@@ -82,16 +163,32 @@ impl Clone for GenericRepository {
 }
 
 #[derive(Debug)]
+/// Represents a revision in a version control repository.
+///
+/// A revision contains metadata about a specific version of the code,
+/// such as the revision ID, parent revisions, commit message, committer,
+/// and timestamp.
 pub struct Revision {
+    /// The unique identifier for this revision.
     pub revision_id: RevisionId,
+    /// The IDs of the parent revisions (usually one, but can be multiple for merges).
     pub parent_ids: Vec<RevisionId>,
+    /// The commit message for this revision.
     pub message: String,
+    /// The name and email of the person who committed this revision.
     pub committer: String,
+    /// The timestamp when this revision was committed (in seconds since the Unix epoch).
     pub timestamp: f64,
+    /// The timezone offset for the timestamp, in seconds east of UTC.
     pub timezone: i32,
 }
 
 impl Revision {
+    /// Get the commit timestamp as a DateTime object.
+    ///
+    /// # Returns
+    ///
+    /// A DateTime object representing the commit timestamp with its timezone
     pub fn datetime(&self) -> DateTime<chrono::FixedOffset> {
         let tz = chrono::FixedOffset::east_opt(self.timezone).unwrap();
         tz.timestamp_opt(self.timestamp as i64, 0).unwrap()
@@ -134,6 +231,10 @@ impl FromPyObject<'_> for Revision {
     }
 }
 
+/// Iterator over revisions in a repository.
+///
+/// This struct provides an iterator interface for accessing revisions
+/// in a repository, returning pairs of revision IDs and revision objects.
 pub struct RevisionIterator(PyObject);
 
 impl Iterator for RevisionIterator {
@@ -148,6 +249,10 @@ impl Iterator for RevisionIterator {
     }
 }
 
+/// Iterator over tree deltas in a repository.
+///
+/// This struct provides an iterator interface for accessing tree deltas
+/// in a repository, which represent changes between revisions.
 pub struct DeltaIterator(PyObject);
 
 impl Iterator for DeltaIterator {
@@ -171,6 +276,15 @@ impl ToPyObject for GenericRepository {
 impl PyRepository for GenericRepository {}
 
 impl GenericRepository {
+    /// Create a new GenericRepository from a Python object.
+    ///
+    /// # Arguments
+    ///
+    /// * `obj` - The Python object representing a Breezy repository
+    ///
+    /// # Returns
+    ///
+    /// A new GenericRepository wrapping the provided Python object
     pub fn new(obj: PyObject) -> Self {
         GenericRepository(obj)
     }
@@ -348,6 +462,22 @@ impl<T: PyRepository> Repository for T {
     }
 }
 
+/// Open a repository at the specified location.
+///
+/// # Arguments
+///
+/// * `base` - The location to open the repository at
+///
+/// # Returns
+///
+/// A GenericRepository object, or an error if the operation fails
+///
+/// # Examples
+///
+/// ```no_run
+/// use breezyshim::repository::open;
+/// let repo = open("https://code.launchpad.net/brz").unwrap();
+/// ```
 pub fn open(base: impl AsLocation) -> Result<GenericRepository, crate::error::Error> {
     Python::with_gil(|py| {
         let o = py

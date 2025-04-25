@@ -6,6 +6,10 @@ use pyo3::prelude::*;
 
 import_exception!(breezy.errors, RevisionNotPresent);
 
+/// Represents a graph of revisions.
+///
+/// This struct provides methods for traversing and querying relationships
+/// between revisions in a version control repository.
 pub struct Graph(PyObject);
 
 impl ToPyObject for Graph {
@@ -41,7 +45,9 @@ impl Iterator for RevIter {
 }
 
 #[derive(Debug)]
+/// Errors that can occur during graph operations.
 pub enum Error {
+    /// Error indicating that a specified revision is not present in the repository.
     RevisionNotPresent(RevisionId),
 }
 
@@ -64,6 +70,16 @@ impl From<PyErr> for Error {
 }
 
 impl Graph {
+    /// Check if one revision is an ancestor of another.
+    ///
+    /// # Arguments
+    ///
+    /// * `rev1` - The potential ancestor revision
+    /// * `rev2` - The potential descendant revision
+    ///
+    /// # Returns
+    ///
+    /// `true` if `rev1` is an ancestor of `rev2`, `false` otherwise
     pub fn is_ancestor(&self, rev1: &RevisionId, rev2: &RevisionId) -> bool {
         Python::with_gil(|py| {
             self.0
@@ -74,6 +90,16 @@ impl Graph {
         })
     }
 
+    /// Iterate through the left-hand ancestry of a revision.
+    ///
+    /// # Arguments
+    ///
+    /// * `revid` - The revision ID to start from
+    /// * `stop_revisions` - Optional list of revision IDs where iteration should stop
+    ///
+    /// # Returns
+    ///
+    /// An iterator that yields revision IDs in the ancestry chain
     pub fn iter_lefthand_ancestry(
         &self,
         revid: &RevisionId,

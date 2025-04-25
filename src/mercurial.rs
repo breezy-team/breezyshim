@@ -5,9 +5,20 @@
 use pyo3::exceptions::PyModuleNotFoundError;
 use pyo3::prelude::*;
 
+/// Prober for Mercurial repositories.
+///
+/// This struct can detect Mercurial repositories but does not provide
+/// functionality to interact with them directly. It requires the Breezy
+/// Mercurial plugin to be installed.
 pub struct SmartHgProber(PyObject);
 
 impl SmartHgProber {
+    /// Create a new SmartHgProber instance.
+    ///
+    /// # Returns
+    ///
+    /// Some(SmartHgProber) if the Mercurial plugin is installed,
+    /// None otherwise.
     pub fn new() -> Option<Self> {
         Python::with_gil(|py| {
             let m = match py.import_bound("breezy.plugins.hg") {

@@ -2,15 +2,19 @@
 
 use pyo3::prelude::*;
 
+/// Python UI factory trait.
 pub trait PyUIFactory: ToPyObject + std::any::Any + std::fmt::Debug {}
 
+/// UI factory trait.
 pub trait UIFactory: std::fmt::Debug {}
 
 impl<T: PyUIFactory> UIFactory for T {}
 
+/// UI factory that does not output anything.
 pub struct SilentUIFactory(PyObject);
 
 impl SilentUIFactory {
+    /// Create a new silent UI factory.
     pub fn new() -> Self {
         Python::with_gil(|py| {
             SilentUIFactory(
@@ -32,6 +36,7 @@ impl Default for SilentUIFactory {
     }
 }
 
+/// Generic wrapper for a Python UI factory.
 pub struct GenericUIFactory(PyObject);
 
 impl ToPyObject for GenericUIFactory {
@@ -47,6 +52,7 @@ impl FromPyObject<'_> for GenericUIFactory {
 }
 
 impl GenericUIFactory {
+    /// Create a new generic UI factory from a Python object.
     pub fn new(obj: PyObject) -> Self {
         Self(obj)
     }
@@ -74,6 +80,7 @@ impl std::fmt::Debug for SilentUIFactory {
     }
 }
 
+/// Install a UI factory globally.
 pub fn install_ui_factory(factory: &dyn PyUIFactory) {
     Python::with_gil(|py| {
         let m = py.import_bound("breezy.ui").unwrap();
@@ -81,6 +88,7 @@ pub fn install_ui_factory(factory: &dyn PyUIFactory) {
     });
 }
 
+/// Get the current global UI factory.
 pub fn get_ui_factory() -> Box<dyn PyUIFactory> {
     Box::new(GenericUIFactory::new(Python::with_gil(|py| {
         let m = py.import_bound("breezy.ui").unwrap();
@@ -88,6 +96,7 @@ pub fn get_ui_factory() -> Box<dyn PyUIFactory> {
     }))) as Box<dyn PyUIFactory>
 }
 
+/// Run a function with a silent UI factory temporarily installed.
 pub fn with_silent_ui_factory<R>(f: impl FnOnce() -> R) -> R {
     let old_factory = get_ui_factory();
     let new_factory = SilentUIFactory::new();

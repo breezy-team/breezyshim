@@ -5,23 +5,35 @@ use pyo3::import_exception;
 use pyo3::prelude::*;
 
 #[derive(Debug)]
+/// Errors that can occur when working with GPG.
 pub enum Error {
+    /// GPG is not installed on the system.
     GPGNotInstalled,
 }
 
 #[derive(Debug)]
+/// GPG signing modes.
 pub enum Mode {
+    /// Normal signing mode.
     Normal,
+    /// Detached signature mode.
     Detach,
+    /// Clear signature mode.
     Clear,
 }
 
 #[derive(Debug)]
+/// Status of a GPG signature verification.
 pub enum Status {
+    /// Signature is valid.
     Valid,
+    /// Signature key is missing from the keyring.
     KeyMissing(String),
+    /// Signature with the specified key is not valid.
     NotValid(String),
+    /// Content is not signed.
     NotSigned,
+    /// Signature key has expired.
     Expired(String),
 }
 
@@ -39,9 +51,11 @@ impl From<PyErr> for Error {
     }
 }
 
+/// Strategy for handling GPG signatures.
 pub struct GPGStrategy(PyObject);
 
 impl GPGStrategy {
+    /// Create a new GPG strategy with the given branch configuration.
     pub fn new(branch_config: &crate::config::BranchConfig) -> Self {
         Python::with_gil(|py| {
             let gpg = PyModule::import_bound(py, "breezy.gpg").unwrap();
@@ -52,6 +66,7 @@ impl GPGStrategy {
         })
     }
 
+    /// Set the GPG keys that are acceptable for validating signatures.
     pub fn set_acceptable_keys(&self, keys: &[String]) {
         Python::with_gil(|py| {
             self.0
@@ -74,15 +89,22 @@ impl FromPyObject<'_> for GPGStrategy {
 }
 
 #[derive(Debug)]
+/// Result of verifying a GPG signature.
 pub enum VerificationResult {
+    /// Signature is valid with the specified key.
     Valid(String),
+    /// Signature uses a key that is missing from the keyring.
     KeyMissing(String),
+    /// Signature with the given key is not valid.
     NotValid(String),
+    /// Content is not signed with a GPG signature.
     NotSigned,
+    /// Signature is from an expired key.
     Expired(String),
 }
 
 impl VerificationResult {
+    /// Returns the key string for the signature if available.
     pub fn key(&self) -> Option<&str> {
         match self {
             VerificationResult::Valid(key) => Some(key),
@@ -93,27 +115,43 @@ impl VerificationResult {
         }
     }
 
+    /// Check if the verification result indicates a valid signature.
     pub fn is_valid(&self) -> bool {
         matches!(self, VerificationResult::Valid(_))
     }
 
+    /// Check if the verification result indicates a missing key.
     pub fn is_key_missing(&self) -> bool {
         matches!(self, VerificationResult::KeyMissing(_))
     }
 
+    /// Check if the verification result indicates an invalid signature.
     pub fn is_not_valid(&self) -> bool {
         matches!(self, VerificationResult::NotValid(_))
     }
 
+    /// Check if the verification result indicates the content is not signed.
     pub fn is_not_signed(&self) -> bool {
         matches!(self, VerificationResult::NotSigned)
     }
 
+    /// Check if the verification result indicates an expired key.
     pub fn is_expired(&self) -> bool {
         matches!(self, VerificationResult::Expired(_))
     }
 }
 
+/// Bulk verify GPG signatures for a set of revisions.
+///
+/// # Arguments
+///
+/// * `repository` - The repository containing the revisions
+/// * `revids` - List of revision IDs to verify signatures for
+/// * `strategy` - GPG strategy to use for verification
+///
+/// # Returns
+///
+/// A vector of tuples containing revision IDs and their verification results
 pub fn bulk_verify_signatures<R: PyRepository>(
     repository: &R,
     revids: &[&RevisionId],
@@ -154,9 +192,12 @@ pub fn bulk_verify_signatures<R: PyRepository>(
     })
 }
 
+/// Context for interacting with GPG.
 pub struct GPGContext(PyObject);
 
+/// Represents a GPG key.
 pub struct GPGKey {
+    /// Fingerprint of the GPG key.
     pub fpr: String,
 }
 
@@ -169,6 +210,7 @@ impl FromPyObject<'_> for GPGKey {
 }
 
 impl GPGContext {
+    /// Create a new GPG context.
     pub fn new() -> Self {
         Python::with_gil(|py| {
             let gpg = PyModule::import_bound(py, "gpg").unwrap();
@@ -178,6 +220,15 @@ impl GPGContext {
         })
     }
 
+    /// List GPG keys.
+    ///
+    /// # Arguments
+    ///
+    /// * `secret` - If true, list only secret keys. Otherwise, list all keys.
+    ///
+    /// # Returns
+    ///
+    /// A vector of GPG keys.
     pub fn keylist(&self, secret: bool) -> Vec<GPGKey> {
         Python::with_gil(|py| {
             self.0
@@ -188,6 +239,15 @@ impl GPGContext {
         })
     }
 
+    /// Export the minimal form of a GPG key.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key ID or fingerprint to export
+    ///
+    /// # Returns
+    ///
+    /// The exported key data as a byte vector.
     pub fn key_export_minimal(&self, key: &str) -> Vec<u8> {
         Python::with_gil(|py| {
             self.0

@@ -15,6 +15,7 @@
 //! println!("Last revision: {:?}", b.last_revision());
 //! ```
 
+#![deny(missing_docs)]
 // Necessary for pyo3, which uses the gil-refs feature in macros
 // which is not defined in breezyshim
 #![allow(unexpected_cfgs)]
@@ -74,25 +75,41 @@ pub mod workspace;
 #[cfg(feature = "debian")]
 pub mod debian;
 
+// Re-export core types and functions
+/// Branch trait representing a branch in a version control system
 pub use branch::Branch;
+/// Control directory traits and types
 pub use controldir::{ControlDir, Prober};
+/// Forge related types and functions for interacting with source code hosting services
 pub use forge::{get_forge, Forge, MergeProposal, MergeProposalStatus};
+/// Lock type for managing access to resources
 pub use lock::Lock;
 use pyo3::exceptions::PyImportError;
 use pyo3::prelude::*;
+/// Revision identifier type
 pub use revisionid::RevisionId;
 use std::sync::Once;
+/// Transport functions and types for accessing remote repositories
 pub use transport::{get_transport, Transport};
+/// Tree-related traits and types
 pub use tree::{RevisionTree, Tree, WorkingTree};
+/// URL utility functions
 pub use urlutils::{join_segment_parameters, split_segment_parameters};
+/// Workspace functions
 pub use workspace::reset_tree;
 
+/// Initialize Git support in Breezy.
+///
+/// This function imports the breezy.git module to ensure Git functionality is available.
 pub fn init_git() {
     pyo3::Python::with_gil(|py| {
         py.import_bound("breezy.git").unwrap();
     })
 }
 
+/// Initialize Bazaar support in Breezy.
+///
+/// This function imports the breezy.bzr module to ensure Bazaar functionality is available.
 pub fn init_bzr() {
     pyo3::Python::with_gil(|py| {
         py.import_bound("breezy.bzr").unwrap();
@@ -105,10 +122,23 @@ fn ensure_initialized() {
     init();
 }
 
+/// The minimum supported Breezy version.
 const MINIMUM_VERSION: (usize, usize, usize) = (3, 3, 6);
 
+/// Initialization lock to ensure Breezy is only initialized once.
 static INIT_BREEZY: Once = Once::new();
 
+/// Initialize the Breezy library.
+///
+/// This function ensures that Breezy is properly initialized, checking version
+/// compatibility and loading required modules. It should be called before
+/// using any other functionality in this crate unless the "auto-initialize"
+/// feature is enabled.
+///
+/// # Panics
+///
+/// - If Breezy is not installed
+/// - If the installed Breezy version is too old
 pub fn init() {
     INIT_BREEZY.call_once(|| {
         pyo3::prepare_freethreaded_python();
@@ -162,4 +192,5 @@ pub fn init() {
     });
 }
 
+/// Shorthand for the standard result type used throughout this crate.
 pub type Result<R> = std::result::Result<R, crate::error::Error>;

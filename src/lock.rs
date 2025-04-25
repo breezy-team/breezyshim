@@ -1,6 +1,12 @@
 //! Locking of Breezy objects.
 use pyo3::prelude::*;
 
+/// Represents a lock on a Breezy object.
+///
+/// The lock is automatically released when the Lock object is dropped,
+/// providing RAII (Resource Acquisition Is Initialization) style locking.
+///
+/// This ensures that locked resources are properly released even if an error occurs.
 pub struct Lock(PyObject);
 
 impl From<PyObject> for Lock {

@@ -2,11 +2,14 @@
 use pyo3::exceptions::PyModuleNotFoundError;
 use pyo3::prelude::*;
 
+/// A prober that can detect remote Git repositories.
 pub struct RemoteGitProber(PyObject);
 
+/// The SHA1 hash consisting of all zeros, representing the absence of a commit in Git.
 pub const ZERO_SHA: &[u8] = b"0000000000000000000000000000000000000000";
 
 impl RemoteGitProber {
+    /// Create a new RemoteGitProber, returning None if the Git plugin is not available.
     pub fn new() -> Option<Self> {
         Python::with_gil(|py| {
             let m = match py.import_bound("breezy.git") {
@@ -48,9 +51,11 @@ impl std::fmt::Debug for RemoteGitProber {
 
 impl crate::controldir::PyProber for RemoteGitProber {}
 
+/// Format for bare local Git repositories.
 pub struct BareLocalGitControlDirFormat(PyObject);
 
 impl BareLocalGitControlDirFormat {
+    /// Create a new BareLocalGitControlDirFormat.
     pub fn new() -> Self {
         Python::with_gil(|py| {
             let m = py

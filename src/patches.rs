@@ -77,9 +77,24 @@ pub fn apply_patches(
     })
 }
 
+/// Represents patches that have been applied to a tree.
+///
+/// This struct provides a way to temporarily apply patches to a tree
+/// and automatically revert them when the object is dropped.
 pub struct AppliedPatches(PyObject, PyObject);
 
 impl AppliedPatches {
+    /// Create a new AppliedPatches instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `tree` - The tree to apply patches to
+    /// * `patches` - List of patches to apply
+    /// * `prefix` - Number of leading path segments to strip from patch paths
+    ///
+    /// # Returns
+    ///
+    /// A new AppliedPatches object, which will revert the patches when dropped
     pub fn new<T: crate::tree::PyTree>(
         tree: &T,
         patches: Vec<UnifiedPatch>,

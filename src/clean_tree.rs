@@ -1,8 +1,28 @@
+//! Functions for cleaning a working tree by removing unknown files.
+//!
+//! This module provides functionality to clean a working tree by removing
+//! unknown files, ignored files, and various detritus files.
+
 use crate::error::Error;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use std::path::Path;
 
+/// Clean a working tree by removing unwanted files.
+///
+/// # Parameters
+///
+/// * `directory` - The directory containing the working tree to clean
+/// * `unknown` - If true, remove unknown files (those not tracked by version control)
+/// * `ignored` - If true, remove ignored files (those matching ignore patterns)
+/// * `detritus` - If true, remove detritus files (like backup files, etc.)
+/// * `dry_run` - If true, only report what would be done without actually removing files
+/// * `no_prompt` - If true, don't prompt for confirmation before removing files
+///
+/// # Returns
+///
+/// * `Ok(())` on success
+/// * `Err` containing any error that occurred during the cleaning process
 pub fn clean_tree(
     directory: &Path,
     unknown: bool,

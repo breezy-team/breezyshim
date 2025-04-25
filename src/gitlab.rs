@@ -1,6 +1,7 @@
 //! Basic support for interacting with GitLab
 use pyo3::prelude::*;
 
+/// Login to GitLab using saved credentials.
 pub fn login(url: &url::Url) -> PyResult<()> {
     Python::with_gil(|py| {
         let m = py.import_bound("breezy.plugins.gitlab.cmds").unwrap();

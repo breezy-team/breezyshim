@@ -4,18 +4,26 @@ use crate::lock::Lock;
 use crate::revisionid::RevisionId;
 use pyo3::prelude::*;
 
+/// Type alias for std::path::Path.
 pub type Path = std::path::Path;
+/// Type alias for std::path::PathBuf.
 pub type PathBuf = std::path::PathBuf;
 
 #[derive(Debug, PartialEq, Clone, Eq)]
+/// Kind of object in a tree.
 pub enum Kind {
+    /// Regular file.
     File,
+    /// Directory.
     Directory,
+    /// Symbolic link.
     Symlink,
+    /// Reference to another tree.
     TreeReference,
 }
 
 impl Kind {
+    /// Get a marker string for this kind of tree object.
     pub fn marker(&self) -> &'static str {
         match self {
             Kind::File => "",
@@ -78,22 +86,36 @@ impl pyo3::FromPyObject<'_> for Kind {
     }
 }
 
+/// A tree entry, representing different types of objects in a tree.
 pub enum TreeEntry {
+    /// A regular file entry.
     File {
+        /// Whether the file is executable.
         executable: bool,
+        /// The kind of file.
         kind: Kind,
+        /// The revision ID that introduced this file, if known.
         revision: Option<RevisionId>,
+        /// The size of the file in bytes.
         size: u64,
     },
+    /// A directory entry.
     Directory {
+        /// The revision ID that introduced this directory, if known.
         revision: Option<RevisionId>,
     },
+    /// A symbolic link entry.
     Symlink {
+        /// The revision ID that introduced this symlink, if known.
         revision: Option<RevisionId>,
+        /// The target path of the symbolic link.
         symlink_target: String,
     },
+    /// A reference to another tree.
     TreeReference {
+        /// The revision ID that introduced this reference, if known.
         revision: Option<RevisionId>,
+        /// The revision ID this reference points to.
         reference_revision: RevisionId,
     },
 }
@@ -139,22 +161,44 @@ impl FromPyObject<'_> for TreeEntry {
     }
 }
 
+/// The core tree interface that provides access to content and metadata.
+///
+/// A tree represents a structured collection of files that can be
+/// read, modified, and compared, depending on the implementation.
 pub trait Tree {
+    /// Get a dictionary of tags and their revision IDs.
     fn get_tag_dict(&self) -> Result<std::collections::HashMap<String, RevisionId>, Error>;
+    /// Get a file from the tree as a readable stream.
     fn get_file(&self, path: &Path) -> Result<Box<dyn std::io::Read>, Error>;
+    /// Get the contents of a file from the tree as a byte vector.
     fn get_file_text(&self, path: &Path) -> Result<Vec<u8>, Error>;
+    /// Get the contents of a file as a vector of lines (byte vectors).
     fn get_file_lines(&self, path: &Path) -> Result<Vec<Vec<u8>>, Error>;
+    /// Lock the tree for read operations.
     fn lock_read(&self) -> Result<Lock, Error>;
 
+    /// Check if a file exists in the tree at the specified path.
     fn has_filename(&self, path: &Path) -> bool;
 
+    /// Get the target of a symbolic link.
     fn get_symlink_target(&self, path: &Path) -> Result<PathBuf, Error>;
 
+    /// Get the IDs of the parent revisions of this tree.
     fn get_parent_ids(&self) -> Result<Vec<RevisionId>, Error>;
+    /// Check if a path is ignored by version control.
     fn is_ignored(&self, path: &Path) -> Option<String>;
+    /// Get the kind of object at the specified path (file, directory, symlink, etc.).
     fn kind(&self, path: &Path) -> Result<Kind, Error>;
+    /// Check if a path is under version control.
     fn is_versioned(&self, path: &Path) -> bool;
 
+    /// Iterate through the changes between this tree and another tree.
+    ///
+    /// # Arguments
+    /// * `other` - The other tree to compare against
+    /// * `specific_files` - Optional list of specific files to check
+    /// * `want_unversioned` - Whether to include unversioned files
+    /// * `require_versioned` - Whether to require files to be versioned
     fn iter_changes(
         &self,
         other: &dyn PyTree,
@@ -163,10 +207,19 @@ pub trait Tree {
         require_versioned: Option<bool>,
     ) -> Result<Box<dyn Iterator<Item = Result<TreeChange, Error>>>, Error>;
 
+    /// Check if this tree supports versioned directories.
     fn has_versioned_directories(&self) -> bool;
 
+    /// Get a preview of transformations that would be applied to this tree.
     fn preview_transform(&self) -> Result<crate::transform::TreeTransform, Error>;
 
+    /// List files in the tree, optionally recursively.
+    ///
+    /// # Arguments
+    /// * `include_root` - Whether to include the root directory
+    /// * `from_dir` - Starting directory (if not the root)
+    /// * `recursive` - Whether to recurse into subdirectories
+    /// * `recurse_nested` - Whether to recurse into nested trees
     fn list_files(
         &self,
         include_root: Option<bool>,
@@ -175,12 +228,19 @@ pub trait Tree {
         recurse_nested: Option<bool>,
     ) -> Result<Box<dyn Iterator<Item = Result<(PathBuf, bool, Kind, TreeEntry), Error>>>, Error>;
 
+    /// Iterate through entries in a directory.
+    ///
+    /// # Arguments
+    /// * `path` - Path to the directory to list
     fn iter_child_entries(
         &self,
         path: &std::path::Path,
     ) -> Result<Box<dyn Iterator<Item = Result<(PathBuf, Kind, TreeEntry), Error>>>, Error>;
 }
 
+/// Trait for Python tree objects that can be converted to and from Python objects.
+///
+/// This trait is implemented by all tree types that wrap Python objects.
 pub trait PyTree: ToPyObject + std::any::Any {}
 
 impl<T: PyTree + ?Sized> Tree for T {
@@ -464,6 +524,7 @@ impl<T: PyTree + ?Sized> Tree for T {
     }
 }
 
+/// A generic tree implementation that wraps any Python tree object.
 pub struct GenericTree(PyObject);
 
 impl ToPyObject for GenericTree {
@@ -480,16 +541,25 @@ impl From<PyObject> for GenericTree {
 
 impl PyTree for GenericTree {}
 
+/// Trait for trees that support modification operations.
 pub trait MutableTree: Tree {
+    /// Add specified files to version control.
     fn add(&self, files: &[&Path]) -> Result<(), Error>;
+    /// Lock the tree for write operations.
     fn lock_write(&self) -> Result<Lock, Error>;
+    /// Write bytes to a file in the tree without atomic guarantees.
     fn put_file_bytes_non_atomic(&self, path: &Path, data: &[u8]) -> Result<(), Error>;
+    /// Check if the tree has any uncommitted changes.
     fn has_changes(&self) -> std::result::Result<bool, Error>;
+    /// Create a directory in the tree.
     fn mkdir(&self, path: &Path) -> Result<(), Error>;
+    /// Remove specified files from version control and from the filesystem.
     fn remove(&self, files: &[&std::path::Path]) -> Result<(), Error>;
+    /// Get this object as a reference to the Tree trait.
     fn as_tree(&self) -> &dyn Tree;
 }
 
+/// A tree that can be modified.
 pub trait PyMutableTree: PyTree {}
 
 impl<T: PyMutableTree> MutableTree for T {
@@ -562,6 +632,7 @@ impl<T: PyMutableTree> MutableTree for T {
     }
 }
 
+/// A read-only tree at a specific revision.
 pub struct RevisionTree(pub PyObject);
 
 impl ToPyObject for RevisionTree {
@@ -579,6 +650,7 @@ impl Clone for RevisionTree {
 }
 
 impl RevisionTree {
+    /// Get the repository this revision tree belongs to.
     pub fn repository(&self) -> crate::repository::GenericRepository {
         Python::with_gil(|py| {
             let repository = self.to_object(py).getattr(py, "_repository").unwrap();
@@ -586,6 +658,7 @@ impl RevisionTree {
         })
     }
 
+    /// Get the revision ID of this tree.
     pub fn get_revision_id(&self) -> RevisionId {
         Python::with_gil(|py| {
             self.to_object(py)
@@ -596,6 +669,7 @@ impl RevisionTree {
         })
     }
 
+    /// Get the parent revision IDs of this tree.
     pub fn get_parent_ids(&self) -> Vec<RevisionId> {
         Python::with_gil(|py| {
             self.to_object(py)
@@ -608,13 +682,21 @@ impl RevisionTree {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
+/// Represents a change to a file in a tree.
 pub struct TreeChange {
+    /// The path of the file, as (old_path, new_path).
     pub path: (Option<PathBuf>, Option<PathBuf>),
+    /// Whether the content of the file changed.
     pub changed_content: bool,
+    /// Whether the file is versioned, as (old_versioned, new_versioned).
     pub versioned: (Option<bool>, Option<bool>),
+    /// The name of the file, as (old_name, new_name).
     pub name: (Option<std::ffi::OsString>, Option<std::ffi::OsString>),
+    /// The kind of the file, as (old_kind, new_kind).
     pub kind: (Option<Kind>, Option<Kind>),
+    /// Whether the file is executable, as (old_executable, new_executable).
     pub executable: (Option<bool>, Option<bool>),
+    /// Whether the file was copied rather than just changed/renamed.
     pub copied: bool,
 }
 
@@ -672,6 +754,7 @@ impl FromPyObject<'_> for TreeChange {
     }
 }
 
+/// An in-memory tree implementation.
 pub struct MemoryTree(pub PyObject);
 
 impl ToPyObject for MemoryTree {

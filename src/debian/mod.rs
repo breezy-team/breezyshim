@@ -17,10 +17,10 @@ pub const DEFAULT_BUILD_DIR: &str = "../build-area";
 pub const DEFAULT_ORIG_DIR: &str = "..";
 pub const DEFAULT_RESULT_DIR: &str = "..";
 
+use crate::branch::{Branch, PyBranch};
 use crate::debian::error::Error as DebianError;
 use crate::error::Error;
 use crate::tree::{PyTree, Tree, WorkingTree};
-use crate::branch::{Branch, PyBranch};
 use std::collections::HashMap;
 use std::path::PathBuf;
 

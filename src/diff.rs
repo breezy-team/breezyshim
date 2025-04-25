@@ -3,6 +3,17 @@ use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use std::io::Write;
 
+/// Generate a unified diff between two trees and write it to the provided writer.
+///
+/// # Arguments
+/// * `tree1` - First tree to compare
+/// * `tree2` - Second tree to compare
+/// * `w` - Writer to write the diff to
+/// * `old_label` - Optional label for the old tree
+/// * `new_label` - Optional label for the new tree
+///
+/// # Returns
+/// Result with empty success value or error
 pub fn show_diff_trees<T: crate::tree::PyTree, U: crate::tree::PyTree>(
     tree1: &T,
     tree2: &U,

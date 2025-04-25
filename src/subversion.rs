@@ -5,9 +5,19 @@
 use pyo3::exceptions::PyModuleNotFoundError;
 use pyo3::prelude::*;
 
+/// Prober for Subversion repositories.
+///
+/// This struct can detect Subversion repositories but requires the Breezy
+/// Subversion plugin to be installed.
 pub struct SvnRepositoryProber(PyObject);
 
 impl SvnRepositoryProber {
+    /// Create a new SvnRepositoryProber instance.
+    ///
+    /// # Returns
+    ///
+    /// Some(SvnRepositoryProber) if the Subversion plugin is installed,
+    /// None otherwise.
     pub fn new() -> Option<Self> {
         Python::with_gil(|py| {
             let m = match py.import_bound("breezy.plugins.svn") {

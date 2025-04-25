@@ -5,15 +5,33 @@ use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
 
+/// Environment for running Breezy tests.
+///
+/// This struct sets up a temporary environment for running Breezy tests,
+/// including temporary directories and environment variables, and cleans
+/// up after itself when dropped.
 pub struct TestEnv {
+    /// The temporary directory that contains all test files.
     pub temp_dir: TempDir,
+    /// The working directory where tests will run.
     pub working_dir: PathBuf,
+    /// The home directory for the test environment.
     pub home_dir: PathBuf,
+    /// The original working directory before the test environment was set up.
     pub old_cwd: PathBuf,
+    /// The original environment variables before the test environment was set up.
     pub old_env: HashMap<String, Option<String>>,
 }
 
 impl TestEnv {
+    /// Create a new testing environment.
+    ///
+    /// This sets up a temporary directory structure with a working directory
+    /// and home directory, and configures environment variables for Breezy.
+    ///
+    /// # Returns
+    ///
+    /// A new TestEnv instance
     pub fn new() -> Self {
         let temp_dir = TempDir::new().unwrap();
         let working_dir = temp_dir.path().join("test");

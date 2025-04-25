@@ -3,6 +3,10 @@ use pyo3::prelude::*;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 #[derive(Clone, PartialEq, Eq, Ord, PartialOrd, Hash)]
+/// Represents a unique identifier for a revision in a version control system.
+///
+/// RevisionId is typically a string in UTF-8 encoding, but is stored as bytes
+/// to efficiently handle all possible revision formats across different VCS systems.
 pub struct RevisionId(Vec<u8>);
 
 impl std::fmt::Debug for RevisionId {
@@ -13,22 +17,53 @@ impl std::fmt::Debug for RevisionId {
 }
 
 impl RevisionId {
+    /// Get the raw bytes of the revision ID.
+    ///
+    /// # Returns
+    ///
+    /// A slice of the underlying bytes
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
     }
 
+    /// Check if this revision ID is the null revision.
+    ///
+    /// # Returns
+    ///
+    /// `true` if this is the null revision, `false` otherwise
     pub fn is_null(&self) -> bool {
         self.0 == NULL_REVISION
     }
 
+    /// Check if this revision ID is a reserved revision.
+    ///
+    /// Reserved revision IDs start with a colon character.
+    ///
+    /// # Returns
+    ///
+    /// `true` if this is a reserved revision, `false` otherwise
     pub fn is_reserved(&self) -> bool {
         self.0.starts_with(b":")
     }
 
+    /// Create a new null revision ID.
+    ///
+    /// # Returns
+    ///
+    /// A new RevisionId representing the null revision
     pub fn null() -> Self {
         Self(NULL_REVISION.to_vec())
     }
 
+    /// Get the revision ID as a UTF-8 string.
+    ///
+    /// # Returns
+    ///
+    /// The revision ID as a string slice
+    ///
+    /// # Panics
+    ///
+    /// Panics if the revision ID is not valid UTF-8
     pub fn as_str(&self) -> &str {
         std::str::from_utf8(&self.0).unwrap()
     }
@@ -120,7 +155,15 @@ impl std::fmt::Display for RevisionId {
     }
 }
 
+/// Constant representing the "current" revision identifier.
+///
+/// This is used to refer to the current revision in working trees.
 pub const CURRENT_REVISION: &[u8] = b"current:";
+
+/// Constant representing the "null" revision identifier.
+///
+/// The null revision is used to represent the absence of a revision,
+/// such as the parent of the first commit in a repository.
 pub const NULL_REVISION: &[u8] = b"null:";
 
 #[cfg(test)]

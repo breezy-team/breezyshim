@@ -5,9 +5,11 @@ use pyo3::prelude::*;
 use pyo3::types::PyTuple;
 use pyo3::types::PyTupleMethods;
 
+/// A tree transform is used to apply a set of changes to a tree.
 pub struct TreeTransform(PyObject);
 
 #[derive(Clone)]
+/// Represents a change to a file or directory in a tree transformation.
 pub struct TreeChange {}
 
 impl From<PyObject> for TreeChange {
@@ -22,6 +24,7 @@ impl FromPyObject<'_> for TreeChange {
     }
 }
 
+/// Represents a conflict that occurs during a tree transformation.
 pub struct Conflict(PyObject);
 
 impl Clone for Conflict {
@@ -31,6 +34,7 @@ impl Clone for Conflict {
 }
 
 impl Conflict {
+    /// Get the file paths associated with this conflict.
     pub fn associated_filenames(&self) -> Result<Vec<PathBuf>, crate::error::Error> {
         let mut v: Vec<PathBuf> = vec![];
 
@@ -45,6 +49,7 @@ impl Conflict {
         })
     }
 
+    /// Get a human-readable description of this conflict.
     pub fn describe(&self) -> Result<String, crate::error::Error> {
         Python::with_gil(|py| {
             let ret = self.0.call_method0(py, "describe")?;
@@ -52,6 +57,7 @@ impl Conflict {
         })
     }
 
+    /// Clean up any temporary files created by this conflict.
     pub fn cleanup<T: PyTree>(&self, tree: &T) -> Result<(), crate::error::Error> {
         Python::with_gil(|py| {
             self.0.call_method1(py, "cleanup", (tree.to_object(py),))?;
@@ -60,6 +66,7 @@ impl Conflict {
     }
 }
 
+/// A tree that shows what a tree would look like after applying a transform.
 pub struct PreviewTree(PyObject);
 
 impl ToPyObject for PreviewTree {
@@ -75,6 +82,7 @@ impl From<PyObject> for PreviewTree {
 }
 
 impl TreeTransform {
+    /// Apply the transform to the tree.
     pub fn finalize(&self) -> Result<(), crate::error::Error> {
         Python::with_gil(|py| {
             self.to_object(py).call_method0(py, "finalize")?;
@@ -82,6 +90,7 @@ impl TreeTransform {
         })
     }
 
+    /// Iterate through the changes in this transform.
     pub fn iter_changes(
         &self,
     ) -> Result<Box<dyn Iterator<Item = TreeChange>>, crate::error::Error> {
@@ -98,6 +107,7 @@ impl TreeTransform {
         })
     }
 
+    /// Get a list of conflicts that would occur when applying this transform.
     pub fn cooked_conflicts(&self) -> Result<Vec<Conflict>, crate::error::Error> {
         let mut v: Vec<Conflict> = vec![];
 
@@ -112,6 +122,7 @@ impl TreeTransform {
         })
     }
 
+    /// Get a preview tree showing what would happen if this transform was applied.
     pub fn get_preview_tree(&self) -> Result<PreviewTree, crate::error::Error> {
         Python::with_gil(|py| {
             let ret = self.to_object(py).getattr(py, "preview_tree")?;
@@ -139,6 +150,7 @@ impl FromPyObject<'_> for TreeTransform {
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
+/// An identifier for a transformation operation.
 pub struct TransId(String);
 
 impl FromPyObject<'_> for TransId {
@@ -154,16 +166,27 @@ impl ToPyObject for TransId {
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
+/// Enum representing different types of conflicts that can occur during transformation.
 pub enum RawConflict {
+    /// Conflict caused by trying to change executability of an unversioned file.
     UnversionedExecutability(TransId),
+    /// Conflict caused by trying to set executability on a non-file.
     NonFileExecutability(TransId),
+    /// Conflict caused by trying to overwrite an existing file with different content.
     Overwrite(TransId, String),
+    /// Conflict caused by a directory loop in the parent structure.
     ParentLoop(TransId),
+    /// Conflict caused by trying to version a file with an unversioned parent.
     UnversionedParent(TransId),
+    /// Conflict caused by trying to version a file without contents.
     VersioningNoContents(TransId),
+    /// Conflict caused by trying to version a file with an unsupported kind.
     VersioningBadKind(TransId),
+    /// Conflict caused by trying to add the same file path twice.
     Duplicate(TransId, TransId, String),
+    /// Conflict caused by a missing parent directory.
     MissingParent(TransId),
+    /// Conflict caused by a parent that is not a directory.
     NonDirectoryParent(TransId),
 }
 

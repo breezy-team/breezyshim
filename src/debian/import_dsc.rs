@@ -1,7 +1,11 @@
 use crate::branch::GenericBranch;
 use crate::debian::TarballKind;
 use crate::tree::WorkingTree;
-use crate::{branch::{Branch, PyBranch}, tree::PyTree, RevisionId};
+use crate::{
+    branch::{Branch, PyBranch},
+    tree::PyTree,
+    RevisionId,
+};
 use pyo3::prelude::*;
 use std::{collections::HashMap, path::Path, path::PathBuf};
 

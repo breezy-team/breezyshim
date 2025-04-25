@@ -6,8 +6,15 @@ use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict};
 use std::collections::HashMap;
 
+/// Trait for types that can be converted to Python InterRepository objects.
+///
+/// This trait is implemented by types that represent a Breezy InterRepository,
+/// which handles operations between repositories.
 pub trait PyInterRepository: ToPyObject + std::any::Any + std::fmt::Debug {}
 
+/// Generic wrapper for a Python InterRepository object.
+///
+/// This struct provides a Rust interface to a Breezy InterRepository object.
 pub struct GenericInterRepository(PyObject);
 
 impl ToPyObject for GenericInterRepository {
@@ -25,6 +32,15 @@ impl FromPyObject<'_> for GenericInterRepository {
 impl PyInterRepository for GenericInterRepository {}
 
 impl GenericInterRepository {
+    /// Create a new GenericInterRepository from a Python object.
+    ///
+    /// # Arguments
+    ///
+    /// * `obj` - The Python object representing a Breezy InterRepository
+    ///
+    /// # Returns
+    ///
+    /// A new GenericInterRepository wrapping the provided Python object
     pub fn new(obj: PyObject) -> Self {
         Self(obj)
     }
@@ -36,6 +52,20 @@ impl std::fmt::Debug for GenericInterRepository {
     }
 }
 
+/// Get an InterRepository for operations between two repositories.
+///
+/// # Arguments
+///
+/// * `source` - The source repository
+/// * `target` - The target repository
+///
+/// # Returns
+///
+/// A boxed InterRepository trait object that can perform operations between the repositories
+///
+/// # Errors
+///
+/// Returns an error if the operation fails, such as if the repositories are incompatible
 pub fn get<S: PyRepository, T: PyRepository>(
     source: &S,
     target: &T,
@@ -52,10 +82,36 @@ pub fn get<S: PyRepository, T: PyRepository>(
     })
 }
 
+/// Trait for operations between repositories.
+///
+/// This trait defines the operations that can be performed between two repositories,
+/// such as fetching revisions from one repository to another.
 pub trait InterRepository: std::fmt::Debug {
+    /// Get the source repository.
+    ///
+    /// # Returns
+    ///
+    /// The source repository
     fn get_source(&self) -> GenericRepository;
+
+    /// Get the target repository.
+    ///
+    /// # Returns
+    ///
+    /// The target repository
     fn get_target(&self) -> GenericRepository;
 
+    /// Fetch references from the source repository to the target repository.
+    ///
+    /// # Arguments
+    ///
+    /// * `get_changed_refs` - A mutex-protected function to get the references to fetch
+    /// * `lossy` - If true, lossy conversion is allowed
+    /// * `overwrite` - If true, existing references can be overwritten
+    ///
+    /// # Returns
+    ///
+    /// Ok(()) on success, or an error if the operation fails
     // TODO: This should really be on InterGitRepository
     fn fetch_refs(
         &self,

@@ -5,9 +5,11 @@
 use pyo3::exceptions::PyModuleNotFoundError;
 use pyo3::prelude::*;
 
+/// A prober for CVS repositories.
 pub struct CVSProber(PyObject);
 
 impl CVSProber {
+    /// Create a new CVS prober instance.
     pub fn new() -> Option<Self> {
         Python::with_gil(|py| {
             let m = match py.import_bound("breezy.plugins.cvs") {

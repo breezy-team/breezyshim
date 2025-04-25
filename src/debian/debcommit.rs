@@ -43,12 +43,9 @@ pub fn debcommit_release(
         });
         (message, vendor)
     };
-    let tag_name = if let Ok(tag_name) = crate::debian::tree_debian_tag_name(
-        tree,
-        &tree.branch(),
-        Some(subpath),
-        Some(vendor),
-    ) {
+    let tag_name = if let Ok(tag_name) =
+        crate::debian::tree_debian_tag_name(tree, &tree.branch(), Some(subpath), Some(vendor))
+    {
         tag_name
     } else {
         return Err(Error::UnreleasedChanges);
