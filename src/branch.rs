@@ -17,6 +17,10 @@ use crate::revisionid::RevisionId;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
+/// Format of a branch in a version control system.
+///
+/// This struct represents the format of a branch, which defines its capabilities
+/// and constraints.
 pub struct BranchFormat(PyObject);
 
 impl Clone for BranchFormat {
@@ -26,6 +30,14 @@ impl Clone for BranchFormat {
 }
 
 impl BranchFormat {
+    /// Check if this branch format supports stacking.
+    ///
+    /// Stacking allows a branch to reference revisions in another branch
+    /// without duplicating their storage.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the branch format supports stacking, `false` otherwise.
     pub fn supports_stacking(&self) -> bool {
         Python::with_gil(|py| {
             self.0
@@ -37,20 +49,109 @@ impl BranchFormat {
     }
 }
 
+/// Trait representing a branch in a version control system.
+///
+/// A branch is a named sequence of revisions. Each revision is a snapshot of the project
+/// at a particular point in time. This trait provides methods for interacting with
+/// branches across various version control systems.
 pub trait Branch {
+    /// Get the format of this branch.
+    ///
+    /// # Returns
+    ///
+    /// The format of this branch.
     fn format(&self) -> BranchFormat;
+    /// Get the type of version control system for this branch.
+    ///
+    /// # Returns
+    ///
+    /// The version control system type.
     fn vcs_type(&self) -> VcsType;
+    /// Get the revision number of the last revision in this branch.
+    ///
+    /// # Returns
+    ///
+    /// The revision number.
     fn revno(&self) -> u32;
+    /// Lock the branch for reading.
+    ///
+    /// This method acquires a read lock on the branch, which allows reading from the
+    /// branch but prevents others from writing to it.
+    ///
+    /// # Returns
+    ///
+    /// A lock object that will release the lock when dropped, or an error if the
+    /// lock could not be acquired.
     fn lock_read(&self) -> Result<Lock, crate::error::Error>;
+    /// Lock the branch for writing.
+    ///
+    /// This method acquires a write lock on the branch, which allows writing to the
+    /// branch but prevents others from reading from or writing to it.
+    ///
+    /// # Returns
+    ///
+    /// A lock object that will release the lock when dropped, or an error if the
+    /// lock could not be acquired.
     fn lock_write(&self) -> Result<Lock, crate::error::Error>;
+    /// Get the tags for this branch.
+    ///
+    /// Tags are names associated with specific revisions in the branch.
+    ///
+    /// # Returns
+    ///
+    /// The tags object for this branch, or an error if the tags could not be retrieved.
     fn tags(&self) -> Result<crate::tags::Tags, crate::error::Error>;
+    /// Get the repository associated with this branch.
+    ///
+    /// # Returns
+    ///
+    /// The repository containing this branch.
     fn repository(&self) -> GenericRepository;
+    /// Get the last revision in this branch.
+    ///
+    /// # Returns
+    ///
+    /// The revision ID of the last revision in this branch.
     fn last_revision(&self) -> RevisionId;
+    /// Get the name of this branch.
+    ///
+    /// # Returns
+    ///
+    /// The name of this branch, or None if it doesn't have a name.
     fn name(&self) -> Option<String>;
+    /// Get the basis tree for this branch.
+    ///
+    /// The basis tree is the tree corresponding to the last revision in this branch.
+    ///
+    /// # Returns
+    ///
+    /// The basis tree, or an error if it could not be retrieved.
     fn basis_tree(&self) -> Result<crate::tree::RevisionTree, crate::error::Error>;
+    /// Get the user-visible URL for this branch.
+    ///
+    /// # Returns
+    ///
+    /// The URL that can be used to access this branch.
     fn get_user_url(&self) -> url::Url;
+    /// Get the control directory for this branch.
+    ///
+    /// # Returns
+    ///
+    /// The control directory containing this branch.
     fn controldir(&self) -> Box<dyn ControlDir>;
 
+    /// Push this branch to a remote branch.
+    ///
+    /// # Parameters
+    ///
+    /// * `remote_branch` - The remote branch to push to.
+    /// * `overwrite` - Whether to overwrite the remote branch if it has diverged.
+    /// * `stop_revision` - The revision to stop pushing at, or None to push all revisions.
+    /// * `tag_selector` - A function that selects which tags to push, or None to push all tags.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or an error if the push failed.
     fn push(
         &self,
         remote_branch: &dyn PyBranch,
@@ -59,24 +160,106 @@ pub trait Branch {
         tag_selector: Option<Box<dyn Fn(String) -> bool>>,
     ) -> Result<(), crate::error::Error>;
 
+    /// Pull from a source branch into this branch.
+    ///
+    /// # Parameters
+    ///
+    /// * `source_branch` - The branch to pull from.
+    /// * `overwrite` - Whether to overwrite this branch if it has diverged from the source.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or an error if the pull failed.
     fn pull(&self, source_branch: &dyn PyBranch, overwrite: Option<bool>) -> Result<(), Error>;
+    /// Get the parent branch location.
+    ///
+    /// # Returns
+    ///
+    /// The parent branch location as a string, or None if there is no parent branch.
     fn get_parent(&self) -> Option<String>;
+    /// Set the parent branch location.
+    ///
+    /// # Parameters
+    ///
+    /// * `parent` - The new parent branch location.
     fn set_parent(&mut self, parent: &str);
+    /// Get the public branch location.
+    ///
+    /// # Returns
+    ///
+    /// The public branch location as a string, or None if there is no public branch.
     fn get_public_branch(&self) -> Option<String>;
+    /// Get the push location for this branch.
+    ///
+    /// # Returns
+    ///
+    /// The push location as a string, or None if there is no push location.
     fn get_push_location(&self) -> Option<String>;
+    /// Get the submit branch location.
+    ///
+    /// # Returns
+    ///
+    /// The submit branch location as a string, or None if there is no submit branch.
     fn get_submit_branch(&self) -> Option<String>;
+    /// Get a transport for accessing this branch's user files.
+    ///
+    /// # Returns
+    ///
+    /// A transport for accessing this branch's user files.
     fn user_transport(&self) -> crate::transport::Transport;
+    /// Get the configuration for this branch.
+    ///
+    /// # Returns
+    ///
+    /// The branch configuration.
     fn get_config(&self) -> crate::config::BranchConfig;
+    /// Get the configuration stack for this branch.
+    ///
+    /// # Returns
+    ///
+    /// The configuration stack for this branch, which includes branch-specific,
+    /// repository-specific, and global configuration.
     fn get_config_stack(&self) -> crate::config::ConfigStack;
 
+    /// Create a new branch from this branch.
+    ///
+    /// # Parameters
+    ///
+    /// * `to_controldir` - The control directory to create the new branch in.
+    /// * `to_branch_name` - The name of the new branch.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or an error if the branch could not be created.
     fn sprout(&self, to_controldir: &dyn PyControlDir, to_branch_name: &str) -> Result<(), Error>;
+    /// Create a checkout of this branch.
+    ///
+    /// # Parameters
+    ///
+    /// * `to_location` - The location to create the checkout at.
+    ///
+    /// # Returns
+    ///
+    /// The working tree for the checkout, or an error if the checkout could not be created.
     fn create_checkout(
         &self,
         to_location: &std::path::Path,
     ) -> Result<crate::tree::WorkingTree, Error>;
+    /// Generate the revision history for this branch.
+    ///
+    /// # Parameters
+    ///
+    /// * `last_revision` - The last revision to include in the history.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or an error if the history could not be generated.
     fn generate_revision_history(&self, last_revision: &RevisionId) -> Result<(), Error>;
 }
 
+/// Trait for branches that wrap Python branch objects.
+///
+/// This trait is implemented by branch types that wrap Breezy's Python branch objects.
 pub trait PyBranch: ToPyObject + Send + std::any::Any {}
 
 impl<T: PyBranch> Branch for T {
@@ -334,6 +517,10 @@ impl<T: PyBranch> Branch for T {
     }
 }
 
+/// A generic branch that can represent any type of branch.
+///
+/// This struct wraps a Python branch object and provides access to it through
+/// the Branch trait.
 pub struct GenericBranch(PyObject);
 
 impl Clone for GenericBranch {
@@ -351,6 +538,15 @@ impl ToPyObject for GenericBranch {
 }
 
 impl GenericBranch {
+    /// Create a new GenericBranch from a Python branch object.
+    ///
+    /// # Parameters
+    ///
+    /// * `obj` - A Python object representing a branch.
+    ///
+    /// # Returns
+    ///
+    /// A new GenericBranch that wraps the provided Python branch.
     pub fn new(obj: PyObject) -> Self {
         GenericBranch(obj)
     }
@@ -362,6 +558,10 @@ impl FromPyObject<'_> for GenericBranch {
     }
 }
 
+/// A branch that exists only in memory.
+///
+/// Memory branches are not backed by a persistent storage and are primarily
+/// used for testing or temporary operations.
 pub struct MemoryBranch(PyObject);
 
 impl Clone for MemoryBranch {
@@ -379,6 +579,17 @@ impl ToPyObject for MemoryBranch {
 impl PyBranch for MemoryBranch {}
 
 impl MemoryBranch {
+    /// Create a new MemoryBranch.
+    ///
+    /// # Parameters
+    ///
+    /// * `repository` - The repository to use for this memory branch.
+    /// * `revno` - Optional revision number to use as the last revision.
+    /// * `revid` - The revision ID to use as the last revision.
+    ///
+    /// # Returns
+    ///
+    /// A new MemoryBranch instance.
     pub fn new<R: PyRepository>(repository: &R, revno: Option<u32>, revid: &RevisionId) -> Self {
         Python::with_gil(|py| {
             let mb_cls = py
@@ -412,6 +623,15 @@ pub(crate) fn py_tag_selector(
     Ok(PyTagSelector(tag_selector).into_py(py))
 }
 
+/// Open a branch at the specified URL.
+///
+/// # Parameters
+///
+/// * `url` - The URL of the branch to open.
+///
+/// # Returns
+///
+/// The opened branch, or an error if the branch could not be opened.
 pub fn open(url: &url::Url) -> Result<Box<dyn Branch>, Error> {
     Python::with_gil(|py| {
         let m = py.import_bound("breezy.branch").unwrap();
@@ -421,6 +641,19 @@ pub fn open(url: &url::Url) -> Result<Box<dyn Branch>, Error> {
     })
 }
 
+/// Find and open a branch containing the specified URL.
+///
+/// This function searches for a branch containing the specified URL and returns
+/// the branch and the relative path from the branch to the specified URL.
+///
+/// # Parameters
+///
+/// * `url` - The URL to find a branch for.
+///
+/// # Returns
+///
+/// A tuple containing the opened branch and the relative path from the branch to
+/// the specified URL, or an error if no branch could be found.
 pub fn open_containing(url: &url::Url) -> Result<(Box<dyn Branch>, String), Error> {
     Python::with_gil(|py| {
         let m = py.import_bound("breezy.branch").unwrap();
@@ -437,6 +670,15 @@ pub fn open_containing(url: &url::Url) -> Result<(Box<dyn Branch>, String), Erro
     })
 }
 
+/// Open a branch from a transport.
+///
+/// # Parameters
+///
+/// * `transport` - The transport to use for accessing the branch.
+///
+/// # Returns
+///
+/// The opened branch, or an error if the branch could not be opened.
 pub fn open_from_transport(
     transport: &crate::transport::Transport,
 ) -> Result<Box<dyn Branch>, Error> {

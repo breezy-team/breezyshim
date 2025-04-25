@@ -1,8 +1,22 @@
+//! Commit-related functionality.
+//!
+//! This module provides types for reporting commit information and handling
+//! commit operations in version control systems.
+
 use pyo3::prelude::*;
 
+/// A commit reporter that doesn't report anything.
+///
+/// This is useful when you want to perform a commit operation but don't want
+/// to output any information about the commit.
 pub struct NullCommitReporter(PyObject);
 
 impl NullCommitReporter {
+    /// Create a new NullCommitReporter.
+    ///
+    /// # Returns
+    ///
+    /// A new NullCommitReporter instance.
     pub fn new() -> Self {
         Python::with_gil(|py| {
             let m = py.import_bound("breezy.commit").unwrap();
@@ -30,12 +44,19 @@ impl ToPyObject for NullCommitReporter {
     }
 }
 
+/// Trait for Python commit reporters.
+///
+/// This trait is implemented by commit reporters that wrap Python objects.
 pub trait PyCommitReporter: ToPyObject + std::any::Any + std::fmt::Debug {}
 
+/// Trait for commit reporters.
+///
+/// This trait represents objects that report information about commits.
 pub trait CommitReporter: std::fmt::Debug {}
 
 impl<T: PyCommitReporter> CommitReporter for T {}
 
+/// A generic commit reporter that wraps any Python commit reporter.
 pub struct GenericCommitReporter(PyObject);
 
 impl ToPyObject for GenericCommitReporter {
@@ -53,6 +74,15 @@ impl FromPyObject<'_> for GenericCommitReporter {
 impl PyCommitReporter for GenericCommitReporter {}
 
 impl GenericCommitReporter {
+    /// Create a new GenericCommitReporter from a Python object.
+    ///
+    /// # Parameters
+    ///
+    /// * `obj` - A Python object that implements the commit reporter interface.
+    ///
+    /// # Returns
+    ///
+    /// A new GenericCommitReporter instance that wraps the provided Python object.
     pub fn new(obj: PyObject) -> Self {
         Self(obj)
     }
@@ -72,9 +102,17 @@ impl std::fmt::Debug for NullCommitReporter {
     }
 }
 
+/// A commit reporter that reports commit information to the log.
+///
+/// This reporter outputs information about commits to the logging system.
 pub struct ReportCommitToLog(PyObject);
 
 impl ReportCommitToLog {
+    /// Create a new ReportCommitToLog instance.
+    ///
+    /// # Returns
+    ///
+    /// A new ReportCommitToLog instance.
     pub fn new() -> Self {
         Python::with_gil(|py| {
             let m = py.import_bound("breezy.commit").unwrap();

@@ -4,13 +4,16 @@ use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use std::path::{Path, PathBuf};
 
+/// A transport represents a way to access content in a branch.
 pub struct Transport(PyObject);
 
 impl Transport {
+    /// Create a new transport from a Python object.
     pub fn new(obj: PyObject) -> Self {
         Transport(obj)
     }
 
+    /// Get the base URL of this transport.
     pub fn base(&self) -> url::Url {
         pyo3::Python::with_gil(|py| {
             self.to_object(py)
@@ -23,6 +26,7 @@ impl Transport {
         })
     }
 
+    /// Check if this is a local transport.
     pub fn is_local(&self) -> bool {
         pyo3::import_exception!(breezy.errors, NotLocalUrl);
         pyo3::Python::with_gil(|py| {
@@ -40,6 +44,7 @@ impl Transport {
         })
     }
 
+    /// Get the local absolute path for a path within this transport.
     pub fn local_abspath(&self, path: &Path) -> Result<PathBuf, Error> {
         pyo3::Python::with_gil(|py| {
             Ok(self
@@ -51,6 +56,7 @@ impl Transport {
         })
     }
 
+    /// Check if a path exists in this transport.
     pub fn has(&self, path: &str) -> Result<bool, Error> {
         pyo3::Python::with_gil(|py| {
             Ok(self
@@ -61,6 +67,7 @@ impl Transport {
         })
     }
 
+    /// Ensure the base directory exists.
     pub fn ensure_base(&self) -> Result<(), Error> {
         pyo3::Python::with_gil(|py| {
             self.0.call_method0(py, "ensure_base")?;
@@ -68,6 +75,7 @@ impl Transport {
         })
     }
 
+    /// Create all the directories leading up to the final path component.
     pub fn create_prefix(&self) -> Result<(), Error> {
         pyo3::Python::with_gil(|py| {
             self.0.call_method0(py, "create_prefix")?;
@@ -75,6 +83,7 @@ impl Transport {
         })
     }
 
+    /// Create a new transport with a different path.
     pub fn clone(&self, path: &str) -> Result<Transport, Error> {
         pyo3::Python::with_gil(|py| {
             let o = self.0.call_method1(py, "clone", (path,))?;
@@ -95,6 +104,11 @@ impl ToPyObject for Transport {
     }
 }
 
+/// Get a transport for a given URL.
+///
+/// # Arguments
+/// * `url` - The URL to get a transport for
+/// * `possible_transports` - Optional list of transports to try reusing
 pub fn get_transport(
     url: &url::Url,
     possible_transports: Option<&mut Vec<Transport>>,

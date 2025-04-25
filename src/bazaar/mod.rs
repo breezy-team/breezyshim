@@ -1,9 +1,16 @@
 //! Bazaar-specific functionality.
+//!
+//! This module provides types and functions for working with Bazaar repositories.
+//! Bazaar was the original version control system that Breezy evolved from.
 use pyo3::exceptions::PyModuleNotFoundError;
 use pyo3::prelude::*;
 
 pub mod tree;
 
+/// A Bazaar file identifier.
+///
+/// Bazaar uses unique identifiers for files, which allow it to track files across
+/// renames and other operations.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FileId(Vec<u8>);
 
@@ -14,6 +21,11 @@ impl Default for FileId {
 }
 
 impl FileId {
+    /// Create a new empty file identifier.
+    ///
+    /// # Returns
+    ///
+    /// A new FileId instance with an empty identifier.
     pub fn new() -> Self {
         Self(vec![])
     }
@@ -74,6 +86,16 @@ impl pyo3::IntoPy<pyo3::PyObject> for FileId {
     }
 }
 
+/// Generate a Bazaar revision identifier.
+///
+/// # Parameters
+///
+/// * `username` - The username to associate with the revision.
+/// * `timestamp` - Optional timestamp for the revision, in seconds since the epoch.
+///
+/// # Returns
+///
+/// A byte vector containing the generated revision identifier.
 pub fn gen_revision_id(username: &str, timestamp: Option<usize>) -> Vec<u8> {
     Python::with_gil(|py| {
         let m = py.import_bound("breezy.bzr.generate_ids").unwrap();
@@ -91,6 +113,15 @@ fn test_gen_revision_id() {
     gen_revision_id("user", None);
 }
 
+/// Generate a Bazaar file identifier from a name.
+///
+/// # Parameters
+///
+/// * `name` - The name to use for generating the file identifier.
+///
+/// # Returns
+///
+/// A byte vector containing the generated file identifier.
 pub fn gen_file_id(name: &str) -> Vec<u8> {
     Python::with_gil(|py| {
         let m = py.import_bound("breezy.bzr.generate_ids").unwrap();
@@ -104,9 +135,17 @@ fn test_file_id() {
     gen_file_id("somename");
 }
 
+/// A prober for remote Bazaar repositories.
+///
+/// This prober can detect whether a remote location contains a Bazaar repository.
 pub struct RemoteBzrProber(PyObject);
 
 impl RemoteBzrProber {
+    /// Create a new RemoteBzrProber.
+    ///
+    /// # Returns
+    ///
+    /// Some(RemoteBzrProber) if Bazaar is available, None otherwise.
     pub fn new() -> Option<Self> {
         Python::with_gil(|py| {
             let m = match py.import_bound("breezy.bzr") {

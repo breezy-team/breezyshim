@@ -5,9 +5,11 @@
 use pyo3::exceptions::PyModuleNotFoundError;
 use pyo3::prelude::*;
 
+/// A prober that can detect Fossil repositories.
 pub struct RemoteFossilProber(PyObject);
 
 impl RemoteFossilProber {
+    /// Create a new RemoteFossilProber, returning None if the Fossil plugin is not available.
     pub fn new() -> Option<Self> {
         Python::with_gil(|py| {
             let m = match py.import_bound("breezy.plugins.fossil") {

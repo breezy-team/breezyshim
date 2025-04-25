@@ -5,9 +5,11 @@
 use pyo3::exceptions::PyModuleNotFoundError;
 use pyo3::prelude::*;
 
+/// A prober for Darcs repositories.
 pub struct DarcsProber(PyObject);
 
 impl DarcsProber {
+    /// Create a new Darcs prober instance.
     pub fn new() -> Option<Self> {
         Python::with_gil(|py| {
             let m = match py.import_bound("breezy.plugins.darcs") {

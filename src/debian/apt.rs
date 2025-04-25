@@ -48,6 +48,10 @@ impl Iterator for PackageIterator {
     }
 }
 
+/// Interface for interacting with APT repositories.
+///
+/// This trait defines methods for retrieving packages and other information
+/// from APT repositories, both local and remote.
 pub trait Apt: ToPyObject {
     // Retrieve the orig tarball from the repository.
     //
@@ -58,6 +62,15 @@ pub trait Apt: ToPyObject {
     //
     // # Returns
     // * `Ok(())` - If the orig tarball was successfully retrieved.
+    /// Retrieve the orig tarball from the repository.
+    ///
+    /// # Arguments
+    /// * `source_name` - The name of the source package to retrieve
+    /// * `target_directory` - The directory to store the orig tarball in
+    /// * `orig_version` - The version of the orig tarball to retrieve
+    ///
+    /// # Returns
+    /// * `Ok(())` - If the orig tarball was successfully retrieved
     fn retrieve_orig(
         &self,
         source_name: &str,
@@ -148,6 +161,9 @@ pub trait Apt: ToPyObject {
     }
 }
 
+/// Interface to a local APT repository.
+///
+/// This struct provides access to the APT repositories configured on the local system.
 pub struct LocalApt(PyObject);
 
 impl Apt for LocalApt {}
@@ -159,6 +175,13 @@ impl ToPyObject for LocalApt {
 }
 
 impl LocalApt {
+    /// Create a new LocalApt instance.
+    ///
+    /// # Arguments
+    /// * `rootdir` - Optional root directory for the APT configuration
+    ///
+    /// # Returns
+    /// A new LocalApt instance or an error
     pub fn new(rootdir: Option<&std::path::Path>) -> Result<Self, Error> {
         let _mutex = apt_mutex.lock().unwrap();
         Python::with_gil(|py| {
@@ -188,6 +211,9 @@ impl Drop for LocalApt {
     }
 }
 
+/// Interface to a remote APT repository.
+///
+/// This struct provides access to APT repositories on remote servers.
 pub struct RemoteApt(PyObject);
 
 impl ToPyObject for RemoteApt {
@@ -197,6 +223,16 @@ impl ToPyObject for RemoteApt {
 }
 
 impl RemoteApt {
+    /// Create a new RemoteApt instance.
+    ///
+    /// # Arguments
+    /// * `mirror_uri` - URI of the APT mirror
+    /// * `distribution` - Optional distribution name (e.g., "unstable")
+    /// * `components` - Optional list of components (e.g., "main", "contrib")
+    /// * `key_path` - Optional path to the GPG key file
+    ///
+    /// # Returns
+    /// A new RemoteApt instance or an error
     pub fn new(
         mirror_uri: &url::Url,
         distribution: Option<&str>,
@@ -213,6 +249,14 @@ impl RemoteApt {
         })
     }
 
+    /// Create a new RemoteApt instance from an APT sources.list entry string.
+    ///
+    /// # Arguments
+    /// * `text` - Text from a sources.list entry
+    /// * `key_path` - Optional path to the GPG key file
+    ///
+    /// # Returns
+    /// A new RemoteApt instance or an error
     pub fn from_string(text: &str, key_path: Option<&std::path::Path>) -> Result<Self, Error> {
         let _mutex = apt_mutex.lock().unwrap();
         Python::with_gil(|py| {

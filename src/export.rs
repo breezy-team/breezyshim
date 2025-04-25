@@ -3,6 +3,15 @@ use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use std::path::Path;
 
+/// Export a tree to a directory.
+///
+/// # Arguments
+/// * `tree` - Tree to export
+/// * `target` - Target directory path
+/// * `subdir` - Optional subdirectory within the tree to export
+///
+/// # Returns
+/// Result with empty success value or error
 pub fn export<T: crate::tree::PyTree>(
     tree: &T,
     target: &std::path::Path,

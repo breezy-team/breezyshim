@@ -6,6 +6,16 @@
 use crate::Result;
 use pyo3::prelude::*;
 
+/// Parse a username string into name and email components.
+///
+/// # Parameters
+///
+/// * `e` - The username string to parse, typically in the format "Name <email@example.com>".
+///
+/// # Returns
+///
+/// A tuple containing the name and email address. If no email address is present,
+/// the second element will be an empty string.
 pub fn parse_username(e: &str) -> (String, String) {
     if let Some((_, username, email)) =
         lazy_regex::regex_captures!(r"(.*?)\s*<?([\[\]\w+.-]+@[\w+.-]+)>?", e)
@@ -16,6 +26,15 @@ pub fn parse_username(e: &str) -> (String, String) {
     }
 }
 
+/// Extract an email address from a username string.
+///
+/// # Parameters
+///
+/// * `e` - The username string to extract an email address from.
+///
+/// # Returns
+///
+/// The email address, or None if no email address is present.
 pub fn extract_email_address(e: &str) -> Option<String> {
     let (_name, email) = parse_username(e);
 
@@ -26,6 +45,10 @@ pub fn extract_email_address(e: &str) -> Option<String> {
     }
 }
 
+/// Trait for values that can be stored in a configuration.
+///
+/// This trait is implemented for common types like strings, integers, and booleans,
+/// and can be implemented for other types that need to be stored in a configuration.
 pub trait ConfigValue: ToPyObject {}
 
 impl ConfigValue for String {}
@@ -33,6 +56,10 @@ impl ConfigValue for &str {}
 impl ConfigValue for i64 {}
 impl ConfigValue for bool {}
 
+/// Configuration for a branch.
+///
+/// This struct wraps a Python branch configuration object and provides methods for
+/// accessing and modifying branch-specific configuration options.
 pub struct BranchConfig(PyObject);
 
 impl Clone for BranchConfig {
@@ -48,10 +75,29 @@ impl ToPyObject for BranchConfig {
 }
 
 impl BranchConfig {
+    /// Create a new BranchConfig from a Python object.
+    ///
+    /// # Parameters
+    ///
+    /// * `o` - A Python object representing a branch configuration.
+    ///
+    /// # Returns
+    ///
+    /// A new BranchConfig instance.
     pub fn new(o: PyObject) -> Self {
         Self(o)
     }
 
+    /// Set a user option in this branch configuration.
+    ///
+    /// # Parameters
+    ///
+    /// * `key` - The option key to set.
+    /// * `value` - The value to set the option to.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or an error if the option could not be set.
     pub fn set_user_option<T: ConfigValue>(&self, key: &str, value: T) -> Result<()> {
         Python::with_gil(|py| -> Result<()> {
             self.0
@@ -62,13 +108,36 @@ impl BranchConfig {
     }
 }
 
+/// A stack of configuration sources.
+///
+/// This struct represents a stack of configuration sources, where more specific
+/// sources (like branch-specific configuration) override more general sources
+/// (like global configuration).
 pub struct ConfigStack(PyObject);
 
 impl ConfigStack {
+    /// Create a new ConfigStack from a Python object.
+    ///
+    /// # Parameters
+    ///
+    /// * `o` - A Python object representing a configuration stack.
+    ///
+    /// # Returns
+    ///
+    /// A new ConfigStack instance.
     pub fn new(o: PyObject) -> Self {
         Self(o)
     }
 
+    /// Get a configuration value from this stack.
+    ///
+    /// # Parameters
+    ///
+    /// * `key` - The configuration key to get.
+    ///
+    /// # Returns
+    ///
+    /// The configuration value, or None if the key is not present.
     pub fn get(&self, key: &str) -> Result<Option<PyObject>> {
         Python::with_gil(|py| -> Result<Option<PyObject>> {
             let value = self.0.call_method1(py, "get", (key,))?;
@@ -80,6 +149,16 @@ impl ConfigStack {
         })
     }
 
+    /// Set a configuration value in this stack.
+    ///
+    /// # Parameters
+    ///
+    /// * `key` - The configuration key to set.
+    /// * `value` - The value to set the configuration to.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or an error if the configuration could not be set.
     pub fn set<T: ConfigValue>(&self, key: &str, value: T) -> Result<()> {
         Python::with_gil(|py| -> Result<()> {
             self.0.call_method1(py, "set", (key, value.to_object(py)))?;
@@ -89,6 +168,11 @@ impl ConfigStack {
     }
 }
 
+/// Get the global configuration stack.
+///
+/// # Returns
+///
+/// The global configuration stack, or an error if it could not be retrieved.
 pub fn global_stack() -> Result<ConfigStack> {
     Python::with_gil(|py| -> Result<ConfigStack> {
         let m = py.import_bound("breezy.config")?;
@@ -97,14 +181,26 @@ pub fn global_stack() -> Result<ConfigStack> {
     })
 }
 
+/// Credentials for accessing a remote service.
+///
+/// This struct contains the credentials for accessing a remote service,
+/// such as username, password, host, port, etc.
 pub struct Credentials {
+    /// The scheme of the service, like "https", "ftp", etc.
     pub scheme: Option<String>,
+    /// The username for authenticating with the service.
     pub username: Option<String>,
+    /// The password for authenticating with the service.
     pub password: Option<String>,
+    /// The hostname of the service.
     pub host: Option<String>,
+    /// The port number of the service.
     pub port: Option<i64>,
+    /// The path on the service.
     pub path: Option<String>,
+    /// The authentication realm of the service.
     pub realm: Option<String>,
+    /// Whether to verify SSL certificates when connecting to the service.
     pub verify_certificates: Option<bool>,
 }
 
@@ -154,7 +250,27 @@ impl IntoPy<PyObject> for Credentials {
     }
 }
 
+/// A store for retrieving credentials.
+///
+/// This trait defines the interface for a credential store, which can be used to
+/// retrieve credentials for accessing remote services. Implementations of this trait
+/// can store credentials in different ways, like in a keychain, a config file, etc.
 pub trait CredentialStore: Send {
+    /// Get credentials for accessing a remote service.
+    ///
+    /// # Parameters
+    ///
+    /// * `scheme` - The scheme of the service, like "https", "ftp", etc.
+    /// * `host` - The hostname of the service.
+    /// * `port` - The port number of the service, or None for the default port.
+    /// * `user` - The username to use, or None to use the default username.
+    /// * `path` - The path on the service, or None for the root path.
+    /// * `realm` - The authentication realm, or None for the default realm.
+    ///
+    /// # Returns
+    ///
+    /// The credentials for accessing the service, or an error if the credentials
+    /// could not be retrieved.
     fn get_credentials(
         &self,
         scheme: &str,
@@ -190,6 +306,10 @@ impl CredentialStore for PyCredentialStore {
 }
 
 #[pyclass]
+/// A wrapper for a `CredentialStore` that can be exposed to Python.
+///
+/// This struct wraps a `CredentialStore` implementation and exposes it to Python
+/// through the Pyo3 type system.
 pub struct CredentialStoreWrapper(Box<dyn CredentialStore>);
 
 #[pymethods]
@@ -210,9 +330,18 @@ impl CredentialStoreWrapper {
     }
 }
 
+/// A registry of credential stores.
+///
+/// This struct wraps a Python credential store registry, which can be used to
+/// register and retrieve credential stores.
 pub struct CredentialStoreRegistry(PyObject);
 
 impl CredentialStoreRegistry {
+    /// Create a new `CredentialStoreRegistry`.
+    ///
+    /// # Returns
+    ///
+    /// A new `CredentialStoreRegistry` instance.
     pub fn new() -> Self {
         Python::with_gil(|py| -> Self {
             let m = py.import_bound("breezy.config").unwrap();
@@ -221,6 +350,15 @@ impl CredentialStoreRegistry {
         })
     }
 
+    /// Get a credential store from this registry.
+    ///
+    /// # Parameters
+    ///
+    /// * `encoding` - The encoding of the credential store, or None for the default encoding.
+    ///
+    /// # Returns
+    ///
+    /// The credential store, or None if no credential store was found for the specified encoding.
     pub fn get_credential_store(
         &self,
         encoding: Option<&str>,
@@ -239,6 +377,20 @@ impl CredentialStoreRegistry {
         })
     }
 
+    /// Get fallback credentials for accessing a remote service.
+    ///
+    /// # Parameters
+    ///
+    /// * `scheme` - The scheme of the service, like "https", "ftp", etc.
+    /// * `port` - The port number of the service, or None for the default port.
+    /// * `user` - The username to use, or None to use the default username.
+    /// * `path` - The path on the service, or None for the root path.
+    /// * `realm` - The authentication realm, or None for the default realm.
+    ///
+    /// # Returns
+    ///
+    /// The fallback credentials for accessing the service, or an error if the
+    /// credentials could not be retrieved.
     pub fn get_fallback_credentials(
         &self,
         scheme: &str,
@@ -257,6 +409,16 @@ impl CredentialStoreRegistry {
         })
     }
 
+    /// Register a credential store with this registry.
+    ///
+    /// # Parameters
+    ///
+    /// * `key` - The key to register the credential store under.
+    /// * `store` - The credential store to register.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or an error if the store could not be registered.
     pub fn register(&self, key: &str, store: Box<dyn CredentialStore>) -> Result<()> {
         Python::with_gil(|py| -> Result<()> {
             self.0
@@ -266,6 +428,15 @@ impl CredentialStoreRegistry {
         Ok(())
     }
 
+    /// Register a fallback credential store with this registry.
+    ///
+    /// # Parameters
+    ///
+    /// * `store` - The credential store to register as a fallback.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or an error if the store could not be registered.
     pub fn register_fallback(&self, store: Box<dyn CredentialStore>) -> Result<()> {
         Python::with_gil(|py| -> Result<()> {
             let kwargs = pyo3::types::PyDict::new_bound(py);
@@ -283,6 +454,10 @@ impl CredentialStoreRegistry {
 }
 
 lazy_static::lazy_static! {
+    /// The global credential store registry.
+    ///
+    /// This is a lazily initialized static reference to a `CredentialStoreRegistry`
+    /// instance, which can be used to access credential stores.
     pub static ref CREDENTIAL_STORE_REGISTRY: CredentialStoreRegistry =
         CredentialStoreRegistry::new()
     ;

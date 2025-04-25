@@ -63,6 +63,17 @@ pub fn do_import(
     })
 }
 
+/// Find tarballs for a specific package and version.
+///
+/// # Arguments
+/// * `orig_dir` - Directory containing orig tarballs
+/// * `tree` - The working tree
+/// * `package` - Package name
+/// * `version` - Version string
+/// * `locations` - List of additional locations to search for tarballs
+///
+/// # Returns
+/// A list of paths to found tarballs, or an error
 pub fn get_tarballs(
     orig_dir: &Path,
     tree: &dyn PyTree,
@@ -85,6 +96,15 @@ pub fn get_tarballs(
     })
 }
 
+/// Get revision IDs for already imported upstream versions.
+///
+/// # Arguments
+/// * `upstream_source` - The upstream source to check
+/// * `package` - Package name
+/// * `new_upstream_version` - The new upstream version being imported
+///
+/// # Returns
+/// A list of tuples with component information: (kind, version, revid, pristine_tar_imported, path)
 pub fn get_existing_imported_upstream_revids(
     upstream_source: &dyn PyUpstreamSource,
     package: &str,

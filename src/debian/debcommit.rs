@@ -7,6 +7,20 @@ use crate::tree::{Kind, Path, PyTree, Tree, WorkingTree};
 use crate::RevisionId;
 use debian_changelog::ChangeLog;
 
+/// Create a release commit and tag for a Debian package.
+///
+/// This function creates a commit for a Debian package release, and tags
+/// it with an appropriate tag based on the package name and version.
+///
+/// # Arguments
+/// * `tree` - The working tree containing the package
+/// * `committer` - Optional committer identity
+/// * `subpath` - Optional subpath to the package within the tree
+/// * `message` - Optional commit message (default: "releasing package X version Y")
+/// * `vendor` - Optional vendor (default: inferred from changelog)
+///
+/// # Returns
+/// The name of the created tag, or an error
 pub fn debcommit_release(
     tree: &WorkingTree,
     committer: Option<&str>,
@@ -43,12 +57,9 @@ pub fn debcommit_release(
         });
         (message, vendor)
     };
-    let tag_name = if let Ok(tag_name) = crate::debian::tree_debian_tag_name(
-        tree,
-        &tree.branch(),
-        Some(subpath),
-        Some(vendor),
-    ) {
+    let tag_name = if let Ok(tag_name) =
+        crate::debian::tree_debian_tag_name(tree, &tree.branch(), Some(subpath), Some(vendor))
+    {
         tag_name
     } else {
         return Err(Error::UnreleasedChanges);
@@ -65,6 +76,15 @@ pub fn debcommit_release(
     Ok(tag_name)
 }
 
+/// Find changes in a changelog file between two trees.
+///
+/// # Arguments
+/// * `tree` - The current tree
+/// * `basis_tree` - The basis tree to compare against
+/// * `cl_path` - Path to the changelog file
+///
+/// # Returns
+/// An optional list of changes, or an error
 pub fn changelog_changes(
     tree: &dyn PyTree,
     basis_tree: &dyn PyTree,
@@ -142,6 +162,15 @@ pub fn strip_changelog_message(changes: &[&str]) -> Vec<String> {
     }
 }
 
+/// Create a commit message based on changes in a changelog file.
+///
+/// # Arguments
+/// * `tree` - The current tree
+/// * `basis_tree` - The basis tree to compare against
+/// * `path` - Path to the changelog file
+///
+/// # Returns
+/// A commit message string based on the changelog changes, or an error
 pub fn changelog_commit_message(
     tree: &dyn PyTree,
     basis_tree: &dyn PyTree,
@@ -221,6 +250,17 @@ pub fn debcommit(
     builder.commit()
 }
 
+/// Extract new entries from a Debian changelog.
+///
+/// This function compares the old and new versions of a changelog file
+/// and extracts the newly added entries.
+///
+/// # Arguments
+/// * `old_text` - The old version of the changelog as byte lines
+/// * `new_text` - The new version of the changelog as byte lines
+///
+/// # Returns
+/// A vector of strings containing the new changelog entries
 pub fn new_changelog_entries(old_text: &[Vec<u8>], new_text: &[Vec<u8>]) -> Vec<String> {
     let mut sm = difflib::sequencematcher::SequenceMatcher::new(old_text, new_text);
     let mut changes = vec![];

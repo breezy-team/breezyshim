@@ -11,7 +11,11 @@ use pyo3::types::PyDict;
 
 import_exception!(breezy.errors, UnrelatedBranches);
 
+/// Errors that can occur during merge operations.
 pub enum Error {
+    /// Error indicating that the branches being merged are unrelated.
+    ///
+    /// This occurs when the branches have no common ancestor.
     UnrelatedBranches,
 }
 
@@ -27,9 +31,18 @@ impl From<PyErr> for Error {
     }
 }
 
+/// Represents a merge operation between two branches.
+///
+/// This struct provides methods to configure and perform merges between branches,
+/// including finding the base revision, setting merge parameters, and executing the merge.
 pub struct Merger(PyObject);
 
+/// Types of merge algorithms that can be used.
 pub enum MergeType {
+    /// Three-way merge algorithm.
+    ///
+    /// This is the standard merge algorithm that uses a common base revision
+    /// and the two branches to be merged.
     Merge3,
 }
 
@@ -40,6 +53,17 @@ impl From<PyObject> for Merger {
 }
 
 impl Merger {
+    /// Create a new merger for merging into a tree.
+    ///
+    /// # Arguments
+    ///
+    /// * `branch` - The branch to merge from
+    /// * `this_tree` - The tree to merge into
+    /// * `revision_graph` - The graph of revisions to use for finding common ancestors
+    ///
+    /// # Returns
+    ///
+    /// A new Merger object
     pub fn new<T: PyTree, B: PyBranch>(branch: &B, this_tree: &T, revision_graph: &Graph) -> Self {
         Python::with_gil(|py| {
             let m = py.import_bound("breezy.merge").unwrap();
@@ -56,6 +80,11 @@ impl Merger {
         })
     }
 
+    /// Find the base revision for the merge.
+    ///
+    /// # Returns
+    ///
+    /// The base revision ID if found, or None if the branches are unrelated
     pub fn find_base(&self) -> Result<Option<RevisionId>, crate::error::Error> {
         Python::with_gil(|py| match self.0.call_method0(py, "find_base") {
             Ok(_py_obj) => Ok(self
@@ -75,6 +104,16 @@ impl Merger {
         .map_err(Into::into)
     }
 
+    /// Set the other revision to merge.
+    ///
+    /// # Arguments
+    ///
+    /// * `other_revision` - The revision ID to merge
+    /// * `other_branch` - The branch containing the revision
+    ///
+    /// # Returns
+    ///
+    /// Ok(()) on success, or an error if the operation fails
     pub fn set_other_revision<B: PyBranch>(
         &mut self,
         other_revision: &RevisionId,
@@ -90,6 +129,16 @@ impl Merger {
         })
     }
 
+    /// Set the base revision for the merge.
+    ///
+    /// # Arguments
+    ///
+    /// * `base_revision` - The base revision ID to use
+    /// * `base_branch` - The branch containing the base revision
+    ///
+    /// # Returns
+    ///
+    /// Ok(()) on success, or an error if the operation fails
     pub fn set_base_revision<B: PyBranch>(
         &mut self,
         base_revision: &RevisionId,
@@ -105,6 +154,11 @@ impl Merger {
         })
     }
 
+    /// Set the merge algorithm to use.
+    ///
+    /// # Arguments
+    ///
+    /// * `merge_type` - The merge algorithm to use
     pub fn set_merge_type(&mut self, merge_type: MergeType) {
         Python::with_gil(|py| {
             let m = py.import_bound("breezy.merge").unwrap();
@@ -115,6 +169,11 @@ impl Merger {
         })
     }
 
+    /// Create a submerger to execute the merge.
+    ///
+    /// # Returns
+    ///
+    /// A Submerger object that can perform the actual merge
     pub fn make_merger(&self) -> Result<Submerger, crate::error::Error> {
         Python::with_gil(|py| {
             let merger = self.0.call_method0(py, "make_merger")?;
@@ -122,6 +181,18 @@ impl Merger {
         })
     }
 
+    /// Create a merger from specific revision IDs.
+    ///
+    /// # Arguments
+    ///
+    /// * `other_tree` - The tree to merge from
+    /// * `other_branch` - The branch containing the revision to merge
+    /// * `other` - The revision ID to merge
+    /// * `tree_branch` - The branch containing the tree to merge into
+    ///
+    /// # Returns
+    ///
+    /// A new Merger object, or an error if the operation fails
     pub fn from_revision_ids<T: PyTree, B1: PyBranch, B2: PyBranch>(
         other_tree: &T,
         other_branch: &B1,
@@ -149,9 +220,21 @@ impl Merger {
     }
 }
 
+/// Performs the actual merge operation.
+///
+/// This struct is created by the Merger.make_merger() method and provides
+/// methods to execute the merge and create transformations.
 pub struct Submerger(PyObject);
 
 impl Submerger {
+    /// Create a preview transformation of the merge.
+    ///
+    /// This allows inspecting the changes that would be made by the merge
+    /// without actually applying them to the working tree.
+    ///
+    /// # Returns
+    ///
+    /// A TreeTransform object representing the merge changes
     pub fn make_preview_transform(&self) -> Result<TreeTransform, crate::error::Error> {
         Python::with_gil(|py| {
             let transform = self
@@ -163,6 +246,16 @@ impl Submerger {
     }
 }
 
+/// Hooks that are called during merge operations.
+///
+/// This provides access to the hooks defined in the Breezy merge module,
+/// allowing client code to register callbacks for various merge events.
+/// Access to hooks that are called during merge operations.
+///
+/// This static reference provides access to the hooks defined in the Breezy merge module,
+/// allowing client code to register callbacks for various merge events.
+#[doc(hidden)]
 lazy_static::lazy_static! {
+    /// Hooks that are called during merge operations.
     pub static ref MERGE_HOOKS: HookDict = HookDict::new("breezy.merge", "Merger", "hooks");
 }

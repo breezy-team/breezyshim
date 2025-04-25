@@ -1,6 +1,18 @@
 //! URL manipulation utilities.
 use pyo3::prelude::*;
 
+/// Join segment parameters to a URL.
+///
+/// This function adds the specified parameters to a URL as segment parameters.
+///
+/// # Parameters
+///
+/// * `url` - The URL to add parameters to.
+/// * `parameters` - The parameters to add to the URL.
+///
+/// # Returns
+///
+/// A new URL with the specified parameters added.
 pub fn join_segment_parameters(
     url: &url::Url,
     parameters: std::collections::HashMap<String, String>,
@@ -16,6 +28,17 @@ pub fn join_segment_parameters(
     })
 }
 
+/// Split segment parameters from a URL.
+///
+/// This function extracts segment parameters from a URL.
+///
+/// # Parameters
+///
+/// * `url` - The URL to extract parameters from.
+///
+/// # Returns
+///
+/// A tuple containing the URL without parameters and a map of the parameters.
 pub fn split_segment_parameters(
     url: &url::Url,
 ) -> (url::Url, std::collections::HashMap<String, String>) {
@@ -34,6 +57,19 @@ fn char_is_safe(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '~'
 }
 
+/// Escape a byte slice for use in a URL.
+///
+/// This function escapes bytes for use in a URL, preserving characters that
+/// are considered safe.
+///
+/// # Parameters
+///
+/// * `relpath` - The byte slice to escape.
+/// * `safe` - Additional characters to consider safe (not to escape).
+///
+/// # Returns
+///
+/// The escaped string.
 pub fn escape(relpath: &[u8], safe: Option<&str>) -> String {
     let mut result = String::new();
     let safe = safe.unwrap_or("/~").as_bytes();
@@ -47,10 +83,33 @@ pub fn escape(relpath: &[u8], safe: Option<&str>) -> String {
     result
 }
 
+/// Escape a UTF-8 string for use in a URL.
+///
+/// This is a convenience function that converts the string to bytes and calls `escape`.
+///
+/// # Parameters
+///
+/// * `relpath` - The string to escape.
+/// * `safe` - Additional characters to consider safe (not to escape).
+///
+/// # Returns
+///
+/// The escaped string.
 pub fn escape_utf8(relpath: &str, safe: Option<&str>) -> String {
     escape(relpath.as_bytes(), safe)
 }
 
+/// Unescape a URL-encoded UTF-8 string.
+///
+/// This function decodes percent-encoded characters in a string.
+///
+/// # Parameters
+///
+/// * `url` - The URL-encoded string to decode.
+///
+/// # Returns
+///
+/// The decoded string.
 pub fn unescape_utf8(url: &str) -> String {
     use percent_encoding::percent_decode_str;
 

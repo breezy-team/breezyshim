@@ -2,6 +2,15 @@
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 
+/// Load all Breezy plugins.
+///
+/// This function loads all available Breezy plugins. It should be called
+/// before using functionality that might depend on plugins, such as
+/// support for specific version control systems.
+///
+/// # Returns
+///
+/// `true` if plugins were loaded, `false` if Breezy was already initialized
 pub fn load_plugins() -> bool {
     Python::with_gil(|py| {
         let m = py.import_bound("breezy.plugin").unwrap();

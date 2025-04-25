@@ -11,26 +11,43 @@ import_exception!(breezy.plugins.debian.upstream, MissingUpstreamTarball);
 import_exception!(breezy.plugins.debian.changelog, UnreleasedChanges);
 import_exception!(breezy.plugins.debian.import_dsc, VersionAlreadyImported);
 
+/// Errors that can occur in Debian-specific operations.
 #[derive(Debug)]
 pub enum Error {
+    /// An error from the underlying Breezy library.
     BrzError(BrzError),
+    /// A package build failed.
     BuildFailed,
+    /// An upstream version has already been imported.
     UpstreamAlreadyImported(String),
+    /// A specific version of a package has already been imported.
     VersionAlreadyImported {
+        /// The name of the package.
         package: String,
+        /// The version that was already imported.
         version: Version,
+        /// The tag name that was used for the import.
         tag_name: String,
     },
+    /// A distribution command failed.
     DistCommandFailed(String),
+    /// A package version wasn't found in the repository.
     PackageVersionNotPresent {
+        /// The name of the package.
         package: String,
+        /// The version that wasn't found.
         version: String,
     },
+    /// An upstream tarball is missing.
     MissingUpstreamTarball {
+        /// The name of the package.
         package: String,
+        /// The version of the missing tarball.
         version: String,
     },
+    /// There are unreleased changes in the package.
     UnreleasedChanges,
+    /// An error occurred when parsing the changelog.
     ChangeLogError(debian_changelog::Error),
 }
 

@@ -30,18 +30,28 @@ use pyo3::prelude::*;
 /// The lists are normally sorted when the delta is created.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TreeDelta {
+    /// Files that were added between the trees.
     pub added: Vec<TreeChange>,
+    /// Files that were removed between the trees.
     pub removed: Vec<TreeChange>,
+    /// Files that were renamed between the trees.
     pub renamed: Vec<TreeChange>,
+    /// Files that were copied between the trees.
     pub copied: Vec<TreeChange>,
+    /// Files that changed kind between the trees.
     pub kind_changed: Vec<TreeChange>,
+    /// Files that were modified between the trees.
     pub modified: Vec<TreeChange>,
+    /// Files that were unchanged between the trees.
     pub unchanged: Vec<TreeChange>,
+    /// Files that are unversioned in the trees.
     pub unversioned: Vec<TreeChange>,
+    /// Files that are missing in the trees.
     pub missing: Vec<TreeChange>,
 }
 
 impl TreeDelta {
+    /// Check if there are any changes in this delta.
     pub fn has_changed(&self) -> bool {
         !self.added.is_empty()
             || !self.removed.is_empty()
@@ -76,6 +86,16 @@ impl FromPyObject<'_> for TreeDelta {
     }
 }
 
+/// Filter out excluded paths from a list of tree changes.
+///
+/// This function filters out tree changes that are in excluded paths.
+///
+/// # Arguments
+/// * `iter_changes` - Iterator of tree changes
+/// * `exclude` - List of paths to exclude
+///
+/// # Returns
+/// Iterator of tree changes that aren't in excluded paths
 pub fn filter_excluded<'a>(
     iter_changes: impl Iterator<Item = TreeChange> + 'a,
     exclude: &'a [&'a std::path::Path],
