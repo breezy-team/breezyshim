@@ -2,7 +2,7 @@
 #[cfg(feature = "dirty-tracker")]
 use crate::dirty_tracker::{DirtyTreeTracker, State as DirtyTrackerState};
 use crate::error::Error;
-use crate::tree::{PyTree, Tree, WorkingTree};
+use crate::tree::{PyTree, WorkingTree};
 use pyo3::prelude::*;
 
 /// Reset a tree with a dirty tracker.

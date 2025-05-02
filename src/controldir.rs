@@ -320,11 +320,11 @@ impl<T: PyControlDir + ?Sized> ControlDir for T {
 
     fn create_branch(&self, name: Option<&str>) -> Result<Box<dyn Branch>, Error> {
         Python::with_gil(|py| {
-            let branch = self
+            let branch: PyObject = self
                 .to_object(py)
                 .call_method_bound(py, "create_branch", (name,), None)?
                 .extract(py)?;
-            Ok(Box::new(GenericBranch::new(branch)) as Box<dyn Branch>)
+            Ok(Box::new(GenericBranch::from(branch)) as Box<dyn Branch>)
         })
     }
 
@@ -344,11 +344,11 @@ impl<T: PyControlDir + ?Sized> ControlDir for T {
 
     fn open_branch(&self, branch_name: Option<&str>) -> Result<Box<dyn Branch>, Error> {
         Python::with_gil(|py| {
-            let branch = self
+            let branch: PyObject = self
                 .to_object(py)
                 .call_method_bound(py, "open_branch", (branch_name,), None)?
                 .extract(py)?;
-            Ok(Box::new(GenericBranch::new(branch)) as Box<dyn Branch>)
+            Ok(Box::new(GenericBranch::from(branch)) as Box<dyn Branch>)
         })
     }
 
@@ -402,7 +402,7 @@ impl<T: PyControlDir + ?Sized> ControlDir for T {
                 Some(&kwargs),
             )?;
             Ok(
-                Box::new(GenericBranch::new(result.getattr(py, "target_branch")?))
+                Box::new(GenericBranch::from(result.getattr(py, "target_branch")?))
                     as Box<dyn Branch>,
             )
         })
@@ -644,7 +644,7 @@ pub fn open_tree_or_branch(
         )?;
 
         let (tree, branch) = ret.extract::<(Option<PyObject>, PyObject)>(py)?;
-        let branch = Box::new(GenericBranch::new(branch)) as Box<dyn Branch>;
+        let branch = Box::new(GenericBranch::from(branch)) as Box<dyn Branch>;
         let tree = tree.map(WorkingTree);
         Ok((tree, branch))
     })
@@ -873,7 +873,7 @@ pub fn create_branch_convenience(
             (base.to_string(),),
             Some(&kwargs),
         )?;
-        Ok(Box::new(GenericBranch::new(branch.to_object(py))) as Box<dyn Branch>)
+        Ok(Box::new(GenericBranch::from(branch.to_object(py))) as Box<dyn Branch>)
     })
 }
 

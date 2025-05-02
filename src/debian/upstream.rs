@@ -313,7 +313,7 @@ impl UpstreamBranchSource {
     /// A branch object representing the upstream branch.
     pub fn upstream_branch(&self) -> Box<dyn crate::branch::Branch> {
         let o = Python::with_gil(|py| self.to_object(py).getattr(py, "upstream_branch").unwrap());
-        Box::new(crate::branch::GenericBranch::new(o))
+        Box::new(crate::branch::GenericBranch::from(o))
     }
 
     /// Get a revision tree for a specific upstream version.

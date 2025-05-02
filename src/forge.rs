@@ -547,7 +547,7 @@ impl Forge {
                 (main_branch.to_object(py), name),
                 Some(&kwargs),
             )?;
-            Ok(Box::new(GenericBranch::new(branch)) as Box<dyn Branch>)
+            Ok(Box::new(GenericBranch::from(branch)) as Box<dyn Branch>)
         })
     }
 
@@ -623,7 +623,7 @@ impl Forge {
                 .call_method_bound(py, "publish_derived", (), Some(&kwargs))?
                 .extract(py)?;
             Ok((
-                Box::new(GenericBranch::new(b)) as Box<dyn Branch>,
+                Box::new(GenericBranch::from(b)) as Box<dyn Branch>,
                 u.parse::<url::Url>().unwrap(),
             ))
         })
