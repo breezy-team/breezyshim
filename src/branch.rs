@@ -537,24 +537,21 @@ impl ToPyObject for GenericBranch {
     }
 }
 
-impl GenericBranch {
-    /// Create a new GenericBranch from a Python branch object.
-    ///
-    /// # Parameters
-    ///
-    /// * `obj` - A Python object representing a branch.
-    ///
-    /// # Returns
-    ///
-    /// A new GenericBranch that wraps the provided Python branch.
-    pub fn new(obj: PyObject) -> Self {
-        GenericBranch(obj)
-    }
-}
-
 impl FromPyObject<'_> for GenericBranch {
     fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
         Ok(GenericBranch(ob.to_object(ob.py())))
+    }
+}
+
+impl<'py> From<Bound<'py, PyAny>> for GenericBranch {
+    fn from(ob: Bound<PyAny>) -> Self {
+        GenericBranch(ob.to_object(ob.py()))
+    }
+}
+
+impl From<Py<PyAny>> for GenericBranch {
+    fn from(gb: Py<PyAny>) -> Self {
+        GenericBranch(gb)
     }
 }
 
@@ -637,7 +634,7 @@ pub fn open(url: &url::Url) -> Result<Box<dyn Branch>, Error> {
         let m = py.import_bound("breezy.branch").unwrap();
         let c = m.getattr("Branch").unwrap();
         let r = c.call_method1("open", (url.to_string(),))?;
-        Ok(Box::new(GenericBranch(r.to_object(py))) as Box<dyn Branch>)
+        Ok(Box::new(GenericBranch::from(r)) as Box<dyn Branch>)
     })
 }
 

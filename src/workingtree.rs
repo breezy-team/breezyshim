@@ -2,7 +2,7 @@
 //!
 //! This module provides functionality for working with working trees, which are
 //! local directories containing the files of a branch that can be edited.
-use crate::branch::{Branch, GenericBranch, PyBranch};
+use crate::branch::{GenericBranch, PyBranch};
 use crate::controldir::{ControlDir, GenericControlDir};
 use crate::error::Error;
 use crate::tree::RevisionTree;
@@ -207,7 +207,7 @@ impl WorkingTree {
     pub fn branch(&self) -> GenericBranch {
         Python::with_gil(|py| {
             let branch = self.to_object(py).getattr(py, "branch").unwrap();
-            GenericBranch::new(branch)
+            GenericBranch::from(branch)
         })
     }
 

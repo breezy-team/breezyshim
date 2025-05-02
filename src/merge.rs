@@ -246,15 +246,6 @@ impl Submerger {
     }
 }
 
-/// Hooks that are called during merge operations.
-///
-/// This provides access to the hooks defined in the Breezy merge module,
-/// allowing client code to register callbacks for various merge events.
-/// Access to hooks that are called during merge operations.
-///
-/// This static reference provides access to the hooks defined in the Breezy merge module,
-/// allowing client code to register callbacks for various merge events.
-#[doc(hidden)]
 lazy_static::lazy_static! {
     /// Hooks that are called during merge operations.
     pub static ref MERGE_HOOKS: HookDict = HookDict::new("breezy.merge", "Merger", "hooks");

@@ -30,6 +30,8 @@ jobs:
       if: "matrix.os == 'ubuntu-latest'"
     - name: Build
       run: cargo build --verbose
+      env:
+        RUSTFLAGS: -Dwarnings
     - name: Run tests
       run: cargo test --verbose --features debian
       if: "matrix.os == 'ubuntu-latest'"

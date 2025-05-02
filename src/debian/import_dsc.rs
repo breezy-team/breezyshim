@@ -155,7 +155,7 @@ impl DistributionBranch {
     /// The branch object
     pub fn branch(&self) -> Box<dyn Branch> {
         Python::with_gil(|py| -> PyResult<Box<dyn Branch>> {
-            Ok(Box::new(GenericBranch::new(self.0.getattr(py, "branch")?)))
+            Ok(Box::new(GenericBranch::from(self.0.getattr(py, "branch")?)))
         })
         .unwrap()
     }
