@@ -2,24 +2,20 @@
 use crate::delta::TreeDelta;
 use pyo3::prelude::*;
 
-pub struct InterTree(PyObject);
+crate::wrapped_py!(InterTree);
 
 pub fn get<S: crate::tree::PyTree, T: crate::tree::PyTree>(source: &S, target: &T) -> InterTree {
     Python::with_gil(|py| {
-        let source = source.to_object(py);
-        let target = target.to_object(py);
-
         let intertree_cls = py
-            .import_bound("breezy.tree")
+            .import("breezy.tree")
             .unwrap()
             .getattr("InterTree")
             .unwrap();
 
-        InterTree(
+        InterTree::from(
             intertree_cls
                 .call_method1("get", (source, target))
                 .unwrap()
-                .to_object(py),
         )
     })
 }

@@ -8,10 +8,10 @@ pub struct Hook(PyObject);
 impl HookDict {
     pub fn new(module: &str, cls: &str, name: &str) -> Self {
         Python::with_gil(|py| -> PyResult<HookDict> {
-            let module = PyModule::import_bound(py, module)?;
+            let module = PyModule::import(py, module)?;
             let cls = module.getattr(cls)?;
             let entrypoint = cls.getattr(name)?;
-            Ok(Self(entrypoint.to_object(py)))
+            Ok(Self::from(entrypoint))
         })
         .unwrap()
     }

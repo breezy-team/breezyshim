@@ -201,7 +201,7 @@ pub fn build_helper(
     pyo3::prepare_freethreaded_python();
 
     Python::with_gil(|py| -> PyResult<HashMap<String, PathBuf>> {
-        let locals = PyDict::new_bound(py);
+        let locals = PyDict::new(py);
         locals.set_item("local_tree", local_tree)?;
         locals.set_item("subpath", subpath)?;
         locals.set_item("branch", branch)?;
@@ -213,7 +213,7 @@ pub fn build_helper(
             locals.set_item("apt", apt_repo.to_object(py))?;
         }
 
-        py.import_bound("breezy.plugins.debian.cmds")?
+        py.import("breezy.plugins.debian.cmds")?
             .call_method1("_build_helper", (locals,))?
             .extract()
     })
@@ -237,7 +237,7 @@ pub fn tree_debian_tag_name(
     vendor: Option<Vendor>,
 ) -> Result<String, Error> {
     Python::with_gil(|py| {
-        let result = py.import_bound("breezy.plugins.debian")?.call_method1(
+        let result = py.import("breezy.plugins.debian")?.call_method1(
             "tree_debian_tag_name",
             (
                 tree.to_object(py),
@@ -267,7 +267,7 @@ pub fn tree_debian_tag_name(
 pub fn suite_to_distribution(suite: &str) -> Option<Vendor> {
     Python::with_gil(|py| -> PyResult<Option<Vendor>> {
         let result = py
-            .import_bound("breezy.plugins.debian.util")?
+            .import("breezy.plugins.debian.util")?
             .call_method1("suite_to_distribution", (suite,))?;
 
         Ok(result.extract()?)

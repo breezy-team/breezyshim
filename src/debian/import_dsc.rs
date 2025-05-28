@@ -17,7 +17,7 @@ impl DistributionBranchSet {
     /// Create a new DistributionBranchSet instance.
     pub fn new() -> Self {
         Python::with_gil(|py| {
-            let m = py.import_bound("breezy.plugins.debian.import_dsc").unwrap();
+            let m = py.import("breezy.plugins.debian.import_dsc").unwrap();
             let ctr = m.getattr("DistributionBranchSet").unwrap();
             DistributionBranchSet(ctr.call0().unwrap().into())
         })
@@ -48,7 +48,7 @@ impl DistributionBranch {
         pristine_upstream_tree: Option<&dyn PyTree>,
     ) -> Self {
         Python::with_gil(|py| {
-            let m = py.import_bound("breezy.plugins.debian.import_dsc").unwrap();
+            let m = py.import("breezy.plugins.debian.import_dsc").unwrap();
             let ctr = m.getattr("DistributionBranch").unwrap();
             DistributionBranch(
                 ctr.call1((

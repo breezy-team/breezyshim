@@ -1,28 +1,13 @@
 //! Tree transformation API.
-use crate::tree::{PathBuf, PyTree};
+use crate::tree::{PathBuf, PyTree, TreeChange};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::PyTuple;
+use pyo3::types::{PyTuple, PyString};
 use pyo3::types::PyTupleMethods;
 
-pub struct TreeTransform(PyObject);
+crate::wrapped_py!(TreeTransform);
 
-#[derive(Clone)]
-pub struct TreeChange {}
-
-impl From<PyObject> for TreeChange {
-    fn from(_ob: PyObject) -> Self {
-        TreeChange {}
-    }
-}
-
-impl FromPyObject<'_> for TreeChange {
-    fn extract_bound(_ob: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(TreeChange {})
-    }
-}
-
-pub struct Conflict(PyObject);
+crate::wrapped_py!(Conflict);
 
 impl Clone for Conflict {
     fn clone(&self) -> Self {
@@ -37,7 +22,7 @@ impl Conflict {
         Python::with_gil(|py| {
             let ret = self.0.getattr(py, "associated_filenames")?;
 
-            for item in ret.bind(py).iter()? {
+            for item in ret.bind(py).try_iter()? {
                 v.push(item?.extract()?);
             }
 
@@ -54,25 +39,13 @@ impl Conflict {
 
     pub fn cleanup<T: PyTree>(&self, tree: &T) -> Result<(), crate::error::Error> {
         Python::with_gil(|py| {
-            self.0.call_method1(py, "cleanup", (tree.to_object(py),))?;
+            self.0.call_method1(py, "cleanup", (tree,))?;
             Ok(())
         })
     }
 }
 
-pub struct PreviewTree(PyObject);
-
-impl ToPyObject for PreviewTree {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.to_object(py)
-    }
-}
-
-impl From<PyObject> for PreviewTree {
-    fn from(ob: PyObject) -> Self {
-        PreviewTree(ob)
-    }
-}
+crate::wrapped_py!(PreviewTree);
 
 impl TreeTransform {
     pub fn finalize(&self) -> Result<(), crate::error::Error> {
@@ -90,7 +63,7 @@ impl TreeTransform {
         Python::with_gil(|py| {
             let ret = self.to_object(py).call_method0(py, "iter_changes")?;
 
-            for item in ret.bind(py).iter()? {
+            for item in ret.bind(py).try_iter()? {
                 v.push(item?.extract()?);
             }
 
@@ -104,7 +77,7 @@ impl TreeTransform {
         Python::with_gil(|py| {
             let ret = self.to_object(py).getattr(py, "cooked_conflicts")?;
 
-            for item in ret.bind(py).iter()? {
+            for item in ret.bind(py).try_iter()? {
                 v.push(Conflict(item?.into()));
             }
 
@@ -120,24 +93,6 @@ impl TreeTransform {
     }
 }
 
-impl From<PyObject> for TreeTransform {
-    fn from(ob: PyObject) -> Self {
-        TreeTransform(ob)
-    }
-}
-
-impl ToPyObject for TreeTransform {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.to_object(py)
-    }
-}
-
-impl FromPyObject<'_> for TreeTransform {
-    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(TreeTransform(ob.clone().unbind()))
-    }
-}
-
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
 pub struct TransId(String);
 
@@ -147,11 +102,17 @@ impl FromPyObject<'_> for TransId {
     }
 }
 
-impl ToPyObject for TransId {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.to_object(py)
+impl<'py> IntoPyObject<'py> for &TransId {
+    type Target = PyString;
+    type Output = Bound<'py, Self::Target>;
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        let obj = PyString::new(py, &self.0);
+        Ok(obj)
     }
 }
+
 
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
 pub enum RawConflict {
@@ -167,52 +128,54 @@ pub enum RawConflict {
     NonDirectoryParent(TransId),
 }
 
-impl ToPyObject for RawConflict {
-    fn to_object(&self, py: Python) -> PyObject {
+impl<'py> IntoPyObject<'py> for &RawConflict {
+    type Target = PyTuple;
+
+    type Output = Bound<'py, Self::Target>;
+
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
         match self {
             RawConflict::UnversionedExecutability(id) => {
-                PyTuple::new_bound(py, &[("unversioned executability", id.to_object(py))])
-                    .to_object(py)
+                PyTuple::new(py, &[("unversioned executability", id)])
             }
             RawConflict::NonFileExecutability(id) => {
-                PyTuple::new_bound(py, &[("non-file executability", id.to_object(py))])
-                    .to_object(py)
+                PyTuple::new(py, &[("non-file executability", id)])
             }
             RawConflict::Overwrite(id, path) => {
-                PyTuple::new_bound(py, &[("overwrite", id.to_object(py), path.to_object(py))])
-                    .to_object(py)
+                PyTuple::new(py, &[("overwrite", id, path)])
             }
             RawConflict::ParentLoop(id) => {
-                PyTuple::new_bound(py, &[("parent loop", id.to_object(py))]).to_object(py)
+                PyTuple::new(py, &[("parent loop", id)])
             }
             RawConflict::UnversionedParent(id) => {
-                PyTuple::new_bound(py, &[("unversioned parent", id.to_object(py))]).to_object(py)
+                PyTuple::new(py, &[("unversioned parent", id)])
             }
             RawConflict::VersioningNoContents(id) => {
-                PyTuple::new_bound(py, &[("versioning no contents", id.to_object(py))])
-                    .to_object(py)
+                PyTuple::new(py, &[("versioning no contents", id)])
             }
             RawConflict::VersioningBadKind(id) => {
-                PyTuple::new_bound(py, &[("versioning bad kind", id.to_object(py))]).to_object(py)
+                PyTuple::new(py, &[("versioning bad kind", id)])
             }
-            RawConflict::Duplicate(id1, id2, path) => PyTuple::new_bound(
+            RawConflict::Duplicate(id1, id2, path) => PyTuple::new(
                 py,
                 &[(
                     "duplicate",
-                    id1.to_object(py),
-                    id2.to_object(py),
-                    path.to_object(py),
+                    id1,
+                    id2,
+                    path
                 )],
-            )
-            .to_object(py),
+            ),
             RawConflict::MissingParent(id) => {
-                PyTuple::new_bound(py, &[("missing parent", id.to_object(py))]).to_object(py)
+                PyTuple::new(py, &[("missing parent", id)])
             }
             RawConflict::NonDirectoryParent(id) => {
-                PyTuple::new_bound(py, &[("non-directory parent", id.to_object(py))]).to_object(py)
+                PyTuple::new(py, &[("non-directory parent", id)])
             }
         }
     }
+
 }
 
 impl FromPyObject<'_> for RawConflict {

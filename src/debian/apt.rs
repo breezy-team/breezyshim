@@ -162,7 +162,7 @@ impl LocalApt {
     pub fn new(rootdir: Option<&std::path::Path>) -> Result<Self, Error> {
         let _mutex = apt_mutex.lock().unwrap();
         Python::with_gil(|py| {
-            let m = PyModule::import_bound(py, "breezy.plugins.debian.apt_repo")?;
+            let m = PyModule::import(py, "breezy.plugins.debian.apt_repo")?;
             let apt = m.getattr("LocalApt")?;
             let apt = apt.call1((rootdir,))?;
 
@@ -205,7 +205,7 @@ impl RemoteApt {
     ) -> Result<Self, Error> {
         let _mutex = apt_mutex.lock().unwrap();
         Python::with_gil(|py| {
-            let m = PyModule::import_bound(py, "breezy.plugins.debian.apt_repo")?;
+            let m = PyModule::import(py, "breezy.plugins.debian.apt_repo")?;
             let apt = m.getattr("RemoteApt")?;
             let apt = apt.call1((mirror_uri.as_str(), distribution, components, key_path))?;
             apt.call_method0("__enter__")?;
@@ -216,7 +216,7 @@ impl RemoteApt {
     pub fn from_string(text: &str, key_path: Option<&std::path::Path>) -> Result<Self, Error> {
         let _mutex = apt_mutex.lock().unwrap();
         Python::with_gil(|py| {
-            let m = PyModule::import_bound(py, "breezy.plugins.debian.apt_repo")?;
+            let m = PyModule::import(py, "breezy.plugins.debian.apt_repo")?;
             let apt = m.getattr("RemoteApt")?;
             let apt = apt.call_method1("from_string", (text, key_path))?;
             apt.call_method0("__enter__")?;

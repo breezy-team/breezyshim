@@ -89,13 +89,13 @@ pub use workspace::reset_tree;
 
 pub fn init_git() {
     pyo3::Python::with_gil(|py| {
-        py.import_bound("breezy.git").unwrap();
+        py.import("breezy.git").unwrap();
     })
 }
 
 pub fn init_bzr() {
     pyo3::Python::with_gil(|py| {
-        py.import_bound("breezy.bzr").unwrap();
+        py.import("breezy.bzr").unwrap();
     })
 }
 
@@ -112,7 +112,7 @@ static INIT_BREEZY: Once = Once::new();
 pub fn init() {
     INIT_BREEZY.call_once(|| {
         pyo3::prepare_freethreaded_python();
-        let (major, minor, micro) = pyo3::Python::with_gil(|py| match py.import_bound("breezy") {
+        let (major, minor, micro) = pyo3::Python::with_gil(|py| match py.import("breezy") {
             Ok(breezy) => {
                 let (major, minor, micro, _releaselevel, _serial): (
                     usize,
@@ -148,14 +148,14 @@ pub fn init() {
 
         // Work around a breezy bug
         pyo3::Python::with_gil(|py| {
-            let m = py.import_bound("breezy.controldir").unwrap();
+            let m = py.import("breezy.controldir").unwrap();
             let f = m.getattr("ControlDirFormat").unwrap();
             f.call_method0("known_formats").unwrap();
         });
 
         // Prevent race conditions
         pyo3::Python::with_gil(|py| {
-            let m = py.import_bound("breezy.config").unwrap();
+            let m = py.import("breezy.config").unwrap();
             m.call_method0("GlobalStack").unwrap();
             m.call_method1("LocationStack", ("file:///",)).unwrap();
         });
@@ -163,3 +163,57 @@ pub fn init() {
 }
 
 pub type Result<R> = std::result::Result<R, crate::error::Error>;
+
+#[macro_export]
+macro_rules! wrapped_py {
+    ($name:ident) => {
+        pub struct $name(pyo3::PyObject);
+
+        impl<'py> pyo3::FromPyObject<'py> for $name {
+            fn extract_bound(obj: &Bound<'py, pyo3::PyAny>) -> pyo3::PyResult<Self> {
+                Ok($name(obj.clone().unbind()))
+            }
+        }
+
+        /*
+        impl<'py> pyo3::IntoPyObject<'py> for $name {
+            type Target = pyo3::PyAny;
+            type Output = Bound<'py, Self::Target>;
+            type Error = std::convert::Infallible;
+
+            fn into_pyobject(self, py: pyo3::Python<'py>) -> std::result::Result<Self::Output, Self::Error> {
+                Ok(self.0.into_bound(py))
+            }
+        }
+        */
+
+        impl<'a, 'py> pyo3::IntoPyObject<'py> for &'a $name {
+            type Target = pyo3::PyAny;
+            type Output = Borrowed<'a, 'py, Self::Target>;
+            type Error = std::convert::Infallible;
+
+            fn into_pyobject(self, py: pyo3::Python<'py>) -> std::result::Result<Self::Output, Self::Error> {
+                Ok(self.0.bind_borrowed(py))
+            }
+        }
+
+        #[allow(deprecated)]
+        impl pyo3::ToPyObject for $name {
+            fn to_object(&self, py: pyo3::Python) -> pyo3::PyObject {
+                self.0.to_object(py)
+            }
+        }
+
+        impl From<pyo3::PyObject> for $name {
+            fn from(obj: pyo3::PyObject) -> Self {
+                $name(obj)
+            }
+        }
+
+        impl<'py> From<pyo3::Bound<'py, pyo3::PyAny>> for $name {
+            fn from(obj: pyo3::Bound<'py, pyo3::PyAny>) -> Self {
+                $name(obj.unbind())
+            }
+        }
+    }
+}

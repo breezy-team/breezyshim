@@ -32,7 +32,7 @@ impl TestEnv {
         std::env::set_var("BRZ_EMAIL", brz_email);
         std::env::set_var("BRZ_HOME", &breezy_home);
         pyo3::Python::with_gil(|py| {
-            let os = py.import_bound("os").unwrap();
+            let os = py.import("os").unwrap();
             os.call_method1("chdir", (working_dir.to_str().unwrap(),))
                 .unwrap();
             let environ = os.getattr("environ").unwrap();
@@ -72,7 +72,7 @@ impl Drop for TestEnv {
                 std::env::remove_var(&key);
             }
             Python::with_gil(|py| {
-                let os = py.import_bound("os").unwrap();
+                let os = py.import("os").unwrap();
                 let environ = os.getattr("environ").unwrap();
                 if let Some(value) = value {
                     environ.set_item(key, value).unwrap();
@@ -116,7 +116,7 @@ mod tests {
         );
 
         Python::with_gil(|py| {
-            let os = py.import_bound("os").unwrap();
+            let os = py.import("os").unwrap();
             assert_eq!(
                 os.call_method0("getcwd")
                     .unwrap()

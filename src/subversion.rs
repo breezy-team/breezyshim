@@ -5,12 +5,12 @@
 use pyo3::exceptions::PyModuleNotFoundError;
 use pyo3::prelude::*;
 
-pub struct SvnRepositoryProber(PyObject);
+crate::wrapped_py!(SvnRepositoryProber);
 
 impl SvnRepositoryProber {
     pub fn new() -> Option<Self> {
         Python::with_gil(|py| {
-            let m = match py.import_bound("breezy.plugins.svn") {
+            let m = match py.import("breezy.plugins.svn") {
                 Ok(m) => m,
                 Err(e) => {
                     if e.is_instance_of::<PyModuleNotFoundError>(py) {
@@ -24,30 +24,18 @@ impl SvnRepositoryProber {
             let prober = m
                 .getattr("SvnRepositoryProber")
                 .expect("Failed to get SvnRepositoryProber");
-            Some(Self(prober.to_object(py)))
+            Some(Self::from(prober))
         })
     }
 }
 
-impl FromPyObject<'_> for SvnRepositoryProber {
-    fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(Self(obj.to_object(obj.py())))
-    }
-}
-
-impl ToPyObject for SvnRepositoryProber {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.to_object(py)
-    }
-}
+impl crate::controldir::PyProber for SvnRepositoryProber {}
 
 impl std::fmt::Debug for SvnRepositoryProber {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.write_fmt(format_args!("SvnRepositoryProber({:?})", self.0))
     }
 }
-
-impl crate::controldir::PyProber for SvnRepositoryProber {}
 
 #[cfg(test)]
 mod tests {

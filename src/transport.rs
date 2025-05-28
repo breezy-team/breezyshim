@@ -4,13 +4,9 @@ use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use std::path::{Path, PathBuf};
 
-pub struct Transport(PyObject);
+crate::wrapped_py!(Transport);
 
 impl Transport {
-    pub fn new(obj: PyObject) -> Self {
-        Transport(obj)
-    }
-
     pub fn base(&self) -> url::Url {
         pyo3::Python::with_gil(|py| {
             self.to_object(py)
@@ -78,20 +74,8 @@ impl Transport {
     pub fn clone(&self, path: &str) -> Result<Transport, Error> {
         pyo3::Python::with_gil(|py| {
             let o = self.0.call_method1(py, "clone", (path,))?;
-            Ok(Transport(o.to_object(py)))
+            Ok(Transport(o))
         })
-    }
-}
-
-impl FromPyObject<'_> for Transport {
-    fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(Transport(obj.to_object(obj.py())))
-    }
-}
-
-impl ToPyObject for Transport {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.to_object(py)
     }
 }
 
@@ -100,8 +84,8 @@ pub fn get_transport(
     possible_transports: Option<&mut Vec<Transport>>,
 ) -> Result<Transport, Error> {
     pyo3::Python::with_gil(|py| {
-        let urlutils = py.import_bound("breezy.transport").unwrap();
-        let kwargs = PyDict::new_bound(py);
+        let urlutils = py.import("breezy.transport").unwrap();
+        let kwargs = PyDict::new(py);
         kwargs.set_item(
             "possible_transports",
             possible_transports.map(|t| {
@@ -111,6 +95,6 @@ pub fn get_transport(
             }),
         )?;
         let o = urlutils.call_method("get_transport", (url.to_string(),), Some(&kwargs))?;
-        Ok(Transport(o.to_object(py)))
+        Ok(Transport(o.unbind()))
     })
 }

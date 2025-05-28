@@ -15,7 +15,7 @@ use pyo3::exceptions::PyStopIteration;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
-pub struct RepositoryFormat(PyObject);
+crate::wrapped_py!(RepositoryFormat);
 
 impl Clone for RepositoryFormat {
     fn clone(&self) -> Self {
@@ -73,7 +73,7 @@ pub trait Repository {
 
 pub trait PyRepository: ToPyObject + std::any::Any {}
 
-pub struct GenericRepository(PyObject);
+crate::wrapped_py!(GenericRepository);
 
 impl Clone for GenericRepository {
     fn clone(&self) -> Self {
@@ -98,26 +98,30 @@ impl Revision {
     }
 }
 
-impl ToPyObject for Revision {
-    fn to_object(&self, py: Python) -> PyObject {
-        let kwargs = PyDict::new_bound(py);
-        kwargs.set_item("message", self.message.clone()).unwrap();
+impl<'py> IntoPyObject<'py> for &Revision {
+    type Target = PyDict;
+
+    type Output = Bound<'py, Self::Target>;
+
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        let kwargs = PyDict::new(py);
+        kwargs.set_item("message", self.message.clone())?;
         kwargs
             .set_item("committer", self.committer.clone())
-            .unwrap();
-        kwargs.set_item("timestamp", self.timestamp).unwrap();
-        kwargs.set_item("timezone", self.timezone).unwrap();
-        kwargs.set_item("revision_id", &self.revision_id).unwrap();
+            ?;
+        kwargs.set_item("timestamp", self.timestamp)?;
+        kwargs.set_item("timezone", self.timezone)?;
+        kwargs.set_item("revision_id", &self.revision_id)?;
         kwargs
             .set_item("parent_ids", self.parent_ids.iter().collect::<Vec<_>>())
-            .unwrap();
-        py.import_bound("breezy.revision")
-            .unwrap()
+            ?;
+        py.import("breezy.revision")
+            ?
             .getattr("Revision")
-            .unwrap()
+            ?
             .call((), Some(&kwargs))
-            .unwrap()
-            .to_object(py)
     }
 }
 
@@ -162,25 +166,7 @@ impl Iterator for DeltaIterator {
     }
 }
 
-impl ToPyObject for GenericRepository {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.to_object(py)
-    }
-}
-
 impl PyRepository for GenericRepository {}
-
-impl GenericRepository {
-    pub fn new(obj: PyObject) -> Self {
-        GenericRepository(obj)
-    }
-}
-
-impl From<PyObject> for GenericRepository {
-    fn from(obj: PyObject) -> Self {
-        GenericRepository(obj)
-    }
-}
 
 impl<T: PyRepository> Repository for T {
     fn vcs_type(&self) -> VcsType {
@@ -231,8 +217,8 @@ impl<T: PyRepository> Repository for T {
                 py,
                 "fetch",
                 (
-                    other_repository.to_object(py),
-                    stop_revision.map(|r| r.to_object(py)),
+                    other_repository,
+                    stop_revision,
                 ),
             )?;
             Ok(())
@@ -241,10 +227,8 @@ impl<T: PyRepository> Repository for T {
 
     fn revision_tree(&self, revid: &RevisionId) -> Result<RevisionTree, crate::error::Error> {
         Python::with_gil(|py| {
-            let o = self
-                .to_object(py)
-                .call_method1(py, "revision_tree", (revid.clone(),))?;
-            Ok(RevisionTree(o))
+            let o = self.0.call_method1(py, "revision_tree", (revid,))?;
+            Ok(RevisionTree::from(o))
         })
     }
 
@@ -263,7 +247,7 @@ impl<T: PyRepository> Repository for T {
     }
 
     fn format(&self) -> RepositoryFormat {
-        Python::with_gil(|py| RepositoryFormat(self.to_object(py).getattr(py, "_format").unwrap()))
+        Python::with_gil(|py| RepositoryFormat::from(self.to_object(py).getattr(py, "_format").unwrap()))
     }
 
     fn iter_revisions(
@@ -285,7 +269,6 @@ impl<T: PyRepository> Repository for T {
         specific_files: Option<&[&std::path::Path]>,
     ) -> impl Iterator<Item = TreeDelta> {
         Python::with_gil(|py| {
-            let revs = revs.iter().map(|r| r.to_object(py)).collect::<Vec<_>>();
             let specific_files = specific_files
                 .map(|files| files.iter().map(|f| f.to_path_buf()).collect::<Vec<_>>());
             let o = self
@@ -351,10 +334,10 @@ impl<T: PyRepository> Repository for T {
 pub fn open(base: impl AsLocation) -> Result<GenericRepository, crate::error::Error> {
     Python::with_gil(|py| {
         let o = py
-            .import_bound("breezy.repository")?
+            .import("breezy.repository")?
             .getattr("Repository")?
             .call_method1("open", (base.as_location(),))?;
-        Ok(GenericRepository::new(o.into()))
+        Ok(GenericRepository::from(o))
     })
 }
 

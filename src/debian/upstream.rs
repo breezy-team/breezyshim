@@ -326,11 +326,11 @@ impl UpstreamBranchSource {
     ) -> Result<Self, Error> {
         Python::with_gil(|py| {
             let m = py
-                .import_bound("breezy.plugins.debian.upstream.branch")
+                .import("breezy.plugins.debian.upstream.branch")
                 .unwrap();
             let cls = m.getattr("UpstreamBranchSource").unwrap();
             let upstream_branch = upstream_branch.to_object(py);
-            let kwargs = PyDict::new_bound(py);
+            let kwargs = PyDict::new(py);
             kwargs.set_item("version_kind", version_kind.unwrap_or_default())?;
             kwargs.set_item("local_dir", local_dir.to_object(py))?;
             if let Some(create_dist) = create_dist {
@@ -406,7 +406,7 @@ pub fn upstream_version_add_revision(
     let sep = sep.unwrap_or("+");
     Python::with_gil(|py| {
         let m = py
-            .import_bound("breezy.plugins.debian.upstream.branch")
+            .import("breezy.plugins.debian.upstream.branch")
             .unwrap();
         let upstream_version_add_revision = m.getattr("upstream_version_add_revision").unwrap();
         Ok(upstream_version_add_revision
@@ -428,7 +428,7 @@ pub fn get_pristine_tar_source(
     packaging_branch: &dyn PyBranch,
 ) -> Result<PristineTarSource, Error> {
     Python::with_gil(|py| {
-        let m = py.import_bound("breezy.plugins.debian.upstream").unwrap();
+        let m = py.import("breezy.plugins.debian.upstream").unwrap();
         let cls = m.getattr("get_pristine_tar_source").unwrap();
         Ok(PristineTarSource(
             cls.call1((packaging_tree.to_object(py), packaging_branch.to_object(py)))?
@@ -447,9 +447,9 @@ pub fn run_dist_command(
     subpath: &Path,
 ) -> Result<bool, Error> {
     Python::with_gil(|py| {
-        let m = py.import_bound("breezy.plugins.debian.upstream").unwrap();
+        let m = py.import("breezy.plugins.debian.upstream").unwrap();
         let run_dist_command = m.getattr("run_dist_command").unwrap();
-        let kwargs = PyDict::new_bound(py);
+        let kwargs = PyDict::new(py);
         kwargs.set_item("revtree", revtree.to_object(py))?;
         kwargs.set_item("package", package)?;
         kwargs.set_item("version", version)?;

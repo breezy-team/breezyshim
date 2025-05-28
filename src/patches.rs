@@ -6,7 +6,7 @@ use pyo3::types::{PyBytes, PyList};
 
 fn py_patches(iter_patches: impl Iterator<Item = UnifiedPatch>) -> PyResult<PyObject> {
     Python::with_gil(|py| {
-        let m = py.import_bound("breezy.patches")?;
+        let m = py.import("breezy.patches")?;
         let patchc = m.getattr("Patch")?;
         let hunkc = m.getattr("Hunk")?;
         let insertlinec = m.getattr("InsertLine")?;
@@ -15,8 +15,8 @@ fn py_patches(iter_patches: impl Iterator<Item = UnifiedPatch>) -> PyResult<PyOb
         let mut ret = vec![];
         for patch in iter_patches {
             let pypatch = patchc.call1((
-                PyBytes::new_bound(py, &patch.orig_name),
-                PyBytes::new_bound(py, &patch.mod_name),
+                PyBytes::new(py, &patch.orig_name),
+                PyBytes::new(py, &patch.mod_name),
                 patch.orig_ts,
                 patch.mod_ts,
             ))?;
@@ -39,13 +39,13 @@ fn py_patches(iter_patches: impl Iterator<Item = UnifiedPatch>) -> PyResult<PyOb
                         "append",
                         (match line {
                             HunkLine::ContextLine(l) => {
-                                contextlinec.call1((PyBytes::new_bound(py, l.as_slice()),))?
+                                contextlinec.call1((PyBytes::new(py, l.as_slice()),))?
                             }
                             HunkLine::InsertLine(l) => {
-                                insertlinec.call1((PyBytes::new_bound(py, l.as_slice()),))?
+                                insertlinec.call1((PyBytes::new(py, l.as_slice()),))?
                             }
                             HunkLine::RemoveLine(l) => {
-                                removelinec.call1((PyBytes::new_bound(py, l.as_slice()),))?
+                                removelinec.call1((PyBytes::new(py, l.as_slice()),))?
                             }
                         },),
                     )?;
@@ -53,7 +53,7 @@ fn py_patches(iter_patches: impl Iterator<Item = UnifiedPatch>) -> PyResult<PyOb
             }
             ret.push(pypatch);
         }
-        Ok(PyList::new_bound(py, ret.iter()).into_py(py))
+        Ok(PyList::new(py, ret.iter()).into_py(py))
     })
 }
 
@@ -70,9 +70,9 @@ pub fn apply_patches(
 ) -> crate::Result<()> {
     Python::with_gil(|py| {
         let patches = py_patches(patches)?;
-        let m = py.import_bound("breezy.tree")?;
+        let m = py.import("breezy.tree")?;
         let apply_patches = m.getattr("apply_patches")?;
-        apply_patches.call1((tt.to_object(py), patches, prefix))?;
+        apply_patches.call1((tt, patches, prefix))?;
         Ok(())
     })
 }
@@ -87,11 +87,11 @@ impl AppliedPatches {
     ) -> crate::Result<Self> {
         let (ap, tree) = Python::with_gil(|py| -> Result<_, PyErr> {
             let patches = py_patches(patches.into_iter())?;
-            let m = py.import_bound("breezy.patches")?;
+            let m = py.import("breezy.patches")?;
             let c = m.getattr("AppliedPatches")?;
-            let ap = c.call1((tree.to_object(py), patches, prefix))?;
+            let ap = c.call1((tree, patches, prefix))?;
             let tree = ap.call_method0("__enter__")?;
-            Ok((ap.to_object(py), tree.to_object(py)))
+            Ok((ap, tree))
         })?;
         Ok(Self(tree, ap))
     }
@@ -108,6 +108,19 @@ impl Drop for AppliedPatches {
     }
 }
 
+impl<'a, 'py> IntoPyObject<'py> for &'a AppliedPatches {
+    type Target = PyAny;
+
+    type Output = Borrowed<'a, 'py, Self::Target>;
+
+    type Error = std::convert::Infallible;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(self.0.bind_borrowed(py))
+    }
+}
+
+#[allow(deprecated)]
 impl ToPyObject for AppliedPatches {
     fn to_object(&self, py: Python) -> PyObject {
         self.0.to_object(py)

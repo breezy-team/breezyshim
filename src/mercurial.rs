@@ -5,12 +5,12 @@
 use pyo3::exceptions::PyModuleNotFoundError;
 use pyo3::prelude::*;
 
-pub struct SmartHgProber(PyObject);
+crate::wrapped_py!(SmartHgProber);
 
 impl SmartHgProber {
     pub fn new() -> Option<Self> {
         Python::with_gil(|py| {
-            let m = match py.import_bound("breezy.plugins.hg") {
+            let m = match py.import("breezy.plugins.hg") {
                 Ok(m) => m,
                 Err(e) => {
                     if e.is_instance_of::<PyModuleNotFoundError>(py) {
@@ -24,30 +24,18 @@ impl SmartHgProber {
             let prober = m
                 .getattr("SmartHgProber")
                 .expect("Failed to get SmartHgProber");
-            Some(Self(prober.to_object(py)))
+            Some(Self(prober.unbind()))
         })
     }
 }
 
-impl FromPyObject<'_> for SmartHgProber {
-    fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(Self(obj.to_object(obj.py())))
-    }
-}
-
-impl ToPyObject for SmartHgProber {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.to_object(py)
-    }
-}
+impl crate::controldir::PyProber for SmartHgProber {}
 
 impl std::fmt::Debug for SmartHgProber {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.write_fmt(format_args!("SmartHgProber({:?})", self.0))
     }
 }
-
-impl crate::controldir::PyProber for SmartHgProber {}
 
 #[cfg(test)]
 mod tests {

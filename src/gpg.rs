@@ -39,16 +39,15 @@ impl From<PyErr> for Error {
     }
 }
 
-pub struct GPGStrategy(PyObject);
+crate::wrapped_py!(GPGStrategy);
 
 impl GPGStrategy {
-    pub fn new(branch_config: &crate::config::BranchConfig) -> Self {
+    pub fn new(branch_config: &crate::config::BranchConfig) -> PyResult<Self> {
         Python::with_gil(|py| {
-            let gpg = PyModule::import_bound(py, "breezy.gpg").unwrap();
-            let gpg_strategy = gpg.getattr("GPGStrategy").unwrap();
-            let branch_config = branch_config.to_object(py);
-            let strategy = gpg_strategy.call1((branch_config,)).unwrap();
-            GPGStrategy(strategy.to_object(py))
+            let gpg = PyModule::import(py, "breezy.gpg")?;
+            let gpg_strategy = gpg.getattr("GPGStrategy")?;
+            let strategy = gpg_strategy.call1((branch_config,))?;
+            Ok(GPGStrategy(strategy.unbind()))
         })
     }
 
@@ -58,18 +57,6 @@ impl GPGStrategy {
                 .call_method1(py, "set_acceptable_keys", (keys.join(","),))
                 .unwrap();
         })
-    }
-}
-
-impl ToPyObject for GPGStrategy {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.to_object(py)
-    }
-}
-
-impl FromPyObject<'_> for GPGStrategy {
-    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(GPGStrategy(ob.to_object(ob.py())))
     }
 }
 
@@ -120,13 +107,13 @@ pub fn bulk_verify_signatures<R: PyRepository>(
     strategy: &GPGStrategy,
 ) -> Result<Vec<(RevisionId, VerificationResult)>, Error> {
     Python::with_gil(|py| {
-        let gpg = PyModule::import_bound(py, "breezy.gpg").unwrap();
+        let gpg = PyModule::import(py, "breezy.gpg").unwrap();
         let bulk_verify_signatures = gpg.getattr("bulk_verify_signatures").unwrap();
         let r = bulk_verify_signatures
             .call1((
-                repository.to_object(py),
-                revids.iter().map(|r| r.to_object(py)).collect::<Vec<_>>(),
-                strategy.to_object(py),
+                repository,
+                revids,
+                strategy,
             ))
             .map_err(|e| -> Error { e.into() })
             .unwrap();
@@ -171,10 +158,10 @@ impl FromPyObject<'_> for GPGKey {
 impl GPGContext {
     pub fn new() -> Self {
         Python::with_gil(|py| {
-            let gpg = PyModule::import_bound(py, "gpg").unwrap();
+            let gpg = PyModule::import(py, "gpg").unwrap();
             let gpg_context = gpg.getattr("Context").unwrap();
             let context = gpg_context.call0().unwrap();
-            GPGContext(context.to_object(py))
+            GPGContext(context.unbind())
         })
     }
 

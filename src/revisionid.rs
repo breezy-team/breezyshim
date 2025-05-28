@@ -1,5 +1,6 @@
 //! Revision ID type and related functions.
 use pyo3::prelude::*;
+use pyo3::types::PyBytes;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 #[derive(Clone, PartialEq, Eq, Ord, PartialOrd, Hash)]
@@ -101,15 +102,13 @@ impl FromPyObject<'_> for RevisionId {
     }
 }
 
-impl ToPyObject for RevisionId {
-    fn to_object(&self, py: Python) -> PyObject {
-        pyo3::types::PyBytes::new_bound(py, &self.0).to_object(py)
-    }
-}
+impl<'py> IntoPyObject<'py> for &RevisionId {
+    type Target = PyBytes;
+    type Output = Bound<'py, Self::Target>;
+    type Error = PyErr;
 
-impl IntoPy<PyObject> for RevisionId {
-    fn into_py(self, py: Python) -> PyObject {
-        pyo3::types::PyBytes::new_bound(py, self.0.as_slice()).to_object(py)
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(PyBytes::new(py, self.0.as_slice()))
     }
 }
 
@@ -120,7 +119,10 @@ impl std::fmt::Display for RevisionId {
     }
 }
 
+/// The magic revision id referring to the current revision.
 pub const CURRENT_REVISION: &[u8] = b"current:";
+
+/// The null revision ID, used to indicate that no revision is set.
 pub const NULL_REVISION: &[u8] = b"null:";
 
 #[cfg(test)]

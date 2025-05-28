@@ -3,7 +3,7 @@ use pyo3::prelude::*;
 
 pub fn login(url: &url::Url) -> PyResult<()> {
     Python::with_gil(|py| {
-        let m = py.import_bound("breezy.plugins.gitlab.cmds").unwrap();
+        let m = py.import("breezy.plugins.gitlab.cmds").unwrap();
         let cmd = m.getattr("cmd_gitlab_login").unwrap();
 
         let cmd_gl = cmd.call0().unwrap();

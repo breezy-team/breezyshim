@@ -5,12 +5,12 @@
 use pyo3::exceptions::PyModuleNotFoundError;
 use pyo3::prelude::*;
 
-pub struct CVSProber(PyObject);
+crate::wrapped_py!(CVSProber);
 
 impl CVSProber {
     pub fn new() -> Option<Self> {
         Python::with_gil(|py| {
-            let m = match py.import_bound("breezy.plugins.cvs") {
+            let m = match py.import("breezy.plugins.cvs") {
                 Ok(m) => m,
                 Err(e) => {
                     if e.is_instance_of::<PyModuleNotFoundError>(py) {
@@ -22,20 +22,8 @@ impl CVSProber {
                 }
             };
             let cvsprober = m.getattr("CVSProber").expect("Failed to get CVSProber");
-            Some(Self(cvsprober.to_object(py)))
+            Some(Self::from(cvsprober))
         })
-    }
-}
-
-impl FromPyObject<'_> for CVSProber {
-    fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(Self(obj.to_object(obj.py())))
-    }
-}
-
-impl ToPyObject for CVSProber {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.to_object(py)
     }
 }
 

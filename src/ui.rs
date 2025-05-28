@@ -8,19 +8,19 @@ pub trait UIFactory: std::fmt::Debug {}
 
 impl<T: PyUIFactory> UIFactory for T {}
 
-pub struct SilentUIFactory(PyObject);
+crate::wrapped_py!(SilentUIFactory);
 
 impl SilentUIFactory {
     pub fn new() -> Self {
         Python::with_gil(|py| {
             SilentUIFactory(
-                py.import_bound("breezy.ui")
+                py.import("breezy.ui")
                     .unwrap()
                     .getattr("SilentUIFactory")
                     .unwrap()
                     .call0()
                     .unwrap()
-                    .to_object(py),
+                    .unbind()
             )
         })
     }
@@ -32,19 +32,8 @@ impl Default for SilentUIFactory {
     }
 }
 
-pub struct GenericUIFactory(PyObject);
+crate::wrapped_py!(GenericUIFactory);
 
-impl ToPyObject for GenericUIFactory {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.clone_ref(py)
-    }
-}
-
-impl FromPyObject<'_> for GenericUIFactory {
-    fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(GenericUIFactory(obj.to_object(obj.py())))
-    }
-}
 
 impl GenericUIFactory {
     pub fn new(obj: PyObject) -> Self {
@@ -60,11 +49,6 @@ impl std::fmt::Debug for GenericUIFactory {
     }
 }
 
-impl ToPyObject for SilentUIFactory {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.clone_ref(py)
-    }
-}
 
 impl PyUIFactory for SilentUIFactory {}
 
@@ -76,16 +60,16 @@ impl std::fmt::Debug for SilentUIFactory {
 
 pub fn install_ui_factory(factory: &dyn PyUIFactory) {
     Python::with_gil(|py| {
-        let m = py.import_bound("breezy.ui").unwrap();
-        m.setattr("ui_factory", factory.to_object(py)).unwrap();
+        let m = py.import("breezy.ui").unwrap();
+        m.setattr("ui_factory", factory).unwrap();
     });
 }
 
 pub fn get_ui_factory() -> Box<dyn PyUIFactory> {
-    Box::new(GenericUIFactory::new(Python::with_gil(|py| {
-        let m = py.import_bound("breezy.ui").unwrap();
-        m.getattr("ui_factory").unwrap().to_object(py)
-    }))) as Box<dyn PyUIFactory>
+    Box::new(GenericUIFactory::from(Python::with_gil(|py| {
+        let m = py.import("breezy.ui").unwrap();
+        m.getattr("ui_factory").unwrap().unbind()
+    }))) as Box<dyn UIFactory>
 }
 
 pub fn with_silent_ui_factory<R>(f: impl FnOnce() -> R) -> R {

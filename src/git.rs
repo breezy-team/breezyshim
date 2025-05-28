@@ -2,14 +2,14 @@
 use pyo3::exceptions::PyModuleNotFoundError;
 use pyo3::prelude::*;
 
-pub struct RemoteGitProber(PyObject);
+crate::wrapped_py!(RemoteGitProber);
 
 pub const ZERO_SHA: &[u8] = b"0000000000000000000000000000000000000000";
 
 impl RemoteGitProber {
     pub fn new() -> Option<Self> {
         Python::with_gil(|py| {
-            let m = match py.import_bound("breezy.git") {
+            let m = match py.import("breezy.git") {
                 Ok(m) => m,
                 Err(e) => {
                     if e.is_instance_of::<PyModuleNotFoundError>(py) {
@@ -23,22 +23,12 @@ impl RemoteGitProber {
             let prober = m
                 .getattr("RemoteGitProber")
                 .expect("Failed to get GitProber");
-            Some(Self(prober.to_object(py)))
+            Some(Self(prober.unbind()))
         })
     }
 }
 
-impl FromPyObject<'_> for RemoteGitProber {
-    fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(Self(obj.to_object(obj.py())))
-    }
-}
-
-impl ToPyObject for RemoteGitProber {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.to_object(py)
-    }
-}
+impl crate::controldir::PyProber for RemoteGitProber {}
 
 impl std::fmt::Debug for RemoteGitProber {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -46,15 +36,13 @@ impl std::fmt::Debug for RemoteGitProber {
     }
 }
 
-impl crate::controldir::PyProber for RemoteGitProber {}
-
-pub struct BareLocalGitControlDirFormat(PyObject);
+crate::wrapped_py!(BareLocalGitControlDirFormat);
 
 impl BareLocalGitControlDirFormat {
     pub fn new() -> Self {
         Python::with_gil(|py| {
             let m = py
-                .import_bound("breezy.git")
+                .import("breezy.git")
                 .expect("Failed to import breezy.git");
             let format = m
                 .getattr("BareLocalGitControlDirFormat")
@@ -64,15 +52,9 @@ impl BareLocalGitControlDirFormat {
                 format
                     .call0()
                     .expect("Failed to create BareLocalGitControlDirFormat")
-                    .to_object(py),
+                    .unbind()
             )
         })
-    }
-}
-
-impl ToPyObject for BareLocalGitControlDirFormat {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.to_object(py)
     }
 }
 

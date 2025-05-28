@@ -7,7 +7,7 @@ use crate::RevisionId;
 use pyo3::prelude::*;
 use std::path::{Path, PathBuf};
 
-pub struct WorkingTree(pub PyObject);
+super::wrapped_py!(WorkingTree);
 
 impl crate::tree::PyTree for WorkingTree {}
 impl crate::tree::PyMutableTree for WorkingTree {}
@@ -18,18 +18,12 @@ impl Clone for WorkingTree {
     }
 }
 
-impl ToPyObject for WorkingTree {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.to_object(py)
-    }
-}
-
 pub struct CommitBuilder(WorkingTree, Py<pyo3::types::PyDict>);
 
 impl From<WorkingTree> for CommitBuilder {
     fn from(wt: WorkingTree) -> Self {
         Python::with_gil(|py| {
-            let kwargs = pyo3::types::PyDict::new_bound(py);
+            let kwargs = pyo3::types::PyDict::new(py);
             CommitBuilder(wt, kwargs.into())
         })
     }
@@ -83,7 +77,7 @@ impl CommitBuilder {
             Ok(self
                 .0
                 .to_object(py)
-                .call_method_bound(py, "commit", (), Some(self.1.bind(py)))?
+                .call_method(py, "commit", (), Some(self.1.bind(py)))?
                 .extract(py)
                 .unwrap())
         })
@@ -113,10 +107,10 @@ impl WorkingTree {
     }
 
     /// Return the branch for this working tree.
-    pub fn branch(&self) -> GenericBranch {
+    pub fn branch(&self) -> Box<dyn Branch> {
         Python::with_gil(|py| {
             let branch = self.to_object(py).getattr(py, "branch").unwrap();
-            GenericBranch::new(branch)
+            Box::new(GenericBranch::from(branch)) as Box<dyn Branch>
         })
     }
 
@@ -141,7 +135,7 @@ impl WorkingTree {
     pub fn basis_tree(&self) -> Result<crate::tree::RevisionTree, Error> {
         Python::with_gil(|py| {
             let tree = self.to_object(py).call_method0(py, "basis_tree")?;
-            Ok(RevisionTree(tree))
+            Ok(RevisionTree::from(tree))
         })
     }
 
@@ -150,9 +144,9 @@ impl WorkingTree {
             let tree = self.to_object(py).call_method1(
                 py,
                 "revision_tree",
-                (revision_id.to_object(py),),
+                (revision_id,),
             )?;
-            Ok(Box::new(RevisionTree(tree)))
+            Ok(Box::new(RevisionTree::from(tree)))
         })
     }
 
@@ -257,22 +251,21 @@ impl WorkingTree {
     ) -> Result<(), Error> {
         Python::with_gil(|py| {
             let kwargs = {
-                let kwargs = pyo3::types::PyDict::new_bound(py);
+                let kwargs = pyo3::types::PyDict::new(py);
                 if let Some(overwrite) = overwrite {
-                    kwargs.set_item("overwrite", overwrite).unwrap();
+                    kwargs.set_item("overwrite", overwrite)?;
                 }
                 if let Some(stop_revision) = stop_revision {
                     kwargs
-                        .set_item("stop_revision", stop_revision.to_object(py))
-                        .unwrap();
+                        .set_item("stop_revision", stop_revision)?;
                 }
                 if let Some(local) = local {
-                    kwargs.set_item("local", local).unwrap();
+                    kwargs.set_item("local", local)?;
                 }
                 kwargs
             };
             self.to_object(py)
-                .call_method_bound(py, "pull", (source.to_object(py),), Some(&kwargs))
+                .call_method(py, "pull", (source,), Some(&kwargs))
         })
         .map_err(|e| e.into())
         .map(|_| ())
@@ -285,18 +278,17 @@ impl WorkingTree {
     ) -> Result<(), Error> {
         Python::with_gil(|py| {
             let kwargs = {
-                let kwargs = pyo3::types::PyDict::new_bound(py);
+                let kwargs = pyo3::types::PyDict::new(py);
                 if let Some(to_revision) = to_revision {
                     kwargs
-                        .set_item("to_revision", to_revision.to_object(py))
-                        .unwrap();
+                        .set_item("to_revision", to_revision)?;
                 }
                 kwargs
             };
-            self.to_object(py).call_method_bound(
+            self.to_object(py).call_method(
                 py,
                 "merge_from_branch",
-                (source.to_object(py),),
+                (source,),
                 Some(&kwargs),
             )
         })
@@ -307,12 +299,12 @@ impl WorkingTree {
     pub fn update(&self, revision: Option<&RevisionId>) -> Result<(), Error> {
         Python::with_gil(|py| {
             let kwargs = {
-                let kwargs = pyo3::types::PyDict::new_bound(py);
-                kwargs.set_item("revision", revision.to_object(py)).unwrap();
+                let kwargs = pyo3::types::PyDict::new(py);
+                kwargs.set_item("revision", revision).unwrap();
                 kwargs
             };
             self.to_object(py)
-                .call_method_bound(py, "update", (), Some(&kwargs))
+                .call_method(py, "update", (), Some(&kwargs))
         })
         .map_err(|e| e.into())
         .map(|_| ())
@@ -344,25 +336,19 @@ impl WorkingTree {
 
 pub fn open(path: &Path) -> Result<WorkingTree, Error> {
     Python::with_gil(|py| {
-        let m = py.import_bound("breezy.workingtree")?;
+        let m = py.import("breezy.workingtree")?;
         let c = m.getattr("WorkingTree")?;
         let wt = c.call_method1("open", (path,))?;
-        Ok(WorkingTree(wt.to_object(py)))
+        Ok(WorkingTree::from(wt))
     })
 }
 
 pub fn open_containing(path: &Path) -> Result<(WorkingTree, PathBuf), Error> {
     Python::with_gil(|py| {
-        let m = py.import_bound("breezy.workingtree")?;
+        let m = py.import("breezy.workingtree")?;
         let c = m.getattr("WorkingTree")?;
         let (wt, p): (Bound<PyAny>, String) =
             c.call_method1("open_containing", (path,))?.extract()?;
-        Ok((WorkingTree(wt.to_object(py)), PathBuf::from(p)))
+        Ok((WorkingTree::from(wt), PathBuf::from(p)))
     })
-}
-
-impl From<PyObject> for WorkingTree {
-    fn from(obj: PyObject) -> Self {
-        WorkingTree(obj)
-    }
 }

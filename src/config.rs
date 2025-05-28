@@ -5,6 +5,7 @@
 //! access to credential stores.
 use crate::Result;
 use pyo3::prelude::*;
+use pyo3::types::PyDict;
 
 pub fn parse_username(e: &str) -> (String, String) {
     if let Some((_, username, email)) =
@@ -26,14 +27,15 @@ pub fn extract_email_address(e: &str) -> Option<String> {
     }
 }
 
-pub trait ConfigValue: ToPyObject {}
+pub trait ConfigValue
+{}
 
 impl ConfigValue for String {}
 impl ConfigValue for &str {}
 impl ConfigValue for i64 {}
 impl ConfigValue for bool {}
 
-pub struct BranchConfig(PyObject);
+crate::wrapped_py!(BranchConfig);
 
 impl Clone for BranchConfig {
     fn clone(&self) -> Self {
@@ -41,34 +43,20 @@ impl Clone for BranchConfig {
     }
 }
 
-impl ToPyObject for BranchConfig {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.clone_ref(py)
-    }
-}
-
 impl BranchConfig {
-    pub fn new(o: PyObject) -> Self {
-        Self(o)
-    }
-
     pub fn set_user_option<T: ConfigValue>(&self, key: &str, value: T) -> Result<()> {
         Python::with_gil(|py| -> Result<()> {
             self.0
-                .call_method1(py, "set_user_option", (key, value.to_object(py)))?;
+                .call_method1(py, "set_user_option", (key, value))?;
             Ok(())
         })?;
         Ok(())
     }
 }
 
-pub struct ConfigStack(PyObject);
+crate::wrapped_py!(ConfigStack);
 
 impl ConfigStack {
-    pub fn new(o: PyObject) -> Self {
-        Self(o)
-    }
-
     pub fn get(&self, key: &str) -> Result<Option<PyObject>> {
         Python::with_gil(|py| -> Result<Option<PyObject>> {
             let value = self.0.call_method1(py, "get", (key,))?;
@@ -82,7 +70,7 @@ impl ConfigStack {
 
     pub fn set<T: ConfigValue>(&self, key: &str, value: T) -> Result<()> {
         Python::with_gil(|py| -> Result<()> {
-            self.0.call_method1(py, "set", (key, value.to_object(py)))?;
+            self.0.call_method1(py, "set", (key, value))?;
             Ok(())
         })?;
         Ok(())
@@ -91,9 +79,9 @@ impl ConfigStack {
 
 pub fn global_stack() -> Result<ConfigStack> {
     Python::with_gil(|py| -> Result<ConfigStack> {
-        let m = py.import_bound("breezy.config")?;
+        let m = py.import("breezy.config")?;
         let stack = m.call_method0("GlobalStack")?;
-        Ok(ConfigStack::new(stack.to_object(py)))
+        Ok(ConfigStack::from(stack))
     })
 }
 
@@ -132,25 +120,23 @@ impl FromPyObject<'_> for Credentials {
     }
 }
 
-impl ToPyObject for Credentials {
-    fn to_object(&self, py: Python) -> PyObject {
-        let dict = pyo3::types::PyDict::new_bound(py);
-        dict.set_item("scheme", &self.scheme).unwrap();
-        dict.set_item("username", &self.username).unwrap();
-        dict.set_item("password", &self.password).unwrap();
-        dict.set_item("host", &self.host).unwrap();
-        dict.set_item("port", self.port).unwrap();
-        dict.set_item("path", &self.path).unwrap();
-        dict.set_item("realm", &self.realm).unwrap();
-        dict.set_item("verify_certificates", self.verify_certificates)
-            .unwrap();
-        dict.into()
-    }
-}
+impl<'py> IntoPyObject<'py> for Credentials {
+    type Target = PyDict;
+    type Output = Bound<'py, Self::Target>;
+    type Error = PyErr;
 
-impl IntoPy<PyObject> for Credentials {
-    fn into_py(self, py: Python) -> PyObject {
-        self.to_object(py)
+    fn into_pyobject(self, py: Python<'py>) -> std::result::Result<Self::Output, Self::Error> {
+        let dict = pyo3::types::PyDict::new(py);
+        dict.set_item("scheme", &self.scheme)?;
+        dict.set_item("username", &self.username)?;
+        dict.set_item("password", &self.password)?;
+        dict.set_item("host", &self.host)?;
+        dict.set_item("port", self.port)?;
+        dict.set_item("path", &self.path)?;
+        dict.set_item("realm", &self.realm)?;
+        dict.set_item("verify_certificates", self.verify_certificates)
+            ?;
+        Ok(dict)
     }
 }
 
@@ -166,7 +152,7 @@ pub trait CredentialStore: Send {
     ) -> Result<Credentials>;
 }
 
-struct PyCredentialStore(PyObject);
+crate::wrapped_py!(PyCredentialStore);
 
 impl CredentialStore for PyCredentialStore {
     fn get_credentials(
@@ -190,7 +176,7 @@ impl CredentialStore for PyCredentialStore {
 }
 
 #[pyclass]
-pub struct CredentialStoreWrapper(Box<dyn CredentialStore>);
+pub struct CredentialStoreWrapper(Box<dyn CredentialStore + Send + Sync>);
 
 #[pymethods]
 impl CredentialStoreWrapper {
@@ -210,14 +196,14 @@ impl CredentialStoreWrapper {
     }
 }
 
-pub struct CredentialStoreRegistry(PyObject);
+crate::wrapped_py!(CredentialStoreRegistry);
 
 impl CredentialStoreRegistry {
     pub fn new() -> Self {
         Python::with_gil(|py| -> Self {
-            let m = py.import_bound("breezy.config").unwrap();
+            let m = py.import("breezy.config").unwrap();
             let registry = m.call_method0("CredentialStoreRegistry").unwrap();
-            Self(registry.to_object(py))
+            Self::from(registry)
         })
     }
 
@@ -235,7 +221,7 @@ impl CredentialStoreRegistry {
                     return Err(e.into());
                 }
             };
-            Ok(Some(Box::new(PyCredentialStore(store))))
+            Ok(Some(Box::new(PyCredentialStore::from(store))))
         })
     }
 
@@ -257,7 +243,7 @@ impl CredentialStoreRegistry {
         })
     }
 
-    pub fn register(&self, key: &str, store: Box<dyn CredentialStore>) -> Result<()> {
+    pub fn register(&self, key: &str, store: Box<dyn CredentialStore + Send + Sync>) -> Result<()> {
         Python::with_gil(|py| -> Result<()> {
             self.0
                 .call_method1(py, "register", (key, CredentialStoreWrapper(store)))?;
@@ -266,11 +252,11 @@ impl CredentialStoreRegistry {
         Ok(())
     }
 
-    pub fn register_fallback(&self, store: Box<dyn CredentialStore>) -> Result<()> {
+    pub fn register_fallback(&self, store: Box<dyn CredentialStore + Send + Sync>) -> Result<()> {
         Python::with_gil(|py| -> Result<()> {
-            let kwargs = pyo3::types::PyDict::new_bound(py);
+            let kwargs = pyo3::types::PyDict::new(py);
             kwargs.set_item("fallback", true)?;
-            self.0.call_method_bound(
+            self.0.call_method(
                 py,
                 "register_fallback",
                 (CredentialStoreWrapper(store),),

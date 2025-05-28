@@ -1,6 +1,7 @@
 //! Bazaar-specific functionality.
 use pyo3::exceptions::PyModuleNotFoundError;
 use pyo3::prelude::*;
+use pyo3::types::PyBytes;
 
 pub mod tree;
 
@@ -55,9 +56,17 @@ impl From<FileId> for String {
     }
 }
 
-impl pyo3::ToPyObject for FileId {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.to_object(py)
+impl<'py> IntoPyObject<'py> for FileId {
+    type Target = PyBytes;
+
+    type Output = Bound<'py, Self::Target>;
+
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        let bytes = self.0;
+        let py_bytes = PyBytes::new(py, &bytes);
+        Ok(py_bytes)
     }
 }
 
@@ -68,15 +77,9 @@ impl pyo3::FromPyObject<'_> for FileId {
     }
 }
 
-impl pyo3::IntoPy<pyo3::PyObject> for FileId {
-    fn into_py(self, py: Python) -> pyo3::PyObject {
-        self.0.to_object(py)
-    }
-}
-
 pub fn gen_revision_id(username: &str, timestamp: Option<usize>) -> Vec<u8> {
     Python::with_gil(|py| {
-        let m = py.import_bound("breezy.bzr.generate_ids").unwrap();
+        let m = py.import("breezy.bzr.generate_ids").unwrap();
         let gen_revision_id = m.getattr("gen_revision_id").unwrap();
         gen_revision_id
             .call1((username, timestamp))
@@ -93,7 +96,7 @@ fn test_gen_revision_id() {
 
 pub fn gen_file_id(name: &str) -> Vec<u8> {
     Python::with_gil(|py| {
-        let m = py.import_bound("breezy.bzr.generate_ids").unwrap();
+        let m = py.import("breezy.bzr.generate_ids").unwrap();
         let gen_file_id = m.getattr("gen_file_id").unwrap();
         gen_file_id.call1((name,)).unwrap().extract().unwrap()
     })
@@ -104,12 +107,12 @@ fn test_file_id() {
     gen_file_id("somename");
 }
 
-pub struct RemoteBzrProber(PyObject);
+crate::wrapped_py!(RemoteBzrProber);
 
 impl RemoteBzrProber {
     pub fn new() -> Option<Self> {
         Python::with_gil(|py| {
-            let m = match py.import_bound("breezy.bzr") {
+            let m = match py.import("breezy.bzr") {
                 Ok(m) => m,
                 Err(e) => {
                     if e.is_instance_of::<PyModuleNotFoundError>(py) {
@@ -123,27 +126,15 @@ impl RemoteBzrProber {
             let prober = m
                 .getattr("RemoteBzrProber")
                 .expect("Failed to get RemoteBzrProber");
-            Some(Self(prober.to_object(py)))
+            Some(Self(prober.unbind()))
         })
     }
 }
 
-impl FromPyObject<'_> for RemoteBzrProber {
-    fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(Self(obj.to_object(obj.py())))
-    }
-}
-
-impl ToPyObject for RemoteBzrProber {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.to_object(py)
-    }
-}
+impl crate::controldir::PyProber for RemoteBzrProber {}
 
 impl std::fmt::Debug for RemoteBzrProber {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.write_fmt(format_args!("RemoteBzrProber({:?})", self.0))
     }
 }
-
-impl crate::controldir::PyProber for RemoteBzrProber {}

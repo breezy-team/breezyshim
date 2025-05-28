@@ -44,7 +44,7 @@ impl Tags {
     pub fn set_tag(&self, tag: &str, revision_id: &RevisionId) -> Result<(), Error> {
         Python::with_gil(|py| {
             self.0
-                .call_method1(py, "set_tag", (tag, revision_id.to_object(py)))
+                .call_method1(py, "set_tag", (tag, revision_id))
         })?;
         Ok(())
     }

@@ -5,12 +5,12 @@
 use pyo3::exceptions::PyModuleNotFoundError;
 use pyo3::prelude::*;
 
-pub struct DarcsProber(PyObject);
+crate::wrapped_py!(DarcsProber);
 
 impl DarcsProber {
     pub fn new() -> Option<Self> {
         Python::with_gil(|py| {
-            let m = match py.import_bound("breezy.plugins.darcs") {
+            let m = match py.import("breezy.plugins.darcs") {
                 Ok(m) => m,
                 Err(e) => {
                     if e.is_instance_of::<PyModuleNotFoundError>(py) {
@@ -22,30 +22,18 @@ impl DarcsProber {
                 }
             };
             let prober = m.getattr("DarcsProber").expect("Failed to get DarcsProber");
-            Some(Self(prober.to_object(py)))
+            Some(Self::from(prober))
         })
     }
 }
 
-impl FromPyObject<'_> for DarcsProber {
-    fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(Self(obj.to_object(obj.py())))
-    }
-}
-
-impl ToPyObject for DarcsProber {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.to_object(py)
-    }
-}
+impl crate::controldir::PyProber for DarcsProber {}
 
 impl std::fmt::Debug for DarcsProber {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.write_fmt(format_args!("DarcsProber({:?})", self.0))
     }
 }
-
-impl crate::controldir::PyProber for DarcsProber {}
 
 #[cfg(test)]
 mod tests {
