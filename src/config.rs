@@ -5,6 +5,7 @@
 //! access to credential stores.
 use crate::Result;
 use pyo3::prelude::*;
+use pyo3::BoundObject;
 
 /// Parse a username string into name and email components.
 ///
@@ -49,7 +50,7 @@ pub fn extract_email_address(e: &str) -> Option<String> {
 ///
 /// This trait is implemented for common types like strings, integers, and booleans,
 /// and can be implemented for other types that need to be stored in a configuration.
-pub trait ConfigValue: ToPyObject {}
+pub trait ConfigValue: for<'py> IntoPyObject<'py> {}
 
 impl ConfigValue for String {}
 impl ConfigValue for &str {}
@@ -68,9 +69,13 @@ impl Clone for BranchConfig {
     }
 }
 
-impl ToPyObject for BranchConfig {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.clone_ref(py)
+impl<'py> IntoPyObject<'py> for BranchConfig {
+    type Target = PyAny;
+    type Output = Bound<'py, Self::Target>;
+    type Error = std::convert::Infallible;
+
+    fn into_pyobject(self, py: Python<'py>) -> std::result::Result<Self::Output, Self::Error> {
+        Ok(self.0.into_bound(py))
     }
 }
 
@@ -100,8 +105,18 @@ impl BranchConfig {
     /// `Ok(())` on success, or an error if the option could not be set.
     pub fn set_user_option<T: ConfigValue>(&self, key: &str, value: T) -> Result<()> {
         Python::with_gil(|py| -> Result<()> {
+            let py_value = value
+                .into_pyobject(py)
+                .map_err(|_| {
+                    crate::error::Error::Other(
+                        pyo3::PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                            "Failed to convert value to Python object",
+                        ),
+                    )
+                })?
+                .unbind();
             self.0
-                .call_method1(py, "set_user_option", (key, value.to_object(py)))?;
+                .call_method1(py, "set_user_option", (key, py_value))?;
             Ok(())
         })?;
         Ok(())
@@ -161,7 +176,17 @@ impl ConfigStack {
     /// `Ok(())` on success, or an error if the configuration could not be set.
     pub fn set<T: ConfigValue>(&self, key: &str, value: T) -> Result<()> {
         Python::with_gil(|py| -> Result<()> {
-            self.0.call_method1(py, "set", (key, value.to_object(py)))?;
+            let py_value = value
+                .into_pyobject(py)
+                .map_err(|_| {
+                    crate::error::Error::Other(
+                        pyo3::PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                            "Failed to convert value to Python object",
+                        ),
+                    )
+                })?
+                .unbind();
+            self.0.call_method1(py, "set", (key, py_value))?;
             Ok(())
         })?;
         Ok(())
@@ -175,9 +200,9 @@ impl ConfigStack {
 /// The global configuration stack, or an error if it could not be retrieved.
 pub fn global_stack() -> Result<ConfigStack> {
     Python::with_gil(|py| -> Result<ConfigStack> {
-        let m = py.import_bound("breezy.config")?;
+        let m = py.import("breezy.config")?;
         let stack = m.call_method0("GlobalStack")?;
-        Ok(ConfigStack::new(stack.to_object(py)))
+        Ok(ConfigStack::new(stack.unbind()))
     })
 }
 
@@ -228,9 +253,13 @@ impl FromPyObject<'_> for Credentials {
     }
 }
 
-impl ToPyObject for Credentials {
-    fn to_object(&self, py: Python) -> PyObject {
-        let dict = pyo3::types::PyDict::new_bound(py);
+impl<'py> IntoPyObject<'py> for Credentials {
+    type Target = PyAny;
+    type Output = Bound<'py, Self::Target>;
+    type Error = std::convert::Infallible;
+
+    fn into_pyobject(self, py: Python<'py>) -> std::result::Result<Self::Output, Self::Error> {
+        let dict = pyo3::types::PyDict::new(py);
         dict.set_item("scheme", &self.scheme).unwrap();
         dict.set_item("username", &self.username).unwrap();
         dict.set_item("password", &self.password).unwrap();
@@ -240,22 +269,19 @@ impl ToPyObject for Credentials {
         dict.set_item("realm", &self.realm).unwrap();
         dict.set_item("verify_certificates", self.verify_certificates)
             .unwrap();
-        dict.into()
+        Ok(dict.into_any())
     }
 }
 
-impl IntoPy<PyObject> for Credentials {
-    fn into_py(self, py: Python) -> PyObject {
-        self.to_object(py)
-    }
-}
+// IntoPy is replaced by IntoPyObject in PyO3 0.25
+// The IntoPyObject implementation above handles the conversion
 
 /// A store for retrieving credentials.
 ///
 /// This trait defines the interface for a credential store, which can be used to
 /// retrieve credentials for accessing remote services. Implementations of this trait
 /// can store credentials in different ways, like in a keychain, a config file, etc.
-pub trait CredentialStore: Send {
+pub trait CredentialStore: Send + Sync {
     /// Get credentials for accessing a remote service.
     ///
     /// # Parameters
@@ -310,7 +336,7 @@ impl CredentialStore for PyCredentialStore {
 ///
 /// This struct wraps a `CredentialStore` implementation and exposes it to Python
 /// through the Pyo3 type system.
-pub struct CredentialStoreWrapper(Box<dyn CredentialStore>);
+pub struct CredentialStoreWrapper(Box<dyn CredentialStore + Send + Sync>);
 
 #[pymethods]
 impl CredentialStoreWrapper {
@@ -344,9 +370,9 @@ impl CredentialStoreRegistry {
     /// A new `CredentialStoreRegistry` instance.
     pub fn new() -> Self {
         Python::with_gil(|py| -> Self {
-            let m = py.import_bound("breezy.config").unwrap();
+            let m = py.import("breezy.config").unwrap();
             let registry = m.call_method0("CredentialStoreRegistry").unwrap();
-            Self(registry.to_object(py))
+            Self(registry.unbind())
         })
     }
 
@@ -439,9 +465,9 @@ impl CredentialStoreRegistry {
     /// `Ok(())` on success, or an error if the store could not be registered.
     pub fn register_fallback(&self, store: Box<dyn CredentialStore>) -> Result<()> {
         Python::with_gil(|py| -> Result<()> {
-            let kwargs = pyo3::types::PyDict::new_bound(py);
+            let kwargs = pyo3::types::PyDict::new(py);
             kwargs.set_item("fallback", true)?;
-            self.0.call_method_bound(
+            self.0.call_method(
                 py,
                 "register_fallback",
                 (CredentialStoreWrapper(store),),

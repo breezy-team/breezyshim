@@ -2,6 +2,7 @@
 use crate::transform::RawConflict;
 use pyo3::import_exception;
 use pyo3::prelude::*;
+use pyo3::intern;
 use pyo3::PyErr;
 use url::Url;
 
@@ -65,8 +66,8 @@ lazy_static::lazy_static! {
     ///
     /// This is only present in Breezy versions before 4.0.
     pub static ref BreezyConnectionError: Option<PyObject> = { Python::with_gil(|py| {
-        let m = py.import_bound("breezy.errors").unwrap();
-        m.getattr("ConnectionError").ok().map(|x| x.to_object(py))
+        let m = py.import("breezy.errors").unwrap();
+        m.getattr("ConnectionError").ok().map(|x| x.unbind())
     })
 };
 }
@@ -391,7 +392,7 @@ impl From<PyErr> for Error {
     fn from(err: PyErr) -> Self {
         pyo3::import_exception!(socket, error);
         pyo3::Python::with_gil(|py| {
-            let value = err.value_bound(py);
+            let value = err.value(py);
             if err.is_instance_of::<UnknownFormatError>(py) {
                 Error::UnknownFormat(value.getattr("format").unwrap().extract().unwrap())
             } else if err.is_instance_of::<NotBranchError>(py) {
@@ -613,7 +614,7 @@ impl From<PyErr> for Error {
                         format
                     } else {
                         format
-                            .call_method0("get_format_string")
+                            .call_method0(intern!(py, "get_format_string"))
                             .unwrap()
                             .extract()
                             .unwrap()
@@ -622,7 +623,7 @@ impl From<PyErr> for Error {
                         controldir
                     } else {
                         controldir
-                            .call_method0("get_format_string")
+                            .call_method0(intern!(py, "get_format_string"))
                             .unwrap()
                             .extract()
                             .unwrap()
@@ -648,7 +649,12 @@ impl From<PyErr> for Error {
             } else if BreezyConnectionError
                 .as_ref()
                 .and_then(|cls| {
-                    Python::with_gil(|py| Some(err.is_instance_bound(py, cls.bind(py))))
+                    Python::with_gil(|py| {
+                        Some(
+                            err.is_instance_of::<PyAny>(py)
+                                && err.value(py).is_instance(cls.bind(py)).unwrap(),
+                        )
+                    })
                 })
                 .unwrap_or(false)
             {
@@ -724,7 +730,7 @@ impl From<Error> for PyErr {
             Error::UnsupportedVcs(s) => UnsupportedVcs::new_err((s,)),
             Error::RemoteGitError(e) => RemoteGitError::new_err((e,)),
             Error::IncompleteRead(partial, expected) => Python::with_gil(|py| {
-                let bytes = pyo3::types::PyBytes::new_bound(py, partial.as_slice());
+                let bytes = pyo3::types::PyBytes::new(py, partial.as_slice());
                 IncompleteRead::new_err((bytes.unbind(), expected))
             }),
             Error::LineEndingError(e) => LineEndingError::new_err((e,)),
@@ -781,7 +787,9 @@ impl From<Error> for PyErr {
             }
             Error::ImmortalLimbo(p) => ImmortalLimbo::new_err((p.to_string_lossy().to_string(),)),
             Error::MalformedTransform(conflicts) => {
-                MalformedTransform::new_err((Python::with_gil(|py| conflicts.to_object(py)),))
+                MalformedTransform::new_err((Python::with_gil(|py| {
+                    conflicts.into_pyobject(py).unwrap().unbind()
+                }),))
             }
             Error::TransformRenameFailed(from_path, to_path, why, error) => {
                 TransformRenameFailed::new_err((

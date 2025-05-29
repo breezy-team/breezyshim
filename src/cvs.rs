@@ -12,7 +12,7 @@ impl CVSProber {
     /// Create a new CVS prober instance.
     pub fn new() -> Option<Self> {
         Python::with_gil(|py| {
-            let m = match py.import_bound("breezy.plugins.cvs") {
+            let m = match py.import("breezy.plugins.cvs") {
                 Ok(m) => m,
                 Err(e) => {
                     if e.is_instance_of::<PyModuleNotFoundError>(py) {
@@ -24,20 +24,24 @@ impl CVSProber {
                 }
             };
             let cvsprober = m.getattr("CVSProber").expect("Failed to get CVSProber");
-            Some(Self(cvsprober.to_object(py)))
+            Some(Self(cvsprober.unbind()))
         })
     }
 }
 
 impl FromPyObject<'_> for CVSProber {
     fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(Self(obj.to_object(obj.py())))
+        Ok(Self(obj.clone().unbind()))
     }
 }
 
-impl ToPyObject for CVSProber {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.to_object(py)
+impl<'py> IntoPyObject<'py> for CVSProber {
+    type Target = PyAny;
+    type Output = Bound<'py, Self::Target>;
+    type Error = std::convert::Infallible;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(self.0.into_bound(py))
     }
 }
 
@@ -47,7 +51,11 @@ impl std::fmt::Debug for CVSProber {
     }
 }
 
-impl crate::controldir::PyProber for CVSProber {}
+impl crate::controldir::PyProber for CVSProber {
+    fn to_object(&self, py: Python) -> PyObject {
+        self.0.clone_ref(py)
+    }
+}
 
 #[cfg(test)]
 mod tests {

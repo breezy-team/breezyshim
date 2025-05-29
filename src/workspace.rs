@@ -57,7 +57,7 @@ pub fn reset_tree(
     subpath: Option<&std::path::Path>,
 ) -> Result<(), Error> {
     Python::with_gil(|py| {
-        let workspace_m = py.import_bound("breezy.workspace")?;
+        let workspace_m = py.import("breezy.workspace")?;
         let reset_tree = workspace_m.getattr("reset_tree")?;
         let local_tree: PyObject = local_tree.to_object(py);
         let basis_tree: Option<PyObject> = basis_tree.map(|o| o.to_object(py));
@@ -86,7 +86,7 @@ pub fn check_clean_tree(
     subpath: &std::path::Path,
 ) -> Result<(), Error> {
     Python::with_gil(|py| {
-        let workspace_m = py.import_bound("breezy.workspace")?;
+        let workspace_m = py.import("breezy.workspace")?;
         let check_clean_tree = workspace_m.getattr("check_clean_tree")?;
         let local_tree: PyObject = local_tree.to_object(py).clone_ref(py);
         let basis_tree: PyObject = basis_tree.to_object(py).clone_ref(py);

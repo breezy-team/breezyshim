@@ -12,15 +12,19 @@ import_exception!(breezy.errors, RevisionNotPresent);
 /// between revisions in a version control repository.
 pub struct Graph(PyObject);
 
-impl ToPyObject for Graph {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.to_object(py)
+impl<'py> IntoPyObject<'py> for Graph {
+    type Target = PyAny;
+    type Output = Bound<'py, Self::Target>;
+    type Error = std::convert::Infallible;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(self.0.into_bound(py))
     }
 }
 
 impl FromPyObject<'_> for Graph {
     fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(Graph(ob.to_object(ob.py())))
+        Ok(Graph(ob.clone().unbind()))
     }
 }
 
@@ -70,6 +74,11 @@ impl From<PyErr> for Error {
 }
 
 impl Graph {
+    /// Get the underlying PyObject.
+    pub(crate) fn as_pyobject(&self) -> &PyObject {
+        &self.0
+    }
+
     /// Check if one revision is an ancestor of another.
     ///
     /// # Arguments

@@ -3,6 +3,7 @@ use crate::error::Error;
 use crate::lock::Lock;
 use crate::revisionid::RevisionId;
 use pyo3::prelude::*;
+use pyo3::intern;
 
 /// Type alias for std::path::Path.
 pub type Path = std::path::Path;
@@ -59,14 +60,19 @@ impl std::str::FromStr for Kind {
     }
 }
 
-impl pyo3::ToPyObject for Kind {
-    fn to_object(&self, py: pyo3::Python) -> pyo3::PyObject {
-        match self {
-            Kind::File => "file".to_object(py),
-            Kind::Directory => "directory".to_object(py),
-            Kind::Symlink => "symlink".to_object(py),
-            Kind::TreeReference => "tree-reference".to_object(py),
-        }
+impl<'py> pyo3::IntoPyObject<'py> for Kind {
+    type Target = pyo3::PyAny;
+    type Output = pyo3::Bound<'py, Self::Target>;
+    type Error = std::convert::Infallible;
+
+    fn into_pyobject(self, py: pyo3::Python<'py>) -> Result<Self::Output, Self::Error> {
+        let s = match self {
+            Kind::File => "file",
+            Kind::Directory => "directory",
+            Kind::Symlink => "symlink",
+            Kind::TreeReference => "tree-reference",
+        };
+        Ok(pyo3::types::PyString::new(py, s).into_any())
     }
 }
 
@@ -241,14 +247,17 @@ pub trait Tree {
 /// Trait for Python tree objects that can be converted to and from Python objects.
 ///
 /// This trait is implemented by all tree types that wrap Python objects.
-pub trait PyTree: ToPyObject + std::any::Any {}
+pub trait PyTree: std::any::Any {
+    /// Get the underlying Python object for this tree.
+    fn to_object(&self, py: Python) -> PyObject;
+}
 
 impl<T: PyTree + ?Sized> Tree for T {
     fn get_tag_dict(&self) -> Result<std::collections::HashMap<String, RevisionId>, Error> {
         Python::with_gil(|py| {
             let branch = self.to_object(py).getattr(py, "branch")?;
             let tags = branch.getattr(py, "tags")?;
-            let tag_dict = tags.call_method0(py, "get_tag_dict")?;
+            let tag_dict = tags.call_method0(py, intern!(py, "get_tag_dict"))?;
             tag_dict.extract(py)
         })
         .map_err(|e: PyErr| -> Error { e.into() })
@@ -284,7 +293,7 @@ impl<T: PyTree + ?Sized> Tree for T {
 
     fn lock_read(&self) -> Result<Lock, Error> {
         Python::with_gil(|py| {
-            let lock = self.to_object(py).call_method0(py, "lock_read")?;
+            let lock = self.to_object(py).call_method0(py, intern!(py, "lock_read"))?;
             Ok(Lock::from(lock))
         })
     }
@@ -292,10 +301,9 @@ impl<T: PyTree + ?Sized> Tree for T {
     fn has_filename(&self, path: &Path) -> bool {
         Python::with_gil(|py| {
             self.to_object(py)
-                .call_method1(py, "has_filename", (path,))
-                .unwrap()
-                .extract(py)
-                .unwrap()
+                .call_method1(py, intern!(py, "has_filename"), (path,))
+                .and_then(|result| result.extract(py))
+                .unwrap_or(false)
         })
     }
 
@@ -312,7 +320,7 @@ impl<T: PyTree + ?Sized> Tree for T {
         Python::with_gil(|py| {
             Ok(self
                 .to_object(py)
-                .call_method0(py, "get_parent_ids")
+                .call_method0(py, intern!(py, "get_parent_ids"))
                 .unwrap()
                 .extract(py)?)
         })
@@ -356,7 +364,7 @@ impl<T: PyTree + ?Sized> Tree for T {
         require_versioned: Option<bool>,
     ) -> Result<Box<dyn Iterator<Item = Result<TreeChange, Error>>>, Error> {
         Python::with_gil(|py| {
-            let kwargs = pyo3::types::PyDict::new_bound(py);
+            let kwargs = pyo3::types::PyDict::new(py);
             if let Some(specific_files) = specific_files {
                 kwargs.set_item("specific_files", specific_files)?;
             }
@@ -373,7 +381,7 @@ impl<T: PyTree + ?Sized> Tree for T {
 
                 fn next(&mut self) -> Option<Self::Item> {
                     Python::with_gil(|py| {
-                        let next = match self.0.call_method0(py, "__next__") {
+                        let next = match self.0.call_method0(py, intern!(py, "__next__")) {
                             Ok(v) => v,
                             Err(e) => {
                                 if e.is_instance_of::<pyo3::exceptions::PyStopIteration>(py) {
@@ -392,14 +400,13 @@ impl<T: PyTree + ?Sized> Tree for T {
                 }
             }
 
-            Ok(
-                Box::new(TreeChangeIter(self.to_object(py).call_method_bound(
-                    py,
-                    "iter_changes",
-                    (other.to_object(py),),
-                    Some(&kwargs),
-                )?)) as Box<dyn Iterator<Item = Result<TreeChange, Error>>>,
-            )
+            Ok(Box::new(TreeChangeIter(self.to_object(py).call_method(
+                py,
+                "iter_changes",
+                (other.to_object(py),),
+                Some(&kwargs),
+            )?))
+                as Box<dyn Iterator<Item = Result<TreeChange, Error>>>)
         })
     }
 
@@ -429,7 +436,7 @@ impl<T: PyTree + ?Sized> Tree for T {
     ) -> Result<Box<dyn Iterator<Item = Result<(PathBuf, bool, Kind, TreeEntry), Error>>>, Error>
     {
         Python::with_gil(|py| {
-            let kwargs = pyo3::types::PyDict::new_bound(py);
+            let kwargs = pyo3::types::PyDict::new(py);
             if let Some(include_root) = include_root {
                 kwargs.set_item("include_root", include_root)?;
             }
@@ -449,7 +456,7 @@ impl<T: PyTree + ?Sized> Tree for T {
 
                 fn next(&mut self) -> Option<Self::Item> {
                     Python::with_gil(|py| {
-                        let next = match self.0.call_method0(py, "__next__") {
+                        let next = match self.0.call_method0(py, intern!(py, "__next__")) {
                             Ok(v) => v,
                             Err(e) => {
                                 if e.is_instance_of::<pyo3::exceptions::PyStopIteration>(py) {
@@ -468,7 +475,7 @@ impl<T: PyTree + ?Sized> Tree for T {
                 }
             }
 
-            Ok(Box::new(ListFilesIter(self.to_object(py).call_method_bound(
+            Ok(Box::new(ListFilesIter(self.to_object(py).call_method(
                 py,
                 "list_files",
                 (),
@@ -493,7 +500,7 @@ impl<T: PyTree + ?Sized> Tree for T {
 
                 fn next(&mut self) -> Option<Self::Item> {
                     Python::with_gil(|py| {
-                        let next = match self.0.call_method0(py, "__next__") {
+                        let next = match self.0.call_method0(py, intern!(py, "__next__")) {
                             Ok(v) => v,
                             Err(e) => {
                                 if e.is_instance_of::<pyo3::exceptions::PyStopIteration>(py) {
@@ -527,9 +534,13 @@ impl<T: PyTree + ?Sized> Tree for T {
 /// A generic tree implementation that wraps any Python tree object.
 pub struct GenericTree(PyObject);
 
-impl ToPyObject for GenericTree {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.clone_ref(py)
+impl<'py> IntoPyObject<'py> for GenericTree {
+    type Target = PyAny;
+    type Output = Bound<'py, Self::Target>;
+    type Error = std::convert::Infallible;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(self.0.into_bound(py))
     }
 }
 
@@ -539,7 +550,11 @@ impl From<PyObject> for GenericTree {
     }
 }
 
-impl PyTree for GenericTree {}
+impl PyTree for GenericTree {
+    fn to_object(&self, py: Python) -> PyObject {
+        self.0.clone_ref(py)
+    }
+}
 
 /// Trait for trees that support modification operations.
 pub trait MutableTree: Tree {
@@ -580,7 +595,7 @@ impl<T: PyMutableTree> MutableTree for T {
 
     fn lock_write(&self) -> Result<Lock, Error> {
         Python::with_gil(|py| {
-            let lock = self.to_object(py).call_method0(py, "lock_write")?;
+            let lock = self.to_object(py).call_method0(py, intern!(py, "lock_write"))?;
             Ok(Lock::from(lock))
         })
     }
@@ -635,13 +650,21 @@ impl<T: PyMutableTree> MutableTree for T {
 /// A read-only tree at a specific revision.
 pub struct RevisionTree(pub PyObject);
 
-impl ToPyObject for RevisionTree {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.to_object(py)
+impl<'py> IntoPyObject<'py> for RevisionTree {
+    type Target = PyAny;
+    type Output = Bound<'py, Self::Target>;
+    type Error = std::convert::Infallible;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(self.0.into_bound(py))
     }
 }
 
-impl PyTree for RevisionTree {}
+impl PyTree for RevisionTree {
+    fn to_object(&self, py: Python) -> PyObject {
+        self.0.clone_ref(py)
+    }
+}
 
 impl Clone for RevisionTree {
     fn clone(&self) -> Self {
@@ -673,7 +696,7 @@ impl RevisionTree {
     pub fn get_parent_ids(&self) -> Vec<RevisionId> {
         Python::with_gil(|py| {
             self.to_object(py)
-                .call_method0(py, "get_parent_ids")
+                .call_method0(py, intern!(py, "get_parent_ids"))
                 .unwrap()
                 .extract(py)
                 .unwrap()
@@ -700,18 +723,22 @@ pub struct TreeChange {
     pub copied: bool,
 }
 
-impl ToPyObject for TreeChange {
-    fn to_object(&self, py: Python) -> PyObject {
-        let dict = pyo3::types::PyDict::new_bound(py);
+impl<'py> IntoPyObject<'py> for TreeChange {
+    type Target = PyAny;
+    type Output = Bound<'py, Self::Target>;
+    type Error = std::convert::Infallible;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        let dict = pyo3::types::PyDict::new(py);
         dict.set_item("path", &self.path).unwrap();
         dict.set_item("changed_content", self.changed_content)
             .unwrap();
         dict.set_item("versioned", self.versioned).unwrap();
         dict.set_item("name", &self.name).unwrap();
-        dict.set_item("kind", &self.kind).unwrap();
+        dict.set_item("kind", self.kind.clone()).unwrap();
         dict.set_item("executable", self.executable).unwrap();
         dict.set_item("copied", self.copied).unwrap();
-        dict.into()
+        Ok(dict.into_any())
     }
 }
 
@@ -757,9 +784,13 @@ impl FromPyObject<'_> for TreeChange {
 /// An in-memory tree implementation.
 pub struct MemoryTree(pub PyObject);
 
-impl ToPyObject for MemoryTree {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.clone_ref(py)
+impl<'py> IntoPyObject<'py> for MemoryTree {
+    type Target = PyAny;
+    type Output = Bound<'py, Self::Target>;
+    type Error = std::convert::Infallible;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(self.0.into_bound(py))
     }
 }
 
@@ -778,7 +809,11 @@ impl<B: crate::branch::PyBranch> From<&B> for MemoryTree {
     }
 }
 
-impl PyTree for MemoryTree {}
+impl PyTree for MemoryTree {
+    fn to_object(&self, py: Python) -> PyObject {
+        self.0.clone_ref(py)
+    }
+}
 
 impl PyMutableTree for MemoryTree {}
 

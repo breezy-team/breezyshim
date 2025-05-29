@@ -24,7 +24,7 @@ pub fn get<S: crate::tree::PyTree, T: crate::tree::PyTree>(source: &S, target: &
         let target = target.to_object(py);
 
         let intertree_cls = py
-            .import_bound("breezy.tree")
+            .import("breezy.tree")
             .unwrap()
             .getattr("InterTree")
             .unwrap();
@@ -33,7 +33,7 @@ pub fn get<S: crate::tree::PyTree, T: crate::tree::PyTree>(source: &S, target: &
             intertree_cls
                 .call_method1("get", (source, target))
                 .unwrap()
-                .to_object(py),
+                .unbind(),
         )
     })
 }

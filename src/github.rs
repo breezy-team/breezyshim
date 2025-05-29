@@ -4,7 +4,7 @@ use pyo3::prelude::*;
 /// Retrieve a GitHub authentication token.
 pub fn retrieve_github_token() -> String {
     Python::with_gil(|py| {
-        let m = py.import_bound("breezy.plugins.github.forge").unwrap();
+        let m = py.import("breezy.plugins.github.forge").unwrap();
 
         let token = m.call_method0("retrieve_github_token").unwrap();
 
@@ -15,7 +15,7 @@ pub fn retrieve_github_token() -> String {
 /// Login to GitHub using saved credentials.
 pub fn login() -> PyResult<()> {
     Python::with_gil(|py| {
-        let m = py.import_bound("breezy.plugins.github.cmds").unwrap();
+        let m = py.import("breezy.plugins.github.cmds").unwrap();
         let cmd = m.getattr("cmd_github_login").unwrap();
 
         let cmd_gl = cmd.call0().unwrap();
