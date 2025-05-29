@@ -2,7 +2,6 @@
 use crate::branch::{py_tag_selector, Branch, GenericBranch, PyBranch};
 use crate::error::Error;
 use crate::revisionid::RevisionId;
-use pyo3::conversion::ToPyObject;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
@@ -86,9 +85,13 @@ impl std::fmt::Display for MergeProposalStatus {
     }
 }
 
-impl ToPyObject for MergeProposalStatus {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.to_string().to_object(py)
+impl<'py> IntoPyObject<'py> for MergeProposalStatus {
+    type Target = PyAny;
+    type Output = Bound<'py, Self::Target>;
+    type Error = std::convert::Infallible;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(self.to_string().into_pyobject(py).unwrap().into_any())
     }
 }
 
@@ -372,24 +375,27 @@ impl ProposalBuilder {
     pub fn build(self) -> Result<MergeProposal, crate::error::Error> {
         Python::with_gil(|py| {
             let kwargs = self.1;
-            let proposal =
-                self.0
-                    .call_method_bound(py, "create_proposal", (), Some(kwargs.bind(py)))?;
+            let proposal = self
+                .0
+                .call_method(py, "create_proposal", (), Some(kwargs.bind(py)))?;
             Ok(MergeProposal::from(proposal))
         })
     }
 }
 
 impl Forge {
+    fn to_object(&self, py: Python<'_>) -> &PyObject {
+        &self.0
+    }
     /// Retrieves a merge proposal by its URL.
     pub fn get_proposal_by_url(
         &self,
         url: &url::Url,
     ) -> Result<MergeProposal, crate::error::Error> {
         Python::with_gil(|py| {
-            let proposal =
-                self.to_object(py)
-                    .call_method1(py, "get_proposal_by_url", (url.as_str(),))?;
+            let proposal = self
+                .0
+                .call_method1(py, "get_proposal_by_url", (url.as_str(),))?;
             Ok(MergeProposal::from(proposal))
         })
     }
@@ -397,9 +403,10 @@ impl Forge {
     /// Returns the web URL for a given branch on this forge.
     pub fn get_web_url<B: PyBranch>(&self, branch: &B) -> Result<url::Url, crate::error::Error> {
         Python::with_gil(|py| {
-            let url = self
-                .to_object(py)
-                .call_method1(py, "get_web_url", (&branch.to_object(py),))?
+            let forge_obj = self.to_object(py);
+            let branch_obj = branch.to_object(py);
+            let url = forge_obj
+                .call_method1(py, "get_web_url", (&branch_obj,))?
                 .extract::<String>(py)
                 .unwrap();
             Ok(url.parse::<url::Url>().unwrap())
@@ -409,33 +416,19 @@ impl Forge {
     /// Returns the base URL of this forge.
     pub fn base_url(&self) -> url::Url {
         Python::with_gil(|py| {
-            let base_url = self.to_object(py).getattr(py, "base_url").unwrap();
+            let base_url = self.0.getattr(py, "base_url").unwrap();
             base_url.extract::<String>(py).unwrap().parse().unwrap()
         })
     }
 
     /// Returns the kind of forge (e.g., GitHub, GitLab).
     pub fn forge_kind(&self) -> String {
-        Python::with_gil(|py| {
-            self.to_object(py)
-                .bind(py)
-                .get_type()
-                .name()
-                .unwrap()
-                .to_string()
-        })
+        Python::with_gil(|py| self.0.bind(py).get_type().name().unwrap().to_string())
     }
 
     /// Returns the name of the forge.
     pub fn forge_name(&self) -> String {
-        Python::with_gil(|py| {
-            self.to_object(py)
-                .bind(py)
-                .get_type()
-                .name()
-                .unwrap()
-                .to_string()
-        })
+        Python::with_gil(|py| self.0.bind(py).get_type().name().unwrap().to_string())
     }
 
     /// Returns the format used for merge proposal descriptions on this forge.
@@ -489,13 +482,15 @@ impl Forge {
         to_branch: &B2,
     ) -> Result<ProposalBuilder, crate::error::Error> {
         Python::with_gil(|py| {
+            let from_branch_obj = from_branch.to_object(py);
+            let to_branch_obj = to_branch.to_object(py);
             Ok(ProposalBuilder(
                 self.0.call_method1(
                     py,
                     "get_proposer",
-                    (from_branch.to_object(py), to_branch.to_object(py)),
+                    (from_branch_obj, to_branch_obj),
                 )?,
-                PyDict::new_bound(py).into(),
+                PyDict::new(py).into(),
             ))
         })
     }
@@ -509,17 +504,12 @@ impl Forge {
         let ret: Vec<MergeProposal> =
             Python::with_gil(|py| -> Result<Vec<MergeProposal>, Error> {
                 Ok(self
-                    .to_object(py)
-                    .call_method_bound(
-                        py,
-                        "iter_my_proposals",
-                        (status.to_object(py), author),
-                        None,
-                    )?
+                    .0
+                    .call_method(py, "iter_my_proposals", (status, author), None)?
                     .bind(py)
-                    .iter()
+                    .try_iter()
                     .unwrap()
-                    .map(|proposal| MergeProposal::from(proposal.unwrap().to_object(py)))
+                    .map(|proposal| MergeProposal::from(proposal.unwrap().unbind()))
                     .collect())
             })?;
         Ok(ret.into_iter())
@@ -534,14 +524,14 @@ impl Forge {
         preferred_schemes: Option<&[&str]>,
     ) -> Result<Box<dyn Branch>, crate::error::Error> {
         Python::with_gil(|py| {
-            let kwargs = PyDict::new_bound(py);
+            let kwargs = PyDict::new(py);
             if let Some(owner) = owner {
                 kwargs.set_item("owner", owner)?;
             }
             if let Some(preferred_schemes) = preferred_schemes {
                 kwargs.set_item("preferred_schemes", preferred_schemes)?;
             }
-            let branch = self.to_object(py).call_method_bound(
+            let branch = self.0.call_method(
                 py,
                 "get_derived_branch",
                 (main_branch.to_object(py), name),
@@ -559,14 +549,16 @@ impl Forge {
         status: MergeProposalStatus,
     ) -> Result<impl Iterator<Item = MergeProposal>, crate::error::Error> {
         Python::with_gil(move |py| {
-            let kwargs = PyDict::new_bound(py);
+            let kwargs = PyDict::new(py);
+            let source_branch_obj = source_branch.to_object(py);
+            let target_branch_obj = target_branch.to_object(py);
             kwargs.set_item("status", status.to_string())?;
             let proposal_iter: PyObject = self
                 .0
-                .call_method_bound(
+                .call_method(
                     py,
                     "iter_proposals",
-                    (&source_branch.to_object(py), &target_branch.to_object(py)),
+                    (&source_branch_obj, &target_branch_obj),
                     Some(&kwargs),
                 )?
                 .extract(py)?;
@@ -602,9 +594,13 @@ impl Forge {
         tag_selector: Option<Box<dyn Fn(String) -> bool>>,
     ) -> Result<(Box<dyn Branch>, url::Url), crate::error::Error> {
         Python::with_gil(|py| {
-            let kwargs = PyDict::new_bound(py);
-            kwargs.set_item("local_branch", local_branch.to_object(py))?;
-            kwargs.set_item("base_branch", base_branch.to_object(py))?;
+            let kwargs = PyDict::new(py);
+            let local_branch_obj = local_branch.to_object(py);
+            let base_branch_obj = base_branch.to_object(py);
+            let forge_obj = self.to_object(py);
+            
+            kwargs.set_item("local_branch", local_branch_obj)?;
+            kwargs.set_item("base_branch", base_branch_obj)?;
             kwargs.set_item("name", name)?;
             if let Some(overwrite) = overwrite {
                 kwargs.set_item("overwrite", overwrite)?;
@@ -613,14 +609,13 @@ impl Forge {
                 kwargs.set_item("owner", owner)?;
             }
             if let Some(revision_id) = revision_id {
-                kwargs.set_item("revision_id", revision_id)?;
+                kwargs.set_item("revision_id", revision_id.clone())?;
             }
             if let Some(tag_selector) = tag_selector {
                 kwargs.set_item("tag_selector", py_tag_selector(py, tag_selector)?)?;
             }
-            let (b, u): (PyObject, String) = self
-                .to_object(py)
-                .call_method_bound(py, "publish_derived", (), Some(&kwargs))?
+            let (b, u): (PyObject, String) = forge_obj
+                .call_method(py, "publish_derived", (), Some(&kwargs))?
                 .extract(py)?;
             Ok((
                 Box::new(GenericBranch::from(b)) as Box<dyn Branch>,
@@ -632,9 +627,10 @@ impl Forge {
     /// Returns the URL for pushing to a branch on this forge.
     pub fn get_push_url(&self, branch: &dyn PyBranch) -> url::Url {
         Python::with_gil(|py| {
-            let url = self
-                .to_object(py)
-                .call_method1(py, "get_push_url", (&branch.to_object(py),))
+            let forge_obj = self.to_object(py);
+            let branch_obj = branch.to_object(py);
+            let url = forge_obj
+                .call_method1(py, "get_push_url", (&branch_obj,))
                 .unwrap()
                 .extract::<String>(py)
                 .unwrap();
@@ -688,38 +684,42 @@ impl std::fmt::Display for Forge {
 
 impl FromPyObject<'_> for Forge {
     fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(Forge(ob.to_object(ob.py())))
+        Ok(Forge(ob.clone().unbind()))
     }
 }
 
-impl ToPyObject for Forge {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.to_object(py)
+impl<'py> IntoPyObject<'py> for Forge {
+    type Target = PyAny;
+    type Output = Bound<'py, Self::Target>;
+    type Error = std::convert::Infallible;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(self.0.into_bound(py))
     }
 }
 
 /// Returns the forge associated with the given branch.
 pub fn get_forge(branch: &dyn PyBranch) -> Result<Forge, Error> {
     Python::with_gil(|py| {
-        let m = py.import_bound("breezy.forge").unwrap();
+        let m = py.import("breezy.forge").unwrap();
         let forge = m.call_method1("get_forge", (branch.to_object(py),))?;
-        Ok(Forge(forge.to_object(py)))
+        Ok(Forge(forge.unbind()))
     })
 }
 
 /// Returns a forge instance for the given hostname.
 pub fn get_forge_by_hostname(hostname: &str) -> Result<Forge, Error> {
     Python::with_gil(|py| {
-        let m = py.import_bound("breezy.forge").unwrap();
+        let m = py.import("breezy.forge").unwrap();
         let forge = m.call_method1("get_forge_by_hostname", (hostname,))?;
-        Ok(Forge(forge.to_object(py)))
+        Ok(Forge(forge.unbind()))
     })
 }
 
 /// Extracts a title from a description text.
 pub fn determine_title(description: &str) -> Result<String, String> {
     Python::with_gil(|py| {
-        let m = py.import_bound("breezy.forge").unwrap();
+        let m = py.import("breezy.forge").unwrap();
         let title = match m.call_method1("determine_title", (description,)) {
             Ok(title) => title,
             Err(e) => return Err(e.to_string()),
@@ -734,13 +734,13 @@ pub fn determine_title(description: &str) -> Result<String, String> {
 /// Returns an iterator over all available forge instances.
 pub fn iter_forge_instances() -> impl Iterator<Item = Forge> {
     let ret = Python::with_gil(|py| {
-        let m = py.import_bound("breezy.forge").unwrap();
+        let m = py.import("breezy.forge").unwrap();
         let f = m.getattr("iter_forge_instances").unwrap();
         let instances = f.call0().unwrap();
         instances
-            .iter()
+            .try_iter()
             .unwrap()
-            .map(|i| Forge(i.unwrap().to_object(py)))
+            .map(|i| Forge(i.unwrap().unbind()))
             .collect::<Vec<_>>()
     });
     ret.into_iter()
@@ -749,7 +749,7 @@ pub fn iter_forge_instances() -> impl Iterator<Item = Forge> {
 /// Creates a new project on a forge with the given name and optional summary.
 pub fn create_project(name: &str, summary: Option<&str>) -> Result<(), Error> {
     Python::with_gil(|py| {
-        let m = py.import_bound("breezy.forge").unwrap();
+        let m = py.import("breezy.forge").unwrap();
         m.call_method1("create_project", (name, summary))?;
         Ok(())
     })
@@ -758,9 +758,9 @@ pub fn create_project(name: &str, summary: Option<&str>) -> Result<(), Error> {
 /// Retrieves a merge proposal by its URL.
 pub fn get_proposal_by_url(url: &url::Url) -> Result<MergeProposal, Error> {
     Python::with_gil(|py| {
-        let m = py.import_bound("breezy.forge").unwrap();
+        let m = py.import("breezy.forge").unwrap();
         let proposal = m.call_method1("get_proposal_by_url", (url.to_string(),))?;
-        Ok(MergeProposal::from(proposal.to_object(py)))
+        Ok(MergeProposal::from(proposal.unbind()))
     })
 }
 

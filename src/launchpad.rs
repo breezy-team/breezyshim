@@ -8,7 +8,7 @@ use pyo3::prelude::*;
 /// subsequent API calls to be made with the authenticated user's credentials.
 pub fn login(url: &url::Url) {
     Python::with_gil(|py| -> PyResult<()> {
-        let m = py.import_bound("breezy.plugins.launchpad.cmds")?;
+        let m = py.import("breezy.plugins.launchpad.cmds")?;
         let cmd = m.getattr("cmd_launchpad_login")?;
 
         let cmd_lp = cmd.call0()?;
@@ -16,7 +16,7 @@ pub fn login(url: &url::Url) {
 
         cmd_lp.call_method1("run", (url.as_str(),))?;
 
-        let lp_api = py.import_bound("breezy.plugins.launchpad.lp_api")?;
+        let lp_api = py.import("breezy.plugins.launchpad.lp_api")?;
 
         // The original code extracted a service root like this:
         let lp_uris = lp_api
@@ -33,7 +33,7 @@ pub fn login(url: &url::Url) {
             .1
             .clone();
 
-        let kwargs = pyo3::types::PyDict::new_bound(py);
+        let kwargs = pyo3::types::PyDict::new(py);
         kwargs.set_item("version", "devel")?;
         lp_api.call_method("connect_launchpad", (lp_service_root,), Some(&kwargs))?;
         Ok(())

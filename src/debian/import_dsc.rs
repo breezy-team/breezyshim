@@ -15,7 +15,7 @@ use std::{collections::HashMap, path::Path, path::PathBuf};
 /// used when importing Debian source packages.
 pub struct DistributionBranchSet(PyObject);
 
-impl ToPyObject for DistributionBranchSet {
+impl<'py> IntoPyObject<'py> for DistributionBranchSet {
     fn to_object(&self, py: Python) -> PyObject {
         self.0.clone_ref(py)
     }
@@ -25,7 +25,7 @@ impl DistributionBranchSet {
     /// Create a new DistributionBranchSet instance.
     pub fn new() -> Self {
         Python::with_gil(|py| {
-            let m = py.import_bound("breezy.plugins.debian.import_dsc").unwrap();
+            let m = py.import("breezy.plugins.debian.import_dsc").unwrap();
             let ctr = m.getattr("DistributionBranchSet").unwrap();
             DistributionBranchSet(ctr.call0().unwrap().into())
         })
@@ -50,7 +50,7 @@ impl DistributionBranchSet {
 /// into version control.
 pub struct DistributionBranch(PyObject);
 
-impl ToPyObject for DistributionBranch {
+impl<'py> IntoPyObject<'py> for DistributionBranch {
     fn to_object(&self, py: Python) -> PyObject {
         self.0.clone_ref(py)
     }
@@ -74,7 +74,7 @@ impl DistributionBranch {
         pristine_upstream_tree: Option<&dyn PyTree>,
     ) -> Self {
         Python::with_gil(|py| {
-            let m = py.import_bound("breezy.plugins.debian.import_dsc").unwrap();
+            let m = py.import("breezy.plugins.debian.import_dsc").unwrap();
             let ctr = m.getattr("DistributionBranch").unwrap();
             DistributionBranch(
                 ctr.call1((

@@ -13,10 +13,15 @@ impl Transport {
         Transport(obj)
     }
 
+    /// Get the underlying PyObject.
+    pub(crate) fn as_pyobject(&self) -> &PyObject {
+        &self.0
+    }
+
     /// Get the base URL of this transport.
     pub fn base(&self) -> url::Url {
         pyo3::Python::with_gil(|py| {
-            self.to_object(py)
+            self.as_pyobject()
                 .getattr(py, "base")
                 .unwrap()
                 .extract::<String>(py)
@@ -87,20 +92,24 @@ impl Transport {
     pub fn clone(&self, path: &str) -> Result<Transport, Error> {
         pyo3::Python::with_gil(|py| {
             let o = self.0.call_method1(py, "clone", (path,))?;
-            Ok(Transport(o.to_object(py)))
+            Ok(Transport(o))
         })
     }
 }
 
 impl FromPyObject<'_> for Transport {
     fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(Transport(obj.to_object(obj.py())))
+        Ok(Transport(obj.clone().unbind()))
     }
 }
 
-impl ToPyObject for Transport {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.to_object(py)
+impl<'py> IntoPyObject<'py> for Transport {
+    type Target = PyAny;
+    type Output = Bound<'py, Self::Target>;
+    type Error = std::convert::Infallible;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(self.0.into_bound(py))
     }
 }
 
@@ -114,8 +123,8 @@ pub fn get_transport(
     possible_transports: Option<&mut Vec<Transport>>,
 ) -> Result<Transport, Error> {
     pyo3::Python::with_gil(|py| {
-        let urlutils = py.import_bound("breezy.transport").unwrap();
-        let kwargs = PyDict::new_bound(py);
+        let urlutils = py.import("breezy.transport").unwrap();
+        let kwargs = PyDict::new(py);
         kwargs.set_item(
             "possible_transports",
             possible_transports.map(|t| {
@@ -125,6 +134,6 @@ pub fn get_transport(
             }),
         )?;
         let o = urlutils.call_method("get_transport", (url.to_string(),), Some(&kwargs))?;
-        Ok(Transport(o.to_object(py)))
+        Ok(Transport(o.unbind()))
     })
 }

@@ -55,14 +55,17 @@ impl From<PyErr> for Error {
 pub struct GPGStrategy(PyObject);
 
 impl GPGStrategy {
+    fn to_object(&self, py: Python<'_>) -> &PyObject {
+        &self.0
+    }
     /// Create a new GPG strategy with the given branch configuration.
     pub fn new(branch_config: &crate::config::BranchConfig) -> Self {
         Python::with_gil(|py| {
-            let gpg = PyModule::import_bound(py, "breezy.gpg").unwrap();
+            let gpg = PyModule::import(py, "breezy.gpg").unwrap();
             let gpg_strategy = gpg.getattr("GPGStrategy").unwrap();
-            let branch_config = branch_config.to_object(py);
+            let branch_config = branch_config.clone().into_pyobject(py).unwrap().unbind();
             let strategy = gpg_strategy.call1((branch_config,)).unwrap();
-            GPGStrategy(strategy.to_object(py))
+            GPGStrategy(strategy.unbind())
         })
     }
 
@@ -76,15 +79,19 @@ impl GPGStrategy {
     }
 }
 
-impl ToPyObject for GPGStrategy {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.to_object(py)
+impl<'py> IntoPyObject<'py> for GPGStrategy {
+    type Target = PyAny;
+    type Output = Bound<'py, Self::Target>;
+    type Error = std::convert::Infallible;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(self.0.into_bound(py))
     }
 }
 
 impl FromPyObject<'_> for GPGStrategy {
     fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(GPGStrategy(ob.to_object(ob.py())))
+        Ok(GPGStrategy(ob.clone().unbind()))
     }
 }
 
@@ -158,12 +165,15 @@ pub fn bulk_verify_signatures<R: PyRepository>(
     strategy: &GPGStrategy,
 ) -> Result<Vec<(RevisionId, VerificationResult)>, Error> {
     Python::with_gil(|py| {
-        let gpg = PyModule::import_bound(py, "breezy.gpg").unwrap();
+        let gpg = PyModule::import(py, "breezy.gpg").unwrap();
         let bulk_verify_signatures = gpg.getattr("bulk_verify_signatures").unwrap();
         let r = bulk_verify_signatures
             .call1((
                 repository.to_object(py),
-                revids.iter().map(|r| r.to_object(py)).collect::<Vec<_>>(),
+                revids
+                    .iter()
+                    .map(|r| (*r).clone().into_pyobject(py).unwrap())
+                    .collect::<Vec<_>>(),
                 strategy.to_object(py),
             ))
             .map_err(|e| -> Error { e.into() })
@@ -213,10 +223,10 @@ impl GPGContext {
     /// Create a new GPG context.
     pub fn new() -> Self {
         Python::with_gil(|py| {
-            let gpg = PyModule::import_bound(py, "gpg").unwrap();
+            let gpg = PyModule::import(py, "gpg").unwrap();
             let gpg_context = gpg.getattr("Context").unwrap();
             let context = gpg_context.call0().unwrap();
-            GPGContext(context.to_object(py))
+            GPGContext(context.unbind())
         })
     }
 

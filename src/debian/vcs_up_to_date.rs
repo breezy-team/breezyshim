@@ -57,7 +57,7 @@ pub fn check_up_to_date(
     );
     import_exception!(breezy.plugins.debian.vcs_up_to_date, NewArchiveVersion);
     Python::with_gil(|py| {
-        let m = py.import_bound("breezy.plugins.debian.vcs_up_to_date")?;
+        let m = py.import("breezy.plugins.debian.vcs_up_to_date")?;
         let check_up_to_date = m.getattr("check_up_to_date")?;
         match check_up_to_date.call1((
             tree.to_object(py),

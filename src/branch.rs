@@ -15,17 +15,25 @@ use crate::lock::Lock;
 use crate::repository::{GenericRepository, PyRepository, Repository};
 use crate::revisionid::RevisionId;
 use pyo3::prelude::*;
+use pyo3::intern;
 use pyo3::types::PyDict;
 
 /// Format of a branch in a version control system.
 ///
 /// This struct represents the format of a branch, which defines its capabilities
 /// and constraints.
+#[derive(Debug)]
 pub struct BranchFormat(PyObject);
 
 impl Clone for BranchFormat {
     fn clone(&self) -> Self {
         Python::with_gil(|py| BranchFormat(self.0.clone_ref(py)))
+    }
+}
+
+impl BranchFormat {
+    pub(crate) fn as_bound<'py>(&self, py: Python<'py>) -> Bound<'py, PyAny> {
+        self.0.bind(py).clone()
     }
 }
 
@@ -255,12 +263,16 @@ pub trait Branch {
     ///
     /// `Ok(())` on success, or an error if the history could not be generated.
     fn generate_revision_history(&self, last_revision: &RevisionId) -> Result<(), Error>;
+
 }
 
 /// Trait for branches that wrap Python branch objects.
 ///
 /// This trait is implemented by branch types that wrap Breezy's Python branch objects.
-pub trait PyBranch: ToPyObject + Send + std::any::Any {}
+pub trait PyBranch: Send + std::any::Any {
+    /// Get the underlying Python object.
+    fn to_object(&self, py: Python<'_>) -> PyObject;
+}
 
 impl<T: PyBranch> Branch for T {
     fn format(&self) -> BranchFormat {
@@ -284,7 +296,7 @@ impl<T: PyBranch> Branch for T {
     fn lock_read(&self) -> Result<Lock, crate::error::Error> {
         Python::with_gil(|py| {
             Ok(Lock::from(
-                self.to_object(py).call_method0(py, "lock_read")?,
+                self.to_object(py).call_method0(py, intern!(py, "lock_read"))?,
             ))
         })
     }
@@ -292,7 +304,7 @@ impl<T: PyBranch> Branch for T {
     fn lock_write(&self) -> Result<Lock, crate::error::Error> {
         Python::with_gil(|py| {
             Ok(Lock::from(
-                self.to_object(py).call_method0(py, "lock_write")?,
+                self.to_object(py).call_method0(py, intern!(py, "lock_write"))?,
             ))
         })
     }
@@ -314,7 +326,7 @@ impl<T: PyBranch> Branch for T {
     fn last_revision(&self) -> RevisionId {
         Python::with_gil(|py| {
             self.to_object(py)
-                .call_method0(py, "last_revision")
+                .call_method0(py, intern!(py, "last_revision"))
                 .unwrap()
                 .extract(py)
                 .unwrap()
@@ -359,6 +371,7 @@ impl<T: PyBranch> Branch for T {
         })
     }
 
+
     fn push(
         &self,
         remote_branch: &dyn PyBranch,
@@ -367,15 +380,15 @@ impl<T: PyBranch> Branch for T {
         tag_selector: Option<Box<dyn Fn(String) -> bool>>,
     ) -> Result<(), crate::error::Error> {
         Python::with_gil(|py| {
-            let kwargs = PyDict::new_bound(py);
+            let kwargs = PyDict::new(py);
             kwargs.set_item("overwrite", overwrite)?;
             if let Some(stop_revision) = stop_revision {
-                kwargs.set_item("stop_revision", stop_revision)?;
+                kwargs.set_item("stop_revision", stop_revision.clone())?;
             }
             if let Some(tag_selector) = tag_selector {
                 kwargs.set_item("tag_selector", py_tag_selector(py, tag_selector)?)?;
             }
-            self.to_object(py).call_method_bound(
+            self.to_object(py).call_method(
                 py,
                 "push",
                 (&remote_branch.to_object(py),),
@@ -387,11 +400,11 @@ impl<T: PyBranch> Branch for T {
 
     fn pull(&self, source_branch: &dyn PyBranch, overwrite: Option<bool>) -> Result<(), Error> {
         Python::with_gil(|py| {
-            let kwargs = PyDict::new_bound(py);
+            let kwargs = PyDict::new(py);
             if let Some(overwrite) = overwrite {
                 kwargs.set_item("overwrite", overwrite)?;
             }
-            self.to_object(py).call_method_bound(
+            self.to_object(py).call_method(
                 py,
                 "pull",
                 (&source_branch.to_object(py),),
@@ -477,9 +490,9 @@ impl<T: PyBranch> Branch for T {
 
     fn sprout(&self, to_controldir: &dyn PyControlDir, to_branch_name: &str) -> Result<(), Error> {
         Python::with_gil(|py| {
-            let kwargs = PyDict::new_bound(py);
+            let kwargs = PyDict::new(py);
             kwargs.set_item("name", to_branch_name)?;
-            self.to_object(py).call_method_bound(
+            self.to_object(py).call_method(
                 py,
                 "sprout",
                 (to_controldir.to_object(py),),
@@ -510,7 +523,7 @@ impl<T: PyBranch> Branch for T {
             self.to_object(py).call_method1(
                 py,
                 "generate_revision_history",
-                (last_revision.to_object(py),),
+                (last_revision.clone().into_pyobject(py).unwrap(),),
             )?;
             Ok(())
         })
@@ -529,23 +542,31 @@ impl Clone for GenericBranch {
     }
 }
 
-impl PyBranch for GenericBranch {}
+impl PyBranch for GenericBranch {
+    fn to_object(&self, py: Python<'_>) -> PyObject {
+        self.0.clone_ref(py)
+    }
+}
 
-impl ToPyObject for GenericBranch {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.to_object(py)
+impl<'py> IntoPyObject<'py> for GenericBranch {
+    type Target = PyAny;
+    type Output = Bound<'py, Self::Target>;
+    type Error = std::convert::Infallible;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(self.0.into_bound(py))
     }
 }
 
 impl FromPyObject<'_> for GenericBranch {
     fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(GenericBranch(ob.to_object(ob.py())))
+        Ok(GenericBranch(ob.clone().unbind()))
     }
 }
 
 impl<'py> From<Bound<'py, PyAny>> for GenericBranch {
     fn from(ob: Bound<PyAny>) -> Self {
-        GenericBranch(ob.to_object(ob.py()))
+        GenericBranch(ob.unbind())
     }
 }
 
@@ -567,13 +588,11 @@ impl Clone for MemoryBranch {
     }
 }
 
-impl ToPyObject for MemoryBranch {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.to_object(py)
+impl PyBranch for MemoryBranch {
+    fn to_object(&self, py: Python<'_>) -> PyObject {
+        self.0.clone_ref(py)
     }
 }
-
-impl PyBranch for MemoryBranch {}
 
 impl MemoryBranch {
     /// Create a new MemoryBranch.
@@ -590,7 +609,7 @@ impl MemoryBranch {
     pub fn new<R: PyRepository>(repository: &R, revno: Option<u32>, revid: &RevisionId) -> Self {
         Python::with_gil(|py| {
             let mb_cls = py
-                .import_bound("breezy.memorybranch")
+                .import("breezy.memorybranch")
                 .unwrap()
                 .getattr("MemoryBranch")
                 .unwrap();
@@ -599,7 +618,7 @@ impl MemoryBranch {
                 .call1((repository.to_object(py), (revno, revid.clone())))
                 .unwrap();
 
-            MemoryBranch(o.to_object(py))
+            MemoryBranch(o.unbind())
         })
     }
 }
@@ -617,7 +636,11 @@ pub(crate) fn py_tag_selector(
             (self.0)(tag)
         }
     }
-    Ok(PyTagSelector(tag_selector).into_py(py))
+    Ok(PyTagSelector(tag_selector)
+        .into_pyobject(py)
+        .unwrap()
+        .unbind()
+        .into())
 }
 
 /// Open a branch at the specified URL.
@@ -631,7 +654,7 @@ pub(crate) fn py_tag_selector(
 /// The opened branch, or an error if the branch could not be opened.
 pub fn open(url: &url::Url) -> Result<Box<dyn Branch>, Error> {
     Python::with_gil(|py| {
-        let m = py.import_bound("breezy.branch").unwrap();
+        let m = py.import("breezy.branch").unwrap();
         let c = m.getattr("Branch").unwrap();
         let r = c.call_method1("open", (url.to_string(),))?;
         Ok(Box::new(GenericBranch::from(r)) as Box<dyn Branch>)
@@ -653,17 +676,14 @@ pub fn open(url: &url::Url) -> Result<Box<dyn Branch>, Error> {
 /// the specified URL, or an error if no branch could be found.
 pub fn open_containing(url: &url::Url) -> Result<(Box<dyn Branch>, String), Error> {
     Python::with_gil(|py| {
-        let m = py.import_bound("breezy.branch").unwrap();
+        let m = py.import("breezy.branch").unwrap();
         let c = m.getattr("Branch").unwrap();
 
         let (b, p): (Bound<PyAny>, String) = c
             .call_method1("open_containing", (url.to_string(),))?
             .extract()?;
 
-        Ok((
-            Box::new(GenericBranch(b.to_object(py))) as Box<dyn Branch>,
-            p,
-        ))
+        Ok((Box::new(GenericBranch(b.unbind())) as Box<dyn Branch>, p))
     })
 }
 
@@ -680,10 +700,10 @@ pub fn open_from_transport(
     transport: &crate::transport::Transport,
 ) -> Result<Box<dyn Branch>, Error> {
     Python::with_gil(|py| {
-        let m = py.import_bound("breezy.branch").unwrap();
+        let m = py.import("breezy.branch").unwrap();
         let c = m.getattr("Branch").unwrap();
-        let r = c.call_method1("open_from_transport", (transport.to_object(py),))?;
-        Ok(Box::new(GenericBranch(r.to_object(py))) as Box<dyn Branch>)
+        let r = c.call_method1("open_from_transport", (transport.as_pyobject(),))?;
+        Ok(Box::new(GenericBranch(r.unbind())) as Box<dyn Branch>)
     })
 }
 

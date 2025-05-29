@@ -15,9 +15,13 @@ impl From<PyObject> for Lock {
     }
 }
 
-impl ToPyObject for Lock {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.to_object(py)
+impl<'py> IntoPyObject<'py> for Lock {
+    type Target = PyAny;
+    type Output = Bound<'py, Self::Target>;
+    type Error = std::convert::Infallible;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(self.0.clone_ref(py).into_bound(py))
     }
 }
 

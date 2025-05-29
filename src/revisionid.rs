@@ -11,7 +11,7 @@ pub struct RevisionId(Vec<u8>);
 
 impl std::fmt::Debug for RevisionId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = String::from_utf8(self.0.clone()).unwrap();
+        let s = String::from_utf8_lossy(&self.0);
         write!(f, "{}", s)
     }
 }
@@ -116,7 +116,7 @@ impl Serialize for RevisionId {
     where
         S: Serializer,
     {
-        serializer.serialize_str(String::from_utf8(self.0.clone()).unwrap().as_str())
+        serializer.serialize_str(&String::from_utf8_lossy(&self.0))
     }
 }
 
@@ -136,21 +136,22 @@ impl FromPyObject<'_> for RevisionId {
     }
 }
 
-impl ToPyObject for RevisionId {
-    fn to_object(&self, py: Python) -> PyObject {
-        pyo3::types::PyBytes::new_bound(py, &self.0).to_object(py)
+impl<'py> IntoPyObject<'py> for RevisionId {
+    type Target = PyAny;
+    type Output = Bound<'py, Self::Target>;
+    type Error = std::convert::Infallible;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(pyo3::types::PyBytes::new(py, &self.0).into_any())
     }
 }
 
-impl IntoPy<PyObject> for RevisionId {
-    fn into_py(self, py: Python) -> PyObject {
-        pyo3::types::PyBytes::new_bound(py, self.0.as_slice()).to_object(py)
-    }
-}
+// IntoPy is replaced by IntoPyObject in PyO3 0.25
+// The IntoPyObject implementation above handles the conversion
 
 impl std::fmt::Display for RevisionId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = String::from_utf8(self.0.clone()).unwrap();
+        let s = String::from_utf8_lossy(&self.0);
         write!(f, "{}", s)
     }
 }

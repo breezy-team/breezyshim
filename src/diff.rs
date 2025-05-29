@@ -22,12 +22,12 @@ pub fn show_diff_trees<T: crate::tree::PyTree, U: crate::tree::PyTree>(
     new_label: Option<&str>,
 ) -> Result<(), crate::error::Error> {
     Python::with_gil(|py| -> PyResult<()> {
-        let m = py.import_bound("breezy.diff")?;
+        let m = py.import("breezy.diff")?;
         let f = m.getattr("show_diff_trees")?;
 
-        let o = py.import_bound("io")?.call_method0("BytesIO")?;
+        let o = py.import("io")?.call_method0("BytesIO")?;
 
-        let kwargs = PyDict::new_bound(py);
+        let kwargs = PyDict::new(py);
         if let Some(old_label) = old_label {
             kwargs.set_item("old_label", old_label)?;
         }

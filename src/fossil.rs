@@ -12,7 +12,7 @@ impl RemoteFossilProber {
     /// Create a new RemoteFossilProber, returning None if the Fossil plugin is not available.
     pub fn new() -> Option<Self> {
         Python::with_gil(|py| {
-            let m = match py.import_bound("breezy.plugins.fossil") {
+            let m = match py.import("breezy.plugins.fossil") {
                 Ok(m) => m,
                 Err(e) => {
                     if e.is_instance_of::<PyModuleNotFoundError>(py) {
@@ -26,20 +26,24 @@ impl RemoteFossilProber {
             let prober = m
                 .getattr("RemoteFossilProber")
                 .expect("Failed to get RemoteFossilProber");
-            Some(Self(prober.to_object(py)))
+            Some(Self(prober.unbind()))
         })
     }
 }
 
 impl FromPyObject<'_> for RemoteFossilProber {
     fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(Self(obj.to_object(obj.py())))
+        Ok(Self(obj.clone().unbind()))
     }
 }
 
-impl ToPyObject for RemoteFossilProber {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.to_object(py)
+impl<'py> IntoPyObject<'py> for RemoteFossilProber {
+    type Target = PyAny;
+    type Output = Bound<'py, Self::Target>;
+    type Error = std::convert::Infallible;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(self.0.into_bound(py))
     }
 }
 
@@ -49,7 +53,11 @@ impl std::fmt::Debug for RemoteFossilProber {
     }
 }
 
-impl crate::controldir::PyProber for RemoteFossilProber {}
+impl crate::controldir::PyProber for RemoteFossilProber {
+    fn to_object(&self, py: Python) -> PyObject {
+        self.0.clone_ref(py)
+    }
+}
 
 #[cfg(test)]
 mod tests {

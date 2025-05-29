@@ -21,7 +21,7 @@ impl SmartHgProber {
     /// None otherwise.
     pub fn new() -> Option<Self> {
         Python::with_gil(|py| {
-            let m = match py.import_bound("breezy.plugins.hg") {
+            let m = match py.import("breezy.plugins.hg") {
                 Ok(m) => m,
                 Err(e) => {
                     if e.is_instance_of::<PyModuleNotFoundError>(py) {
@@ -35,20 +35,24 @@ impl SmartHgProber {
             let prober = m
                 .getattr("SmartHgProber")
                 .expect("Failed to get SmartHgProber");
-            Some(Self(prober.to_object(py)))
+            Some(Self(prober.unbind()))
         })
     }
 }
 
 impl FromPyObject<'_> for SmartHgProber {
     fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(Self(obj.to_object(obj.py())))
+        Ok(Self(obj.clone().unbind()))
     }
 }
 
-impl ToPyObject for SmartHgProber {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.to_object(py)
+impl<'py> IntoPyObject<'py> for SmartHgProber {
+    type Target = PyAny;
+    type Output = Bound<'py, Self::Target>;
+    type Error = std::convert::Infallible;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(self.0.into_bound(py))
     }
 }
 
@@ -58,7 +62,11 @@ impl std::fmt::Debug for SmartHgProber {
     }
 }
 
-impl crate::controldir::PyProber for SmartHgProber {}
+impl crate::controldir::PyProber for SmartHgProber {
+    fn to_object(&self, py: Python) -> PyObject {
+        self.0.clone_ref(py)
+    }
+}
 
 #[cfg(test)]
 mod tests {

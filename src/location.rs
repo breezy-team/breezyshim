@@ -13,7 +13,7 @@ use url::Url;
 /// A URL representing the CVS repository location
 pub fn cvs_to_url(cvsroot: &str) -> Url {
     Python::with_gil(|py| {
-        let breezy_location = py.import_bound("breezy.location").unwrap();
+        let breezy_location = py.import("breezy.location").unwrap();
 
         breezy_location
             .call_method1("cvs_to_url", (cvsroot,))
@@ -47,7 +47,7 @@ fn test_cvs_to_url() {
 /// A Result containing the converted URL or an error string
 pub fn rcp_location_to_url(rcp_location: &str) -> Result<Url, String> {
     Python::with_gil(|py| {
-        let breezy_location = py.import_bound("breezy.location").unwrap();
+        let breezy_location = py.import("breezy.location").unwrap();
 
         Ok(breezy_location
             .call_method1("rcp_location_to_url", (rcp_location,))
@@ -83,7 +83,9 @@ pub trait AsLocation {
 impl AsLocation for &url::Url {
     fn as_location(&self) -> PyObject {
         Python::with_gil(|py| {
-            pyo3::types::PyString::new_bound(py, self.to_string().as_str()).to_object(py)
+            pyo3::types::PyString::new(py, &self.to_string())
+                .unbind()
+                .into()
         })
     }
 }
@@ -105,7 +107,7 @@ fn test_as_location_url() {
 
 impl AsLocation for &str {
     fn as_location(&self) -> PyObject {
-        Python::with_gil(|py| pyo3::types::PyString::new_bound(py, self).to_object(py))
+        Python::with_gil(|py| pyo3::types::PyString::new(py, self).unbind().into())
     }
 }
 
@@ -125,7 +127,9 @@ fn test_as_location_str() {
 impl AsLocation for &std::path::Path {
     fn as_location(&self) -> PyObject {
         Python::with_gil(|py| {
-            pyo3::types::PyString::new_bound(py, self.to_str().unwrap()).to_object(py)
+            pyo3::types::PyString::new(py, self.to_str().unwrap())
+                .unbind()
+                .into()
         })
     }
 }

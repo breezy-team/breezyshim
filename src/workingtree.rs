@@ -5,9 +5,10 @@
 use crate::branch::{GenericBranch, PyBranch};
 use crate::controldir::{ControlDir, GenericControlDir};
 use crate::error::Error;
-use crate::tree::RevisionTree;
+use crate::tree::{PyTree, RevisionTree};
 use crate::RevisionId;
 use pyo3::prelude::*;
+use pyo3::intern;
 use std::path::{Path, PathBuf};
 
 /// A working tree in a version control system.
@@ -17,7 +18,11 @@ use std::path::{Path, PathBuf};
 /// to its functionality.
 pub struct WorkingTree(pub PyObject);
 
-impl crate::tree::PyTree for WorkingTree {}
+impl crate::tree::PyTree for WorkingTree {
+    fn to_object(&self, py: Python) -> PyObject {
+        self.0.clone_ref(py)
+    }
+}
 impl crate::tree::PyMutableTree for WorkingTree {}
 
 impl Clone for WorkingTree {
@@ -26,9 +31,13 @@ impl Clone for WorkingTree {
     }
 }
 
-impl ToPyObject for WorkingTree {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.to_object(py)
+impl<'py> IntoPyObject<'py> for WorkingTree {
+    type Target = PyAny;
+    type Output = Bound<'py, Self::Target>;
+    type Error = std::convert::Infallible;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(self.0.into_bound(py))
     }
 }
 
@@ -50,7 +59,7 @@ impl From<WorkingTree> for CommitBuilder {
     /// A new CommitBuilder instance.
     fn from(wt: WorkingTree) -> Self {
         Python::with_gil(|py| {
-            let kwargs = pyo3::types::PyDict::new_bound(py);
+            let kwargs = pyo3::types::PyDict::new(py);
             CommitBuilder(wt, kwargs.into())
         })
     }
@@ -139,7 +148,10 @@ impl CommitBuilder {
     /// Self for method chaining.
     pub fn reporter(self, reporter: &dyn crate::commit::PyCommitReporter) -> Self {
         Python::with_gil(|py| {
-            self.1.bind(py).set_item("reporter", reporter).unwrap();
+            self.1
+                .bind(py)
+                .set_item("reporter", reporter.to_object(py))
+                .unwrap();
         });
         self
     }
@@ -154,7 +166,7 @@ impl CommitBuilder {
             Ok(self
                 .0
                 .to_object(py)
-                .call_method_bound(py, "commit", (), Some(self.1.bind(py)))?
+                .call_method(py, "commit", (), Some(self.1.bind(py)))?
                 .extract(py)
                 .unwrap())
         })
@@ -285,7 +297,7 @@ impl WorkingTree {
             let tree = self.to_object(py).call_method1(
                 py,
                 "revision_tree",
-                (revision_id.to_object(py),),
+                (revision_id.clone().into_pyobject(py).unwrap(),),
             )?;
             Ok(Box::new(RevisionTree(tree)))
         })
@@ -300,7 +312,7 @@ impl WorkingTree {
         Python::with_gil(|py| {
             let branch = self.to_object(py).getattr(py, "branch")?;
             let tags = branch.getattr(py, "tags")?;
-            let tag_dict = tags.call_method0(py, "get_tag_dict")?;
+            let tag_dict = tags.call_method0(py, intern!(py, "get_tag_dict"))?;
             tag_dict.extract(py)
         })
         .map_err(|e: PyErr| -> Error { e.into() })
@@ -451,7 +463,7 @@ impl WorkingTree {
     /// The revision ID of the last commit, or an error if it could not be retrieved.
     pub fn last_revision(&self) -> Result<RevisionId, Error> {
         Python::with_gil(|py| {
-            let last_revision = self.to_object(py).call_method0(py, "last_revision")?;
+            let last_revision = self.to_object(py).call_method0(py, intern!(py, "last_revision"))?;
             Ok(RevisionId::from(last_revision.extract::<Vec<u8>>(py)?))
         })
     }
@@ -477,13 +489,16 @@ impl WorkingTree {
     ) -> Result<(), Error> {
         Python::with_gil(|py| {
             let kwargs = {
-                let kwargs = pyo3::types::PyDict::new_bound(py);
+                let kwargs = pyo3::types::PyDict::new(py);
                 if let Some(overwrite) = overwrite {
                     kwargs.set_item("overwrite", overwrite).unwrap();
                 }
                 if let Some(stop_revision) = stop_revision {
                     kwargs
-                        .set_item("stop_revision", stop_revision.to_object(py))
+                        .set_item(
+                            "stop_revision",
+                            stop_revision.clone().into_pyobject(py).unwrap(),
+                        )
                         .unwrap();
                 }
                 if let Some(local) = local {
@@ -492,7 +507,7 @@ impl WorkingTree {
                 kwargs
             };
             self.to_object(py)
-                .call_method_bound(py, "pull", (source.to_object(py),), Some(&kwargs))
+                .call_method(py, "pull", (source.to_object(py),), Some(&kwargs))
         })
         .map_err(|e| e.into())
         .map(|_| ())
@@ -515,15 +530,18 @@ impl WorkingTree {
     ) -> Result<(), Error> {
         Python::with_gil(|py| {
             let kwargs = {
-                let kwargs = pyo3::types::PyDict::new_bound(py);
+                let kwargs = pyo3::types::PyDict::new(py);
                 if let Some(to_revision) = to_revision {
                     kwargs
-                        .set_item("to_revision", to_revision.to_object(py))
+                        .set_item(
+                            "to_revision",
+                            to_revision.clone().into_pyobject(py).unwrap(),
+                        )
                         .unwrap();
                 }
                 kwargs
             };
-            self.to_object(py).call_method_bound(
+            self.to_object(py).call_method(
                 py,
                 "merge_from_branch",
                 (source.to_object(py),),
@@ -546,12 +564,16 @@ impl WorkingTree {
     pub fn update(&self, revision: Option<&RevisionId>) -> Result<(), Error> {
         Python::with_gil(|py| {
             let kwargs = {
-                let kwargs = pyo3::types::PyDict::new_bound(py);
-                kwargs.set_item("revision", revision.to_object(py)).unwrap();
+                let kwargs = pyo3::types::PyDict::new(py);
+                if let Some(revision) = revision {
+                    kwargs
+                        .set_item("revision", revision.clone().into_pyobject(py).unwrap())
+                        .unwrap();
+                }
                 kwargs
             };
             self.to_object(py)
-                .call_method_bound(py, "update", (), Some(&kwargs))
+                .call_method(py, "update", (), Some(&kwargs))
         })
         .map_err(|e| e.into())
         .map(|_| ())
@@ -606,10 +628,10 @@ impl WorkingTree {
 /// The working tree, or an error if it could not be opened.
 pub fn open(path: &Path) -> Result<WorkingTree, Error> {
     Python::with_gil(|py| {
-        let m = py.import_bound("breezy.workingtree")?;
+        let m = py.import("breezy.workingtree")?;
         let c = m.getattr("WorkingTree")?;
         let wt = c.call_method1("open", (path,))?;
-        Ok(WorkingTree(wt.to_object(py)))
+        Ok(WorkingTree(wt.unbind()))
     })
 }
 
@@ -628,11 +650,11 @@ pub fn open(path: &Path) -> Result<WorkingTree, Error> {
 /// if no containing working tree could be found.
 pub fn open_containing(path: &Path) -> Result<(WorkingTree, PathBuf), Error> {
     Python::with_gil(|py| {
-        let m = py.import_bound("breezy.workingtree")?;
+        let m = py.import("breezy.workingtree")?;
         let c = m.getattr("WorkingTree")?;
         let (wt, p): (Bound<PyAny>, String) =
             c.call_method1("open_containing", (path,))?.extract()?;
-        Ok((WorkingTree(wt.to_object(py)), PathBuf::from(p)))
+        Ok((WorkingTree(wt.unbind()), PathBuf::from(p)))
     })
 }
 

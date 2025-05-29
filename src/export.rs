@@ -18,9 +18,9 @@ pub fn export<T: crate::tree::PyTree>(
     subdir: Option<&std::path::Path>,
 ) -> Result<(), crate::error::Error> {
     Python::with_gil(|py| {
-        let m = py.import_bound("breezy.export").unwrap();
+        let m = py.import("breezy.export").unwrap();
         let export = m.getattr("export").unwrap();
-        let kwargs = PyDict::new_bound(py);
+        let kwargs = PyDict::new(py);
         let subdir = if subdir.is_none() || subdir == Some(Path::new("")) {
             None
         } else {
