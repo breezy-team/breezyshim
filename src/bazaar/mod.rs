@@ -181,7 +181,6 @@ impl<'py> IntoPyObject<'py> for RemoteBzrProber {
     }
 }
 
-
 impl std::fmt::Debug for RemoteBzrProber {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.write_fmt(format_args!("RemoteBzrProber({:?})", self.0))

@@ -485,11 +485,8 @@ impl Forge {
             let from_branch_obj = from_branch.to_object(py);
             let to_branch_obj = to_branch.to_object(py);
             Ok(ProposalBuilder(
-                self.0.call_method1(
-                    py,
-                    "get_proposer",
-                    (from_branch_obj, to_branch_obj),
-                )?,
+                self.0
+                    .call_method1(py, "get_proposer", (from_branch_obj, to_branch_obj))?,
                 PyDict::new(py).into(),
             ))
         })
@@ -598,7 +595,7 @@ impl Forge {
             let local_branch_obj = local_branch.to_object(py);
             let base_branch_obj = base_branch.to_object(py);
             let forge_obj = self.to_object();
-            
+
             kwargs.set_item("local_branch", local_branch_obj)?;
             kwargs.set_item("base_branch", base_branch_obj)?;
             kwargs.set_item("name", name)?;

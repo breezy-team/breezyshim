@@ -1,8 +1,8 @@
 //! Error handling for the Breezy Python bindings
 use crate::transform::RawConflict;
 use pyo3::import_exception;
-use pyo3::prelude::*;
 use pyo3::intern;
+use pyo3::prelude::*;
 use pyo3::PyErr;
 use url::Url;
 

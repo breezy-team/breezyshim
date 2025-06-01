@@ -651,9 +651,10 @@ pub fn open_tree_or_branch(
         if let Some(possible_transports) = possible_transports {
             kwargs.set_item(
                 "possible_transports",
-                possible_transports.iter()
+                possible_transports
+                    .iter()
                     .map(|t| t.as_pyobject().clone_ref(py))
-                    .collect::<Vec<PyObject>>()
+                    .collect::<Vec<PyObject>>(),
             )?;
         }
 
@@ -691,9 +692,10 @@ pub fn open(
         if let Some(possible_transports) = possible_transports {
             kwargs.set_item(
                 "possible_transports",
-                possible_transports.iter()
+                possible_transports
+                    .iter()
                     .map(|t| t.as_pyobject().clone_ref(py))
-                    .collect::<Vec<PyObject>>()
+                    .collect::<Vec<PyObject>>(),
             )?;
         }
         let controldir = cd.call_method("open", (url.as_location(),), Some(&kwargs))?;
@@ -726,9 +728,10 @@ pub fn create(
         if let Some(possible_transports) = possible_transports {
             kwargs.set_item(
                 "possible_transports",
-                possible_transports.iter()
+                possible_transports
+                    .iter()
                     .map(|t| t.as_pyobject().clone_ref(py))
-                    .collect::<Vec<PyObject>>()
+                    .collect::<Vec<PyObject>>(),
             )?;
         }
         let controldir = cd.call_method("create", (url.as_location(),), Some(&kwargs))?;

@@ -1,8 +1,8 @@
 //! Revision tags
 use crate::error::Error;
 use crate::revisionid::RevisionId;
-use pyo3::prelude::*;
 use pyo3::intern;
+use pyo3::prelude::*;
 use std::collections::{HashMap, HashSet};
 
 /// Represents a collection of revision tags.
@@ -38,8 +38,12 @@ impl Tags {
     /// A HashMap mapping each tag name to the revision ID it points to,
     /// or an error if the operation fails
     pub fn get_tag_dict(&self) -> Result<HashMap<String, RevisionId>, crate::error::Error> {
-        Python::with_gil(|py| self.0.call_method0(py, intern!(py, "get_tag_dict"))?.extract(py))
-            .map_err(Into::into)
+        Python::with_gil(|py| {
+            self.0
+                .call_method0(py, intern!(py, "get_tag_dict"))?
+                .extract(py)
+        })
+        .map_err(Into::into)
     }
 
     /// Look up a revision ID by tag name.

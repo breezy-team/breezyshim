@@ -3,8 +3,8 @@ use crate::error::Error;
 use debian_control::apt::{Package, Source};
 use debversion::Version;
 use pyo3::exceptions::PyStopIteration;
-use pyo3::prelude::*;
 use pyo3::intern;
+use pyo3::prelude::*;
 
 pyo3::import_exception!(breezy.plugins.debian.apt_repo, NoAptSources);
 
@@ -206,7 +206,11 @@ impl Drop for LocalApt {
     fn drop(&mut self) {
         Python::with_gil(|py| {
             self.0
-                .call_method1(py, intern!(py, "__exit__"), (py.None(), py.None(), py.None()))
+                .call_method1(
+                    py,
+                    intern!(py, "__exit__"),
+                    (py.None(), py.None(), py.None()),
+                )
                 .unwrap();
         });
     }
@@ -276,7 +280,11 @@ impl Drop for RemoteApt {
     fn drop(&mut self) {
         Python::with_gil(|py| {
             self.0
-                .call_method1(py, intern!(py, "__exit__"), (py.None(), py.None(), py.None()))
+                .call_method1(
+                    py,
+                    intern!(py, "__exit__"),
+                    (py.None(), py.None(), py.None()),
+                )
                 .unwrap();
         });
     }

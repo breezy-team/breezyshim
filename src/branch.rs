@@ -14,8 +14,8 @@ use crate::foreign::VcsType;
 use crate::lock::Lock;
 use crate::repository::{GenericRepository, PyRepository, Repository};
 use crate::revisionid::RevisionId;
-use pyo3::prelude::*;
 use pyo3::intern;
+use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
 /// Format of a branch in a version control system.
@@ -257,7 +257,6 @@ pub trait Branch {
     ///
     /// `Ok(())` on success, or an error if the history could not be generated.
     fn generate_revision_history(&self, last_revision: &RevisionId) -> Result<(), Error>;
-
 }
 
 /// Trait for branches that wrap Python branch objects.
@@ -290,7 +289,8 @@ impl<T: PyBranch> Branch for T {
     fn lock_read(&self) -> Result<Lock, crate::error::Error> {
         Python::with_gil(|py| {
             Ok(Lock::from(
-                self.to_object(py).call_method0(py, intern!(py, "lock_read"))?,
+                self.to_object(py)
+                    .call_method0(py, intern!(py, "lock_read"))?,
             ))
         })
     }
@@ -298,7 +298,8 @@ impl<T: PyBranch> Branch for T {
     fn lock_write(&self) -> Result<Lock, crate::error::Error> {
         Python::with_gil(|py| {
             Ok(Lock::from(
-                self.to_object(py).call_method0(py, intern!(py, "lock_write"))?,
+                self.to_object(py)
+                    .call_method0(py, intern!(py, "lock_write"))?,
             ))
         })
     }
@@ -364,7 +365,6 @@ impl<T: PyBranch> Branch for T {
             )) as Box<dyn ControlDir>
         })
     }
-
 
     fn push(
         &self,

@@ -12,8 +12,8 @@ use crate::tree::RevisionTree;
 use chrono::DateTime;
 use chrono::TimeZone;
 use pyo3::exceptions::PyStopIteration;
-use pyo3::prelude::*;
 use pyo3::intern;
+use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
 /// Represents the format of a repository.
@@ -250,11 +250,13 @@ impl Iterator for RevisionIterator {
     type Item = (RevisionId, Option<Revision>);
 
     fn next(&mut self) -> Option<Self::Item> {
-        Python::with_gil(|py| match self.0.call_method0(py, intern!(py, "__next__")) {
-            Err(e) if e.is_instance_of::<PyStopIteration>(py) => None,
-            Ok(o) => o.extract(py).ok(),
-            Err(_) => None,
-        })
+        Python::with_gil(
+            |py| match self.0.call_method0(py, intern!(py, "__next__")) {
+                Err(e) if e.is_instance_of::<PyStopIteration>(py) => None,
+                Ok(o) => o.extract(py).ok(),
+                Err(_) => None,
+            },
+        )
     }
 }
 
@@ -268,11 +270,13 @@ impl Iterator for DeltaIterator {
     type Item = TreeDelta;
 
     fn next(&mut self) -> Option<Self::Item> {
-        Python::with_gil(|py| match self.0.call_method0(py, intern!(py, "__next__")) {
-            Err(e) if e.is_instance_of::<PyStopIteration>(py) => None,
-            Ok(o) => o.extract(py).ok(),
-            Err(_) => None,
-        })
+        Python::with_gil(
+            |py| match self.0.call_method0(py, intern!(py, "__next__")) {
+                Err(e) if e.is_instance_of::<PyStopIteration>(py) => None,
+                Ok(o) => o.extract(py).ok(),
+                Err(_) => None,
+            },
+        )
     }
 }
 
@@ -468,7 +472,8 @@ impl<T: PyRepository> Repository for T {
     fn lock_read(&self) -> Result<Lock, crate::error::Error> {
         Python::with_gil(|py| {
             Ok(Lock::from(
-                self.to_object(py).call_method0(py, intern!(py, "lock_read"))?,
+                self.to_object(py)
+                    .call_method0(py, intern!(py, "lock_read"))?,
             ))
         })
     }
@@ -476,11 +481,11 @@ impl<T: PyRepository> Repository for T {
     fn lock_write(&self) -> Result<Lock, crate::error::Error> {
         Python::with_gil(|py| {
             Ok(Lock::from(
-                self.to_object(py).call_method0(py, intern!(py, "lock_write"))?,
+                self.to_object(py)
+                    .call_method0(py, intern!(py, "lock_write"))?,
             ))
         })
     }
-
 }
 
 /// Open a repository at the specified location.

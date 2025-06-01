@@ -7,8 +7,8 @@ use crate::controldir::{ControlDir, GenericControlDir};
 use crate::error::Error;
 use crate::tree::{PyTree, RevisionTree};
 use crate::RevisionId;
-use pyo3::prelude::*;
 use pyo3::intern;
+use pyo3::prelude::*;
 use std::path::{Path, PathBuf};
 
 /// A working tree in a version control system.
@@ -380,8 +380,11 @@ impl WorkingTree {
     /// `Ok(())` on success, or an error if the files could not be added.
     pub fn add(&self, paths: &[&Path]) -> Result<(), Error> {
         Python::with_gil(|py| {
-            self.to_object(py)
-                .call_method1(py, "add", (paths.to_vec(),))
+            let path_strings: Vec<String> = paths
+                .iter()
+                .map(|p| p.to_string_lossy().to_string())
+                .collect();
+            self.to_object(py).call_method1(py, "add", (path_strings,))
         })
         .map_err(|e| e.into())
         .map(|_| ())
@@ -401,8 +404,12 @@ impl WorkingTree {
     /// `Ok(())` on success, or an error if the files could not be added.
     pub fn smart_add(&self, paths: &[&Path]) -> Result<(), Error> {
         Python::with_gil(|py| {
+            let path_strings: Vec<String> = paths
+                .iter()
+                .map(|p| p.to_string_lossy().to_string())
+                .collect();
             self.to_object(py)
-                .call_method1(py, "smart_add", (paths.to_vec(),))
+                .call_method1(py, "smart_add", (path_strings,))
         })
         .map_err(|e| e.into())
         .map(|_| ())
@@ -463,7 +470,9 @@ impl WorkingTree {
     /// The revision ID of the last commit, or an error if it could not be retrieved.
     pub fn last_revision(&self) -> Result<RevisionId, Error> {
         Python::with_gil(|py| {
-            let last_revision = self.to_object(py).call_method0(py, intern!(py, "last_revision"))?;
+            let last_revision = self
+                .to_object(py)
+                .call_method0(py, intern!(py, "last_revision"))?;
             Ok(RevisionId::from(last_revision.extract::<Vec<u8>>(py)?))
         })
     }
