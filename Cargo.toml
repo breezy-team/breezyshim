@@ -36,7 +36,7 @@ sqlx = ["sqlx/postgres"]
 launchpad = ["dep:launchpadlib"]
 
 [dependencies.debversion]
-version = ">=0.2"
+version = ">=0.4.5"
 optional = true
 features = [ "python-debian",]
 
