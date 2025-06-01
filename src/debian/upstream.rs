@@ -1,9 +1,9 @@
-use crate::branch::{Branch, PyBranch};
-use crate::controldir::{ControlDir, PyControlDir};
+use crate::branch::PyBranch;
+use crate::controldir::PyControlDir;
 use crate::debian::error::Error;
 use crate::debian::TarballKind;
 use crate::debian::VersionKind;
-use crate::tree::{PyTree, Tree};
+use crate::tree::PyTree;
 use crate::RevisionId;
 use debversion::Version;
 use pyo3::prelude::*;
@@ -25,14 +25,12 @@ impl From<PyObject> for PristineTarSource {
 }
 
 impl<'py> IntoPyObject<'py> for PristineTarSource {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.clone_ref(py)
-    }
-}
+    type Target = PyAny;
+    type Output = Bound<'py, PyAny>;
+    type Error = PyErr;
 
-impl IntoPy<PyObject> for PristineTarSource {
-    fn into_py(self, py: Python) -> PyObject {
-        self.to_object(py)
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(self.0.clone_ref(py).into_bound(py))
     }
 }
 
@@ -46,8 +44,12 @@ impl From<PyObject> for UpstreamBranchSource {
 }
 
 impl<'py> IntoPyObject<'py> for UpstreamBranchSource {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.clone_ref(py)
+    type Target = PyAny;
+    type Output = Bound<'py, PyAny>;
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(self.0.clone_ref(py).into_bound(py))
     }
 }
 
@@ -78,26 +80,23 @@ impl FromPyObject<'_> for Tarball {
 }
 
 impl<'py> IntoPyObject<'py> for Tarball {
-    fn to_object(&self, py: Python) -> PyObject {
-        (
-            self.filename.clone(),
-            self.component.clone(),
-            self.md5.clone(),
-        )
-            .to_object(py)
-    }
-}
+    type Target = PyAny;
+    type Output = Bound<'py, PyAny>;
+    type Error = PyErr;
 
-impl IntoPy<PyObject> for Tarball {
-    fn into_py(self, py: Python) -> PyObject {
-        self.to_object(py)
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        let tuple = (self.filename, self.component, self.md5);
+        Ok(tuple.into_pyobject(py)?.into_any())
     }
 }
 
 /// Trait for Python-based upstream sources.
 ///
 /// This trait is implemented by wrappers around Python upstream source objects.
-pub trait PyUpstreamSource: for<'py> IntoPyObject<'py> + std::any::Any + std::fmt::Debug {}
+pub trait PyUpstreamSource: std::any::Any + std::fmt::Debug {
+    /// Get the underlying PyObject
+    fn as_pyobject(&self) -> &PyObject;
+}
 
 /// Trait for upstream sources.
 ///
@@ -184,7 +183,7 @@ impl<T: PyUpstreamSource> UpstreamSource for T {
     ) -> Result<Option<(String, String)>, Error> {
         Python::with_gil(|py| {
             Ok(self
-                .to_object(py)
+                .as_pyobject()
                 .call_method1(py, "get_latest_version", (package, current_version))?
                 .extract(py)?)
         })
@@ -197,7 +196,7 @@ impl<T: PyUpstreamSource> UpstreamSource for T {
     ) -> Box<dyn Iterator<Item = (String, String)>> {
         let mut ret = vec![];
         Python::with_gil(|py| -> PyResult<()> {
-            let recent_versions = self.to_object(py).call_method1(
+            let recent_versions = self.as_pyobject().call_method1(
                 py,
                 "get_recent_versions",
                 (package, since_version),
@@ -222,7 +221,7 @@ impl<T: PyUpstreamSource> UpstreamSource for T {
     ) -> Result<HashMap<TarballKind, (RevisionId, PathBuf)>, Error> {
         Python::with_gil(|py| {
             Ok(self
-                .to_object(py)
+                .as_pyobject()
                 .call_method1(py, "version_as_revisions", (package, version, tarballs))?
                 .extract(py)?)
         })
@@ -236,7 +235,7 @@ impl<T: PyUpstreamSource> UpstreamSource for T {
     ) -> Result<bool, Error> {
         Python::with_gil(|py| {
             Ok(self
-                .to_object(py)
+                .as_pyobject()
                 .call_method1(py, "has_version", (package, version, tarballs))?
                 .extract(py)?)
         })
@@ -251,7 +250,7 @@ impl<T: PyUpstreamSource> UpstreamSource for T {
     ) -> Result<Vec<PathBuf>, Error> {
         Python::with_gil(|py| {
             Ok(self
-                .to_object(py)
+                .as_pyobject()
                 .call_method1(
                     py,
                     "fetch_tarballs",
@@ -269,8 +268,12 @@ impl<T: PyUpstreamSource> UpstreamSource for T {
 pub struct GenericUpstreamSource(PyObject);
 
 impl<'py> IntoPyObject<'py> for GenericUpstreamSource {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.to_object(py)
+    type Target = PyAny;
+    type Output = Bound<'py, PyAny>;
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(self.0.into_pyobject(py)?.into_any())
     }
 }
 
@@ -280,7 +283,11 @@ impl FromPyObject<'_> for GenericUpstreamSource {
     }
 }
 
-impl PyUpstreamSource for GenericUpstreamSource {}
+impl PyUpstreamSource for GenericUpstreamSource {
+    fn as_pyobject(&self) -> &PyObject {
+        &self.0
+    }
+}
 
 impl GenericUpstreamSource {
     /// Create a new generic upstream source from a Python object.
@@ -298,7 +305,11 @@ impl std::fmt::Debug for GenericUpstreamSource {
     }
 }
 
-impl PyUpstreamSource for UpstreamBranchSource {}
+impl PyUpstreamSource for UpstreamBranchSource {
+    fn as_pyobject(&self) -> &PyObject {
+        &self.0
+    }
+}
 
 impl std::fmt::Debug for UpstreamBranchSource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -312,7 +323,7 @@ impl UpstreamBranchSource {
     /// # Returns
     /// A branch object representing the upstream branch.
     pub fn upstream_branch(&self) -> Box<dyn crate::branch::Branch> {
-        let o = Python::with_gil(|py| self.to_object(py).getattr(py, "upstream_branch").unwrap());
+        let o = Python::with_gil(|py| self.as_pyobject().getattr(py, "upstream_branch").unwrap());
         Box::new(crate::branch::GenericBranch::from(o))
     }
 
@@ -330,7 +341,7 @@ impl UpstreamBranchSource {
         mangled_upstream_version: &str,
     ) -> Result<crate::tree::RevisionTree, Error> {
         Python::with_gil(|py| {
-            Ok(crate::tree::RevisionTree(self.to_object(py).call_method1(
+            Ok(crate::tree::RevisionTree(self.as_pyobject().call_method1(
                 py,
                 "revision_tree",
                 (source_name, mangled_upstream_version),
@@ -355,7 +366,7 @@ impl UpstreamBranchSource {
     ) -> Result<(RevisionId, PathBuf), Error> {
         Python::with_gil(|py| {
             Ok(self
-                .to_object(py)
+                .as_pyobject()
                 .call_method1(py, "version_as_revision", (package, version, tarballs))?
                 .extract(py)?)
         })
@@ -404,7 +415,7 @@ impl UpstreamBranchSource {
                     .map(|x| x.to_string_lossy().into_owned())
                     .map_err(|e| e.into())
                 };
-                let create_dist = PyCFunction::new_closure_bound(py, None, None, create_dist)?;
+                let create_dist = PyCFunction::new_closure(py, None, None, create_dist)?;
                 kwargs.set_item("create_dist", create_dist)?;
             }
             Ok(UpstreamBranchSource(
@@ -415,7 +426,11 @@ impl UpstreamBranchSource {
     }
 }
 
-impl PyUpstreamSource for PristineTarSource {}
+impl PyUpstreamSource for PristineTarSource {
+    fn as_pyobject(&self) -> &PyObject {
+        &self.0
+    }
+}
 
 impl std::fmt::Debug for PristineTarSource {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -439,7 +454,7 @@ impl PristineTarSource {
     ) -> Result<bool, Error> {
         Python::with_gil(|py| {
             Ok(self
-                .to_object(py)
+                .as_pyobject()
                 .call_method1(py, "has_version", (package, version, tarballs, try_hard))?
                 .extract(py)?)
         })
@@ -469,7 +484,7 @@ pub fn upstream_version_add_revision(
                 (
                     upstream_branch.to_object(py),
                     version_string,
-                    revid.to_object(py),
+                    revid.clone(),
                     sep,
                 ),
             )?
@@ -527,8 +542,8 @@ pub fn run_dist_command(
         let kwargs = PyDict::new(py);
         kwargs.set_item("revtree", revtree.to_object(py))?;
         kwargs.set_item("package", package)?;
-        kwargs.set_item("version", version)?;
-        kwargs.set_item(target_dir, target_dir)?;
+        kwargs.set_item("version", version.to_string())?;
+        kwargs.set_item("target_dir", target_dir)?;
         kwargs.set_item("dist_command", dist_command)?;
         kwargs.set_item("include_controldir", include_controldir)?;
         kwargs.set_item("subpath", subpath)?;

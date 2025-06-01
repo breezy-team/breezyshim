@@ -2,8 +2,8 @@
 use crate::error::Error;
 use crate::lock::Lock;
 use crate::revisionid::RevisionId;
-use pyo3::prelude::*;
 use pyo3::intern;
+use pyo3::prelude::*;
 
 /// Type alias for std::path::Path.
 pub type Path = std::path::Path;
@@ -265,7 +265,10 @@ impl<T: PyTree + ?Sized> Tree for T {
 
     fn get_file(&self, path: &Path) -> Result<Box<dyn std::io::Read>, Error> {
         Python::with_gil(|py| {
-            let f = self.to_object(py).call_method1(py, "get_file", (path,))?;
+            let path_str = path.to_string_lossy().to_string();
+            let f = self
+                .to_object(py)
+                .call_method1(py, "get_file", (path_str,))?;
 
             let f = pyo3_filelike::PyBinaryFile::from(f);
 
@@ -275,33 +278,38 @@ impl<T: PyTree + ?Sized> Tree for T {
 
     fn get_file_text(&self, path: &Path) -> Result<Vec<u8>, Error> {
         Python::with_gil(|py| {
+            let path_str = path.to_string_lossy().to_string();
             let text = self
                 .to_object(py)
-                .call_method1(py, "get_file_text", (path,))?;
+                .call_method1(py, "get_file_text", (path_str,))?;
             text.extract(py).map_err(|e| e.into())
         })
     }
 
     fn get_file_lines(&self, path: &Path) -> Result<Vec<Vec<u8>>, Error> {
         Python::with_gil(|py| {
+            let path_str = path.to_string_lossy().to_string();
             let lines = self
                 .to_object(py)
-                .call_method1(py, "get_file_lines", (path,))?;
+                .call_method1(py, "get_file_lines", (path_str,))?;
             lines.extract(py).map_err(|e| e.into())
         })
     }
 
     fn lock_read(&self) -> Result<Lock, Error> {
         Python::with_gil(|py| {
-            let lock = self.to_object(py).call_method0(py, intern!(py, "lock_read"))?;
+            let lock = self
+                .to_object(py)
+                .call_method0(py, intern!(py, "lock_read"))?;
             Ok(Lock::from(lock))
         })
     }
 
     fn has_filename(&self, path: &Path) -> bool {
         Python::with_gil(|py| {
+            let path_str = path.to_string_lossy().to_string();
             self.to_object(py)
-                .call_method1(py, intern!(py, "has_filename"), (path,))
+                .call_method1(py, intern!(py, "has_filename"), (path_str,))
                 .and_then(|result| result.extract(py))
                 .unwrap_or(false)
         })
@@ -309,9 +317,10 @@ impl<T: PyTree + ?Sized> Tree for T {
 
     fn get_symlink_target(&self, path: &Path) -> Result<PathBuf, Error> {
         Python::with_gil(|py| {
+            let path_str = path.to_string_lossy().to_string();
             let target = self
                 .to_object(py)
-                .call_method1(py, "get_symlink_target", (path,))?;
+                .call_method1(py, "get_symlink_target", (path_str,))?;
             target.extract(py).map_err(|e| e.into())
         })
     }
@@ -328,8 +337,9 @@ impl<T: PyTree + ?Sized> Tree for T {
 
     fn is_ignored(&self, path: &Path) -> Option<String> {
         Python::with_gil(|py| {
+            let path_str = path.to_string_lossy().to_string();
             self.to_object(py)
-                .call_method1(py, "is_ignored", (path,))
+                .call_method1(py, "is_ignored", (path_str,))
                 .unwrap()
                 .extract(py)
                 .unwrap()
@@ -338,8 +348,9 @@ impl<T: PyTree + ?Sized> Tree for T {
 
     fn kind(&self, path: &Path) -> Result<Kind, Error> {
         Python::with_gil(|py| {
+            let path_str = path.to_string_lossy().to_string();
             self.to_object(py)
-                .call_method1(py, "kind", (path,))
+                .call_method1(py, "kind", (path_str,))
                 .unwrap()
                 .extract(py)
                 .map_err(|e| e.into())
@@ -348,8 +359,9 @@ impl<T: PyTree + ?Sized> Tree for T {
 
     fn is_versioned(&self, path: &Path) -> bool {
         Python::with_gil(|py| {
+            let path_str = path.to_string_lossy().to_string();
             self.to_object(py)
-                .call_method1(py, "is_versioned", (path,))
+                .call_method1(py, "is_versioned", (path_str,))
                 .unwrap()
                 .extract(py)
                 .unwrap()
@@ -519,11 +531,12 @@ impl<T: PyTree + ?Sized> Tree for T {
                 }
             }
 
+            let path_str = path.to_string_lossy().to_string();
             Ok(
                 Box::new(IterChildEntriesIter(self.to_object(py).call_method1(
                     py,
                     "iter_child_entries",
-                    (path,),
+                    (path_str,),
                 )?))
                     as Box<dyn Iterator<Item = Result<(PathBuf, Kind, TreeEntry), Error>>>,
             )
@@ -583,11 +596,12 @@ impl<T: PyMutableTree> MutableTree for T {
             assert!(f.is_relative());
         }
         Python::with_gil(|py| -> Result<(), PyErr> {
-            self.to_object(py).call_method1(
-                py,
-                "add",
-                (files.iter().map(|p| p.to_path_buf()).collect::<Vec<_>>(),),
-            )?;
+            let path_strings: Vec<String> = files
+                .iter()
+                .map(|p| p.to_string_lossy().to_string())
+                .collect();
+            self.to_object(py)
+                .call_method1(py, "add", (path_strings,))?;
             Ok(())
         })
         .map_err(|e| e.into())
@@ -595,7 +609,9 @@ impl<T: PyMutableTree> MutableTree for T {
 
     fn lock_write(&self) -> Result<Lock, Error> {
         Python::with_gil(|py| {
-            let lock = self.to_object(py).call_method0(py, intern!(py, "lock_write"))?;
+            let lock = self
+                .to_object(py)
+                .call_method0(py, intern!(py, "lock_write"))?;
             Ok(Lock::from(lock))
         })
     }
@@ -603,8 +619,9 @@ impl<T: PyMutableTree> MutableTree for T {
     fn put_file_bytes_non_atomic(&self, path: &Path, data: &[u8]) -> Result<(), Error> {
         assert!(path.is_relative());
         Python::with_gil(|py| {
+            let path_str = path.to_string_lossy().to_string();
             self.to_object(py)
-                .call_method1(py, "put_file_bytes_non_atomic", (path, data))?;
+                .call_method1(py, "put_file_bytes_non_atomic", (path_str, data))?;
             Ok(())
         })
     }
@@ -621,7 +638,8 @@ impl<T: PyMutableTree> MutableTree for T {
     fn mkdir(&self, path: &Path) -> Result<(), Error> {
         assert!(path.is_relative());
         Python::with_gil(|py| -> Result<(), PyErr> {
-            self.to_object(py).call_method1(py, "mkdir", (path,))?;
+            let path_str = path.to_string_lossy().to_string();
+            self.to_object(py).call_method1(py, "mkdir", (path_str,))?;
             Ok(())
         })
         .map_err(|e| e.into())
@@ -632,11 +650,12 @@ impl<T: PyMutableTree> MutableTree for T {
             assert!(f.is_relative());
         }
         Python::with_gil(|py| -> Result<(), PyErr> {
-            self.to_object(py).call_method1(
-                py,
-                "remove",
-                (files.iter().map(|p| p.to_path_buf()).collect::<Vec<_>>(),),
-            )?;
+            let path_strings: Vec<String> = files
+                .iter()
+                .map(|p| p.to_string_lossy().to_string())
+                .collect();
+            self.to_object(py)
+                .call_method1(py, "remove", (path_strings,))?;
             Ok(())
         })
         .map_err(|e| e.into())

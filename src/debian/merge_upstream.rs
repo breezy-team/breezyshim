@@ -53,7 +53,7 @@ pub fn do_import(
         kwargs.set_item("version", version)?;
         kwargs.set_item("current_version", current_version)?;
         kwargs.set_item("upstream_branch", upstream_branch.to_object(py))?;
-        kwargs.set_item("upstream_revisions", upstream_revisions.to_object(py))?;
+        kwargs.set_item("upstream_revisions", upstream_revisions)?;
         kwargs.set_item("merge_type", merge_type)?;
         kwargs.set_item("force", force)?;
         kwargs.set_item("force_pristine_tar", force_pristine_tar)?;
@@ -105,8 +105,8 @@ pub fn get_tarballs(
 ///
 /// # Returns
 /// A list of tuples with component information: (kind, version, revid, pristine_tar_imported, path)
-pub fn get_existing_imported_upstream_revids(
-    upstream_source: &dyn PyUpstreamSource,
+pub fn get_existing_imported_upstream_revids<T: PyUpstreamSource>(
+    upstream_source: &T,
     package: &str,
     new_upstream_version: &str,
 ) -> Result<Vec<(TarballKind, String, RevisionId, Option<bool>, PathBuf)>, Error> {
@@ -115,7 +115,7 @@ pub fn get_existing_imported_upstream_revids(
         let get_existing_imported_upstream_revids =
             m.getattr("get_existing_imported_upstream_revids").unwrap();
         Ok(get_existing_imported_upstream_revids
-            .call1((upstream_source.to_object(py), package, new_upstream_version))?
+            .call1((upstream_source.as_pyobject(), package, new_upstream_version))?
             .extract()?)
     })
 }

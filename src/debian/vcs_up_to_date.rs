@@ -59,11 +59,8 @@ pub fn check_up_to_date(
     Python::with_gil(|py| {
         let m = py.import("breezy.plugins.debian.vcs_up_to_date")?;
         let check_up_to_date = m.getattr("check_up_to_date")?;
-        match check_up_to_date.call1((
-            tree.to_object(py),
-            subpath.to_path_buf(),
-            &apt.to_object(py),
-        )) {
+        match check_up_to_date.call1((tree.to_object(py), subpath.to_path_buf(), apt.as_pyobject()))
+        {
             Err(e) if e.is_instance_of::<MissingChangelogError>(py) => {
                 Ok(UpToDateStatus::MissingChangelog)
             }

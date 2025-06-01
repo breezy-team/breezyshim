@@ -83,7 +83,7 @@ pub trait AsLocation {
 impl AsLocation for &url::Url {
     fn as_location(&self) -> PyObject {
         Python::with_gil(|py| {
-            pyo3::types::PyString::new(py, &self.to_string())
+            pyo3::types::PyString::new(py, self.as_ref())
                 .unbind()
                 .into()
         })

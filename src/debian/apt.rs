@@ -3,8 +3,8 @@ use crate::error::Error;
 use debian_control::apt::{Package, Source};
 use debversion::Version;
 use pyo3::exceptions::PyStopIteration;
-use pyo3::prelude::*;
 use pyo3::intern;
+use pyo3::prelude::*;
 
 pyo3::import_exception!(breezy.plugins.debian.apt_repo, NoAptSources);
 
@@ -53,7 +53,9 @@ impl Iterator for PackageIterator {
 ///
 /// This trait defines methods for retrieving packages and other information
 /// from APT repositories, both local and remote.
-pub trait Apt: ToPyObject {
+pub trait Apt {
+    /// Get the underlying PyObject
+    fn as_pyobject(&self) -> &PyObject;
     // Retrieve the orig tarball from the repository.
     //
     // # Arguments
@@ -80,11 +82,15 @@ pub trait Apt: ToPyObject {
     ) -> Result<(), Error> {
         let _mutex = apt_mutex.lock().unwrap();
         Python::with_gil(|py| {
-            let apt = self.to_object(py);
+            let apt = self.as_pyobject();
             apt.call_method1(
                 py,
                 "retrieve_orig",
-                (source_name, target_directory, orig_version.to_object(py)),
+                (
+                    source_name,
+                    target_directory,
+                    orig_version.map(|v| v.to_string()),
+                ),
             )?;
             Ok(())
         })
@@ -107,11 +113,15 @@ pub trait Apt: ToPyObject {
     ) -> Result<(), Error> {
         let _mutex = apt_mutex.lock().unwrap();
         Python::with_gil(|py| {
-            let apt = self.to_object(py);
+            let apt = self.as_pyobject();
             apt.call_method1(
                 py,
                 "retrieve_source",
-                (source_name, target_directory, source_version.to_object(py)),
+                (
+                    source_name,
+                    target_directory,
+                    source_version.map(|v| v.to_string()),
+                ),
             )?;
             Ok(())
         })
@@ -121,7 +131,7 @@ pub trait Apt: ToPyObject {
     fn iter_sources(&self) -> Box<dyn Iterator<Item = Source>> {
         let _mutex = apt_mutex.lock().unwrap();
         Python::with_gil(|py| {
-            let apt = self.to_object(py);
+            let apt = self.as_pyobject();
             let iter = apt.call_method0(py, "iter_sources").unwrap();
             Box::new(SourceIterator(iter))
         })
@@ -131,7 +141,7 @@ pub trait Apt: ToPyObject {
     fn iter_binaries(&self) -> Box<dyn Iterator<Item = Package>> {
         let _mutex = apt_mutex.lock().unwrap();
         Python::with_gil(|py| {
-            let apt = self.to_object(py);
+            let apt = self.as_pyobject();
             let iter = apt.call_method0(py, "iter_binaries").unwrap();
             Box::new(PackageIterator(iter))
         })
@@ -141,7 +151,7 @@ pub trait Apt: ToPyObject {
     fn iter_source_by_name(&self, name: &str) -> Box<dyn Iterator<Item = Source>> {
         let _mutex = apt_mutex.lock().unwrap();
         Python::with_gil(|py| {
-            let apt = self.to_object(py);
+            let apt = self.as_pyobject();
             let iter = apt
                 .call_method1(py, "iter_source_by_name", (name,))
                 .unwrap();
@@ -153,7 +163,7 @@ pub trait Apt: ToPyObject {
     fn iter_binary_by_name(&self, name: &str) -> Box<dyn Iterator<Item = Package>> {
         let _mutex = apt_mutex.lock().unwrap();
         Python::with_gil(|py| {
-            let apt = self.to_object(py);
+            let apt = self.as_pyobject();
             let iter = apt
                 .call_method1(py, "iter_binary_by_name", (name,))
                 .unwrap();
@@ -167,11 +177,19 @@ pub trait Apt: ToPyObject {
 /// This struct provides access to the APT repositories configured on the local system.
 pub struct LocalApt(PyObject);
 
-impl Apt for LocalApt {}
+impl Apt for LocalApt {
+    fn as_pyobject(&self) -> &PyObject {
+        &self.0
+    }
+}
 
 impl<'py> IntoPyObject<'py> for LocalApt {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.clone_ref(py)
+    type Target = PyAny;
+    type Output = Bound<'py, PyAny>;
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(self.0.clone_ref(py).into_bound(py))
     }
 }
 
@@ -191,7 +209,7 @@ impl LocalApt {
             let apt = apt.call1((rootdir,))?;
 
             apt.call_method0(intern!(py, "__enter__"))?;
-            Ok(Self(apt.to_object(py)))
+            Ok(Self(apt.into()))
         })
     }
 }
@@ -206,7 +224,11 @@ impl Drop for LocalApt {
     fn drop(&mut self) {
         Python::with_gil(|py| {
             self.0
-                .call_method1(py, intern!(py, "__exit__"), (py.None(), py.None(), py.None()))
+                .call_method1(
+                    py,
+                    intern!(py, "__exit__"),
+                    (py.None(), py.None(), py.None()),
+                )
                 .unwrap();
         });
     }
@@ -218,8 +240,12 @@ impl Drop for LocalApt {
 pub struct RemoteApt(PyObject);
 
 impl<'py> IntoPyObject<'py> for RemoteApt {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.clone_ref(py)
+    type Target = PyAny;
+    type Output = Bound<'py, PyAny>;
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(self.0.clone_ref(py).into_bound(py))
     }
 }
 
@@ -246,7 +272,7 @@ impl RemoteApt {
             let apt = m.getattr("RemoteApt")?;
             let apt = apt.call1((mirror_uri.as_str(), distribution, components, key_path))?;
             apt.call_method0(intern!(py, "__enter__"))?;
-            Ok(Self(apt.to_object(py)))
+            Ok(Self(apt.into()))
         })
     }
 
@@ -265,18 +291,26 @@ impl RemoteApt {
             let apt = m.getattr("RemoteApt")?;
             let apt = apt.call_method1("from_string", (text, key_path))?;
             apt.call_method0(intern!(py, "__enter__"))?;
-            Ok(Self(apt.to_object(py)))
+            Ok(Self(apt.into()))
         })
     }
 }
 
-impl Apt for RemoteApt {}
+impl Apt for RemoteApt {
+    fn as_pyobject(&self) -> &PyObject {
+        &self.0
+    }
+}
 
 impl Drop for RemoteApt {
     fn drop(&mut self) {
         Python::with_gil(|py| {
             self.0
-                .call_method1(py, intern!(py, "__exit__"), (py.None(), py.None(), py.None()))
+                .call_method1(
+                    py,
+                    intern!(py, "__exit__"),
+                    (py.None(), py.None(), py.None()),
+                )
                 .unwrap();
         });
     }

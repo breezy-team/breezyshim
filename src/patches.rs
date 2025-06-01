@@ -1,9 +1,9 @@
 //! Patching support for Breezy.
 use crate::transform::TreeTransform;
 use patchkit::unified::{HunkLine, UnifiedPatch};
+use pyo3::intern;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyList};
-use pyo3::intern;
 
 fn py_patches(iter_patches: impl Iterator<Item = UnifiedPatch>) -> PyResult<PyObject> {
     Python::with_gil(|py| {
@@ -116,8 +116,11 @@ impl AppliedPatches {
 impl Drop for AppliedPatches {
     fn drop(&mut self) {
         Python::with_gil(|py| -> Result<(), PyErr> {
-            self.1
-                .call_method1(py, intern!(py, "__exit__"), (py.None(), py.None(), py.None()))?;
+            self.1.call_method1(
+                py,
+                intern!(py, "__exit__"),
+                (py.None(), py.None(), py.None()),
+            )?;
             Ok(())
         })
         .unwrap();

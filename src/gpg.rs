@@ -55,7 +55,7 @@ impl From<PyErr> for Error {
 pub struct GPGStrategy(PyObject);
 
 impl GPGStrategy {
-    fn to_object(&self, py: Python<'_>) -> &PyObject {
+    fn to_object(&self) -> &PyObject {
         &self.0
     }
     /// Create a new GPG strategy with the given branch configuration.
@@ -174,7 +174,7 @@ pub fn bulk_verify_signatures<R: PyRepository>(
                     .iter()
                     .map(|r| (*r).clone().into_pyobject(py).unwrap())
                     .collect::<Vec<_>>(),
-                strategy.to_object(py),
+                strategy.to_object(),
             ))
             .map_err(|e| -> Error { e.into() })
             .unwrap();

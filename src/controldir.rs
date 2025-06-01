@@ -649,8 +649,13 @@ pub fn open_tree_or_branch(
 
         let kwargs = PyDict::new(py);
         if let Some(possible_transports) = possible_transports {
-            // Skip possible_transports for now - needs proper conversion
-            // kwargs.set_item("possible_transports", possible_transports.as_slice())?;
+            kwargs.set_item(
+                "possible_transports",
+                possible_transports
+                    .iter()
+                    .map(|t| t.as_pyobject().clone_ref(py))
+                    .collect::<Vec<PyObject>>(),
+            )?;
         }
 
         let ret = cd.call_method(
@@ -685,8 +690,13 @@ pub fn open(
         let cd = m.getattr("ControlDir")?;
         let kwargs = PyDict::new(py);
         if let Some(possible_transports) = possible_transports {
-            // Skip possible_transports for now - needs proper conversion
-            // kwargs.set_item("possible_transports", possible_transports.as_slice())?;
+            kwargs.set_item(
+                "possible_transports",
+                possible_transports
+                    .iter()
+                    .map(|t| t.as_pyobject().clone_ref(py))
+                    .collect::<Vec<PyObject>>(),
+            )?;
         }
         let controldir = cd.call_method("open", (url.as_location(),), Some(&kwargs))?;
         Ok(Box::new(GenericControlDir(controldir.unbind())) as Box<dyn ControlDir>)
@@ -716,8 +726,13 @@ pub fn create(
             kwargs.set_item("format", format.clone())?;
         }
         if let Some(possible_transports) = possible_transports {
-            // Skip possible_transports for now - needs proper conversion
-            // kwargs.set_item("possible_transports", possible_transports.as_slice())?;
+            kwargs.set_item(
+                "possible_transports",
+                possible_transports
+                    .iter()
+                    .map(|t| t.as_pyobject().clone_ref(py))
+                    .collect::<Vec<PyObject>>(),
+            )?;
         }
         let controldir = cd.call_method("create", (url.as_location(),), Some(&kwargs))?;
         Ok(Box::new(GenericControlDir(controldir.unbind())) as Box<dyn ControlDir>)
