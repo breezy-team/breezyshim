@@ -86,7 +86,7 @@ impl From<PyObject> for PreviewTree {
 }
 
 impl TreeTransform {
-    fn to_object(&self, py: Python<'_>) -> &PyObject {
+    fn to_object(&self) -> &PyObject {
         &self.0
     }
 
@@ -97,7 +97,7 @@ impl TreeTransform {
     /// Apply the transform to the tree.
     pub fn finalize(&self) -> Result<(), crate::error::Error> {
         Python::with_gil(|py| {
-            self.to_object(py).call_method0(py, "finalize")?;
+            self.to_object().call_method0(py, "finalize")?;
             Ok(())
         })
     }
@@ -109,7 +109,7 @@ impl TreeTransform {
         let mut v: Vec<TreeChange> = vec![];
 
         Python::with_gil(|py| {
-            let ret = self.to_object(py).call_method0(py, "iter_changes")?;
+            let ret = self.to_object().call_method0(py, "iter_changes")?;
 
             for item in ret.bind(py).try_iter()? {
                 v.push(item?.extract()?);
@@ -124,7 +124,7 @@ impl TreeTransform {
         let mut v: Vec<Conflict> = vec![];
 
         Python::with_gil(|py| {
-            let ret = self.to_object(py).getattr(py, "cooked_conflicts")?;
+            let ret = self.to_object().getattr(py, "cooked_conflicts")?;
 
             for item in ret.bind(py).try_iter()? {
                 v.push(Conflict(item?.into()));
@@ -137,7 +137,7 @@ impl TreeTransform {
     /// Get a preview tree showing what would happen if this transform was applied.
     pub fn get_preview_tree(&self) -> Result<PreviewTree, crate::error::Error> {
         Python::with_gil(|py| {
-            let ret = self.to_object(py).getattr(py, "preview_tree")?;
+            let ret = self.to_object().getattr(py, "preview_tree")?;
             Ok(PreviewTree(ret))
         })
     }

@@ -32,12 +32,6 @@ impl Clone for BranchFormat {
 }
 
 impl BranchFormat {
-    pub(crate) fn as_bound<'py>(&self, py: Python<'py>) -> Bound<'py, PyAny> {
-        self.0.bind(py).clone()
-    }
-}
-
-impl BranchFormat {
     /// Check if this branch format supports stacking.
     ///
     /// Stacking allows a branch to reference revisions in another branch

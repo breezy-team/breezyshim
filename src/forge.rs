@@ -384,7 +384,7 @@ impl ProposalBuilder {
 }
 
 impl Forge {
-    fn to_object(&self, py: Python<'_>) -> &PyObject {
+    fn to_object(&self) -> &PyObject {
         &self.0
     }
     /// Retrieves a merge proposal by its URL.
@@ -403,7 +403,7 @@ impl Forge {
     /// Returns the web URL for a given branch on this forge.
     pub fn get_web_url<B: PyBranch>(&self, branch: &B) -> Result<url::Url, crate::error::Error> {
         Python::with_gil(|py| {
-            let forge_obj = self.to_object(py);
+            let forge_obj = self.to_object();
             let branch_obj = branch.to_object(py);
             let url = forge_obj
                 .call_method1(py, "get_web_url", (&branch_obj,))?
@@ -435,7 +435,7 @@ impl Forge {
     pub fn merge_proposal_description_format(&self) -> String {
         Python::with_gil(|py| {
             let merge_proposal_description_format = self
-                .to_object(py)
+                .to_object()
                 .getattr(py, "merge_proposal_description_format")
                 .unwrap();
             merge_proposal_description_format.extract(py).unwrap()
@@ -446,7 +446,7 @@ impl Forge {
     pub fn supports_merge_proposal_commit_message(&self) -> bool {
         Python::with_gil(|py| {
             let supports_merge_proposal_commit_message = self
-                .to_object(py)
+                .to_object()
                 .getattr(py, "supports_merge_proposal_commit_message")
                 .unwrap();
             supports_merge_proposal_commit_message.extract(py).unwrap()
@@ -457,7 +457,7 @@ impl Forge {
     pub fn supports_merge_proposal_title(&self) -> bool {
         Python::with_gil(|py| {
             let supports_merge_proposal_title = self
-                .to_object(py)
+                .to_object()
                 .getattr(py, "supports_merge_proposal_title")
                 .unwrap();
             supports_merge_proposal_title.extract(py).unwrap()
@@ -468,7 +468,7 @@ impl Forge {
     pub fn supports_merge_proposal_labels(&self) -> bool {
         Python::with_gil(|py| {
             let supports_merge_proposal_labels = self
-                .to_object(py)
+                .to_object()
                 .getattr(py, "supports_merge_proposal_labels")
                 .unwrap();
             supports_merge_proposal_labels.extract(py).unwrap()
@@ -597,7 +597,7 @@ impl Forge {
             let kwargs = PyDict::new(py);
             let local_branch_obj = local_branch.to_object(py);
             let base_branch_obj = base_branch.to_object(py);
-            let forge_obj = self.to_object(py);
+            let forge_obj = self.to_object();
             
             kwargs.set_item("local_branch", local_branch_obj)?;
             kwargs.set_item("base_branch", base_branch_obj)?;
@@ -627,7 +627,7 @@ impl Forge {
     /// Returns the URL for pushing to a branch on this forge.
     pub fn get_push_url(&self, branch: &dyn PyBranch) -> url::Url {
         Python::with_gil(|py| {
-            let forge_obj = self.to_object(py);
+            let forge_obj = self.to_object();
             let branch_obj = branch.to_object(py);
             let url = forge_obj
                 .call_method1(py, "get_push_url", (&branch_obj,))
@@ -642,7 +642,7 @@ impl Forge {
     pub fn get_user_url(&self, user: &str) -> Result<url::Url, crate::error::Error> {
         Python::with_gil(|py| {
             let url = self
-                .to_object(py)
+                .to_object()
                 .call_method1(py, "get_user_url", (user,))
                 .unwrap()
                 .extract::<String>(py)
@@ -655,7 +655,7 @@ impl Forge {
     pub fn get_current_user(&self) -> Result<Option<String>, crate::error::Error> {
         Python::with_gil(|py| {
             let user = self
-                .to_object(py)
+                .to_object()
                 .call_method0(py, "get_current_user")
                 .unwrap()
                 .extract::<Option<String>>(py)
