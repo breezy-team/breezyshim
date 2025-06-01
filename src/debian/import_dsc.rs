@@ -16,8 +16,12 @@ use std::{collections::HashMap, path::Path, path::PathBuf};
 pub struct DistributionBranchSet(PyObject);
 
 impl<'py> IntoPyObject<'py> for DistributionBranchSet {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.clone_ref(py)
+    type Target = PyAny;
+    type Output = Bound<'py, PyAny>;
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(self.0.clone_ref(py).into_bound(py))
     }
 }
 
@@ -37,9 +41,7 @@ impl DistributionBranchSet {
     /// * `branch` - The branch to add to the set
     pub fn add_branch(&self, branch: &DistributionBranch) {
         Python::with_gil(|py| {
-            self.0
-                .call_method1(py, "add_branch", (branch.to_object(py),))
-                .unwrap();
+            self.0.call_method1(py, "add_branch", (&branch.0,)).unwrap();
         })
     }
 }
@@ -51,8 +53,12 @@ impl DistributionBranchSet {
 pub struct DistributionBranch(PyObject);
 
 impl<'py> IntoPyObject<'py> for DistributionBranch {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.clone_ref(py)
+    type Target = PyAny;
+    type Output = Bound<'py, PyAny>;
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(self.0.clone_ref(py).into_bound(py))
     }
 }
 
@@ -102,7 +108,7 @@ impl DistributionBranch {
     ) -> Result<RevisionId, crate::debian::error::Error> {
         Ok(Python::with_gil(|py| -> PyResult<RevisionId> {
             self.0
-                .call_method1(py, "revid_of_version", (version.to_object(py),))?
+                .call_method1(py, "revid_of_version", (version.to_string(),))?
                 .extract::<RevisionId>(py)
         })?)
     }
@@ -122,11 +128,7 @@ impl DistributionBranch {
     ) -> Result<String, crate::debian::error::Error> {
         Ok(Python::with_gil(|py| -> PyResult<String> {
             self.0
-                .call_method1(
-                    py,
-                    "import_package",
-                    (dsc_path.to_object(py), apply_patches),
-                )?
+                .call_method1(py, "import_package", (dsc_path, apply_patches))?
                 .extract::<String>(py)
         })?)
     }
@@ -188,7 +190,7 @@ impl DistributionBranch {
     ) -> Result<(), crate::debian::error::Error> {
         Python::with_gil(|py| -> PyResult<()> {
             self.0
-                .call_method1(py, "create_empty_upstream_tree", (basedir.to_object(py),))?;
+                .call_method1(py, "create_empty_upstream_tree", (basedir,))?;
             Ok(())
         })?;
         Ok(())
@@ -211,7 +213,16 @@ impl DistributionBranch {
             self.0.call_method1(
                 py,
                 "extract_upstream_tree",
-                (upstream_tips.to_object(py), basedir.to_object(py)),
+                (
+                    {
+                        let dict = pyo3::types::PyDict::new(py);
+                        for (k, (r, p)) in upstream_tips {
+                            dict.set_item(k.clone(), (r.clone(), p.clone()))?;
+                        }
+                        dict
+                    },
+                    basedir,
+                ),
             )?;
             Ok(())
         })?)

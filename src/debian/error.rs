@@ -107,26 +107,26 @@ impl From<PyErr> for Error {
             let brz_error: BrzError = err.into();
             if let BrzError::Other(ref err) = brz_error {
                 if err.is_instance_of::<UpstreamAlreadyImported>(py) {
-                    let v = err.value_bound(py);
+                    let v = err.value(py);
                     Error::UpstreamAlreadyImported(v.getattr("version").unwrap().extract().unwrap())
                 } else if err.is_instance_of::<VersionAlreadyImported>(py) {
-                    let v = err.value_bound(py);
+                    let v = err.value(py);
                     Error::VersionAlreadyImported {
                         package: v.getattr("package").unwrap().extract().unwrap(),
                         version: v.getattr("version").unwrap().extract().unwrap(),
                         tag_name: v.getattr("tag_name").unwrap().extract().unwrap(),
                     }
                 } else if err.is_instance_of::<DistCommandfailed>(py) {
-                    let v = err.value_bound(py);
+                    let v = err.value(py);
                     Error::DistCommandFailed(v.getattr("error").unwrap().extract().unwrap())
                 } else if err.is_instance_of::<PackageVersionNotPresent>(py) {
-                    let v = err.value_bound(py);
+                    let v = err.value(py);
                     Error::PackageVersionNotPresent {
                         package: v.getattr("package").unwrap().extract().unwrap(),
                         version: v.getattr("version").unwrap().extract().unwrap(),
                     }
                 } else if err.is_instance_of::<MissingUpstreamTarball>(py) {
-                    let v = err.value_bound(py);
+                    let v = err.value(py);
                     Error::MissingUpstreamTarball {
                         package: v.getattr("package").unwrap().extract().unwrap(),
                         version: v.getattr("version").unwrap().extract().unwrap(),
@@ -149,24 +149,22 @@ impl From<Error> for PyErr {
     fn from(err: Error) -> PyErr {
         match err {
             Error::BrzError(err) => err.into(),
-            Error::BuildFailed => BuildFailedError::new_err(("Build failed",)).into(),
-            Error::UpstreamAlreadyImported(version) => {
-                UpstreamAlreadyImported::new_err((version,)).into()
-            }
-            Error::DistCommandFailed(err) => DistCommandfailed::new_err((err,)).into(),
+            Error::BuildFailed => BuildFailedError::new_err(("Build failed",)),
+            Error::UpstreamAlreadyImported(version) => UpstreamAlreadyImported::new_err((version,)),
+            Error::DistCommandFailed(err) => DistCommandfailed::new_err((err,)),
             Error::PackageVersionNotPresent { package, version } => {
-                PackageVersionNotPresent::new_err((package, version)).into()
+                PackageVersionNotPresent::new_err((package, version))
             }
             Error::MissingUpstreamTarball { package, version } => {
-                MissingUpstreamTarball::new_err((package, version)).into()
+                MissingUpstreamTarball::new_err((package, version))
             }
-            Error::UnreleasedChanges => UnreleasedChanges::new_err(()).into(),
+            Error::UnreleasedChanges => UnreleasedChanges::new_err(()),
             Error::ChangeLogError(_err) => todo!(),
             Error::VersionAlreadyImported {
                 package,
                 version,
                 tag_name,
-            } => VersionAlreadyImported::new_err((package, version, tag_name)).into(),
+            } => VersionAlreadyImported::new_err((package, version, tag_name)),
         }
     }
 }

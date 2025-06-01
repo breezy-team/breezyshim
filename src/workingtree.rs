@@ -189,7 +189,11 @@ impl WorkingTree {
     pub fn is_control_filename(&self, path: &Path) -> bool {
         Python::with_gil(|py| {
             self.to_object(py)
-                .call_method1(py, "is_control_filename", (path,))
+                .call_method1(
+                    py,
+                    "is_control_filename",
+                    (path.to_string_lossy().as_ref(),),
+                )
                 .unwrap()
                 .extract(py)
                 .unwrap()

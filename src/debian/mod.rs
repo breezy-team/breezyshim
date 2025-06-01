@@ -27,10 +27,10 @@ pub const DEFAULT_ORIG_DIR: &str = "..";
 /// Default directory for build results.
 pub const DEFAULT_RESULT_DIR: &str = "..";
 
-use crate::branch::{Branch, PyBranch};
+use crate::branch::PyBranch;
 use crate::debian::error::Error as DebianError;
 use crate::error::Error;
-use crate::tree::{PyTree, Tree, WorkingTree};
+use crate::tree::{PyTree, WorkingTree};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -119,12 +119,17 @@ impl std::str::FromStr for VersionKind {
 }
 
 impl<'py> IntoPyObject<'py> for VersionKind {
-    fn to_object(&self, py: Python) -> PyObject {
-        match self {
-            VersionKind::Auto => "auto".to_object(py),
-            VersionKind::Snapshot => "snapshot".to_object(py),
-            VersionKind::Release => "release".to_object(py),
-        }
+    type Target = PyAny;
+    type Output = Bound<'py, PyAny>;
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        let s = match self {
+            VersionKind::Auto => "auto",
+            VersionKind::Snapshot => "snapshot",
+            VersionKind::Release => "release",
+        };
+        Ok(s.into_pyobject(py)?.into_any())
     }
 }
 
@@ -207,15 +212,13 @@ impl FromPyObject<'_> for TarballKind {
 }
 
 impl<'py> IntoPyObject<'py> for TarballKind {
-    fn to_object(&self, py: Python) -> PyObject {
-        let o: Option<String> = self.clone().into();
-        o.to_object(py)
-    }
-}
+    type Target = PyAny;
+    type Output = Bound<'py, PyAny>;
+    type Error = PyErr;
 
-impl IntoPy<PyObject> for TarballKind {
-    fn into_py(self, py: Python) -> PyObject {
-        self.to_object(py)
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        let o: Option<String> = self.into();
+        Ok(o.into_pyobject(py)?.into_any())
     }
 }
 
@@ -245,15 +248,15 @@ pub fn build_helper(
 
     Python::with_gil(|py| -> PyResult<HashMap<String, PathBuf>> {
         let locals = PyDict::new(py);
-        locals.set_item("local_tree", local_tree)?;
+        locals.set_item("local_tree", local_tree.to_object(py))?;
         locals.set_item("subpath", subpath)?;
-        locals.set_item("branch", branch)?;
+        locals.set_item("branch", branch.to_object(py))?;
         locals.set_item("target_dir", target_dir)?;
         locals.set_item("builder", builder)?;
         locals.set_item("guess_upstream_branch_url", guess_upstream_branch_url)?;
 
         if let Some(apt_repo) = apt_repo {
-            locals.set_item("apt", apt_repo.to_object(py))?;
+            locals.set_item("apt", apt_repo.as_pyobject())?;
         }
 
         py.import("breezy.plugins.debian.cmds")?
@@ -313,7 +316,7 @@ pub fn suite_to_distribution(suite: &str) -> Option<Vendor> {
             .import("breezy.plugins.debian.util")?
             .call_method1("suite_to_distribution", (suite,))?;
 
-        Ok(result.extract()?)
+        result.extract()
     })
     .unwrap()
 }

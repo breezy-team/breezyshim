@@ -125,6 +125,8 @@ version = "0.2.0"
 dependencies = [
  "chrono",
  "ctor",
+ "deb822-derive",
+ "deb822-lossless",
  "debian-changelog",
  "debian-control",
  "debversion",
@@ -323,9 +325,9 @@ checksum = "4f211af61d8efdd104f96e57adf5e426ba1bc3ed7a4ead616e15e5881fd79c4d"
 
 [[package]]
 name = "deb822-derive"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b6e5cafe61e77421a090e2a33b8a2e4e2ff1b106fd906ebade111307064d981"
+checksum = "c066b0ac5a5781e328e48b61d041ac68ba2bbad5f46d13db275292d9aced266c"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -371,9 +373,9 @@ dependencies = [
 
 [[package]]
 name = "debian-control"
-version = "0.1.43"
+version = "0.1.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1cbefa5ce4df7e1afc9c25781149a8d1712ee538c8b37855c5bdd8ab1ac7f4e9"
+checksum = "cf3f538a087059fc1bcac2d3e7e930f487eecdb5c1d50b630f43f2ee868da331"
 dependencies = [
  "chrono",
  "deb822-fast",

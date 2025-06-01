@@ -1,6 +1,8 @@
 //! Launchpad login and related functions
-use launchpadlib::uris;
 use pyo3::prelude::*;
+
+#[cfg(test)]
+use launchpadlib::uris;
 
 /// Log in to Launchpad using the provided URL.
 ///
