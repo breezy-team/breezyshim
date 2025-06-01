@@ -66,14 +66,14 @@ impl Merger {
     /// A new Merger object
     pub fn new<T: PyTree, B: PyBranch>(branch: &B, this_tree: &T, revision_graph: &Graph) -> Self {
         Python::with_gil(|py| {
-            let m = py.import_bound("breezy.merge").unwrap();
+            let m = py.import("breezy.merge").unwrap();
             let cls = m.getattr("Merger").unwrap();
-            let kwargs = PyDict::new_bound(py);
+            let kwargs = PyDict::new(py);
             kwargs
                 .set_item("this_tree", this_tree.to_object(py))
                 .unwrap();
             kwargs
-                .set_item("revision_graph", revision_graph.to_object(py))
+                .set_item("revision_graph", revision_graph.as_pyobject())
                 .unwrap();
             let merger = cls.call((branch.to_object(py),), Some(&kwargs)).unwrap();
             Merger(merger.into())
@@ -161,7 +161,7 @@ impl Merger {
     /// * `merge_type` - The merge algorithm to use
     pub fn set_merge_type(&mut self, merge_type: MergeType) {
         Python::with_gil(|py| {
-            let m = py.import_bound("breezy.merge").unwrap();
+            let m = py.import("breezy.merge").unwrap();
             let merge_type = match merge_type {
                 MergeType::Merge3 => m.getattr("Merge3Merger").unwrap(),
             };
@@ -200,13 +200,13 @@ impl Merger {
         tree_branch: &B2,
     ) -> Result<Self, Error> {
         Python::with_gil(|py| {
-            let m = py.import_bound("breezy.merge").unwrap();
+            let m = py.import("breezy.merge").unwrap();
             let cls = m.getattr("Merger").unwrap();
-            let kwargs = PyDict::new_bound(py);
+            let kwargs = PyDict::new(py);
             kwargs
                 .set_item("other_branch", other_branch.to_object(py))
                 .unwrap();
-            kwargs.set_item("other", other.to_object(py)).unwrap();
+            kwargs.set_item("other", other.clone()).unwrap();
             kwargs
                 .set_item("tree_branch", tree_branch.to_object(py))
                 .unwrap();
@@ -237,10 +237,7 @@ impl Submerger {
     /// A TreeTransform object representing the merge changes
     pub fn make_preview_transform(&self) -> Result<TreeTransform, crate::error::Error> {
         Python::with_gil(|py| {
-            let transform = self
-                .0
-                .call_method0(py, "make_preview_transform")?
-                .to_object(py);
+            let transform = self.0.call_method0(py, "make_preview_transform")?;
             Ok(TreeTransform::from(transform))
         })
     }

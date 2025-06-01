@@ -3,7 +3,10 @@
 use pyo3::prelude::*;
 
 /// Python UI factory trait.
-pub trait PyUIFactory: ToPyObject + std::any::Any + std::fmt::Debug {}
+pub trait PyUIFactory: std::any::Any + std::fmt::Debug {
+    /// Get the underlying Python object for this UI factory.
+    fn to_object(&self, py: Python) -> PyObject;
+}
 
 /// UI factory trait.
 pub trait UIFactory: std::fmt::Debug {}
@@ -18,13 +21,13 @@ impl SilentUIFactory {
     pub fn new() -> Self {
         Python::with_gil(|py| {
             SilentUIFactory(
-                py.import_bound("breezy.ui")
+                py.import("breezy.ui")
                     .unwrap()
                     .getattr("SilentUIFactory")
                     .unwrap()
                     .call0()
                     .unwrap()
-                    .to_object(py),
+                    .unbind(),
             )
         })
     }
@@ -39,15 +42,19 @@ impl Default for SilentUIFactory {
 /// Generic wrapper for a Python UI factory.
 pub struct GenericUIFactory(PyObject);
 
-impl ToPyObject for GenericUIFactory {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.clone_ref(py)
+impl<'py> IntoPyObject<'py> for GenericUIFactory {
+    type Target = PyAny;
+    type Output = Bound<'py, Self::Target>;
+    type Error = std::convert::Infallible;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(self.0.into_bound(py))
     }
 }
 
 impl FromPyObject<'_> for GenericUIFactory {
     fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(GenericUIFactory(obj.to_object(obj.py())))
+        Ok(GenericUIFactory(obj.clone().unbind()))
     }
 }
 
@@ -58,7 +65,11 @@ impl GenericUIFactory {
     }
 }
 
-impl PyUIFactory for GenericUIFactory {}
+impl PyUIFactory for GenericUIFactory {
+    fn to_object(&self, py: Python) -> PyObject {
+        self.0.clone_ref(py)
+    }
+}
 
 impl std::fmt::Debug for GenericUIFactory {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -66,13 +77,21 @@ impl std::fmt::Debug for GenericUIFactory {
     }
 }
 
-impl ToPyObject for SilentUIFactory {
+impl<'py> IntoPyObject<'py> for SilentUIFactory {
+    type Target = PyAny;
+    type Output = Bound<'py, Self::Target>;
+    type Error = std::convert::Infallible;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(self.0.into_bound(py))
+    }
+}
+
+impl PyUIFactory for SilentUIFactory {
     fn to_object(&self, py: Python) -> PyObject {
         self.0.clone_ref(py)
     }
 }
-
-impl PyUIFactory for SilentUIFactory {}
 
 impl std::fmt::Debug for SilentUIFactory {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -83,7 +102,7 @@ impl std::fmt::Debug for SilentUIFactory {
 /// Install a UI factory globally.
 pub fn install_ui_factory(factory: &dyn PyUIFactory) {
     Python::with_gil(|py| {
-        let m = py.import_bound("breezy.ui").unwrap();
+        let m = py.import("breezy.ui").unwrap();
         m.setattr("ui_factory", factory.to_object(py)).unwrap();
     });
 }
@@ -91,8 +110,8 @@ pub fn install_ui_factory(factory: &dyn PyUIFactory) {
 /// Get the current global UI factory.
 pub fn get_ui_factory() -> Box<dyn PyUIFactory> {
     Box::new(GenericUIFactory::new(Python::with_gil(|py| {
-        let m = py.import_bound("breezy.ui").unwrap();
-        m.getattr("ui_factory").unwrap().to_object(py)
+        let m = py.import("breezy.ui").unwrap();
+        m.getattr("ui_factory").unwrap().unbind()
     }))) as Box<dyn PyUIFactory>
 }
 

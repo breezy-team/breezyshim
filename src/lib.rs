@@ -103,7 +103,7 @@ pub use workspace::reset_tree;
 /// This function imports the breezy.git module to ensure Git functionality is available.
 pub fn init_git() {
     pyo3::Python::with_gil(|py| {
-        py.import_bound("breezy.git").unwrap();
+        py.import("breezy.git").unwrap();
     })
 }
 
@@ -112,7 +112,7 @@ pub fn init_git() {
 /// This function imports the breezy.bzr module to ensure Bazaar functionality is available.
 pub fn init_bzr() {
     pyo3::Python::with_gil(|py| {
-        py.import_bound("breezy.bzr").unwrap();
+        py.import("breezy.bzr").unwrap();
     })
 }
 
@@ -142,7 +142,7 @@ static INIT_BREEZY: Once = Once::new();
 pub fn init() {
     INIT_BREEZY.call_once(|| {
         pyo3::prepare_freethreaded_python();
-        let (major, minor, micro) = pyo3::Python::with_gil(|py| match py.import_bound("breezy") {
+        let (major, minor, micro) = pyo3::Python::with_gil(|py| match py.import("breezy") {
             Ok(breezy) => {
                 let (major, minor, micro, _releaselevel, _serial): (
                     usize,
@@ -178,14 +178,14 @@ pub fn init() {
 
         // Work around a breezy bug
         pyo3::Python::with_gil(|py| {
-            let m = py.import_bound("breezy.controldir").unwrap();
+            let m = py.import("breezy.controldir").unwrap();
             let f = m.getattr("ControlDirFormat").unwrap();
             f.call_method0("known_formats").unwrap();
         });
 
         // Prevent race conditions
         pyo3::Python::with_gil(|py| {
-            let m = py.import_bound("breezy.config").unwrap();
+            let m = py.import("breezy.config").unwrap();
             m.call_method0("GlobalStack").unwrap();
             m.call_method1("LocationStack", ("file:///",)).unwrap();
         });

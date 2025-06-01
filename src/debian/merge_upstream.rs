@@ -43,9 +43,9 @@ pub fn do_import(
     files_excluded: Option<&[&Path]>,
 ) -> Result<Vec<(TarballKind, String, RevisionId, Option<bool>, PathBuf)>, Error> {
     Python::with_gil(|py| {
-        let m = PyModule::import_bound(py, "breezy.plugins.debian.merge_upstream").unwrap();
+        let m = PyModule::import(py, "breezy.plugins.debian.merge_upstream").unwrap();
         let do_import = m.getattr("do_import").unwrap();
-        let kwargs = PyDict::new_bound(py);
+        let kwargs = PyDict::new(py);
         kwargs.set_item("tree", tree.to_object(py))?;
         kwargs.set_item("subpath", subpath)?;
         kwargs.set_item("tarball_filenames", tarball_filenames.to_vec())?;
@@ -82,7 +82,7 @@ pub fn get_tarballs(
     locations: &[&Path],
 ) -> Result<Vec<PathBuf>, Error> {
     Python::with_gil(|py| {
-        let m = PyModule::import_bound(py, "breezy.plugins.debian.merge_upstream").unwrap();
+        let m = PyModule::import(py, "breezy.plugins.debian.merge_upstream").unwrap();
         let get_tarballs = m.getattr("get_tarballs").unwrap();
         Ok(get_tarballs
             .call1((
@@ -111,7 +111,7 @@ pub fn get_existing_imported_upstream_revids(
     new_upstream_version: &str,
 ) -> Result<Vec<(TarballKind, String, RevisionId, Option<bool>, PathBuf)>, Error> {
     Python::with_gil(|py| {
-        let m = PyModule::import_bound(py, "breezy.plugins.debian.merge_upstream").unwrap();
+        let m = PyModule::import(py, "breezy.plugins.debian.merge_upstream").unwrap();
         let get_existing_imported_upstream_revids =
             m.getattr("get_existing_imported_upstream_revids").unwrap();
         Ok(get_existing_imported_upstream_revids

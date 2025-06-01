@@ -21,7 +21,7 @@ pub fn guess_renames<T: PyTree, U: PyMutableTree>(
     mutable_tree: &U,
 ) -> Result<(), crate::error::Error> {
     pyo3::Python::with_gil(|py| -> Result<(), pyo3::PyErr> {
-        let m = py.import_bound("breezy.rename_map")?;
+        let m = py.import("breezy.rename_map")?;
         let rename_map = m.getattr("RenameMap")?;
         rename_map.call_method1(
             "guess_renames",

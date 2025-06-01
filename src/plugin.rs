@@ -13,7 +13,7 @@ use pyo3::prelude::*;
 /// `true` if plugins were loaded, `false` if Breezy was already initialized
 pub fn load_plugins() -> bool {
     Python::with_gil(|py| {
-        let m = py.import_bound("breezy.plugin").unwrap();
+        let m = py.import("breezy.plugin").unwrap();
         match m.call_method0("load_plugins") {
             Ok(_) => true,
             Err(e)

@@ -4,6 +4,7 @@ use debian_control::apt::{Package, Source};
 use debversion::Version;
 use pyo3::exceptions::PyStopIteration;
 use pyo3::prelude::*;
+use pyo3::intern;
 
 pyo3::import_exception!(breezy.plugins.debian.apt_repo, NoAptSources);
 
@@ -168,7 +169,7 @@ pub struct LocalApt(PyObject);
 
 impl Apt for LocalApt {}
 
-impl ToPyObject for LocalApt {
+impl<'py> IntoPyObject<'py> for LocalApt {
     fn to_object(&self, py: Python) -> PyObject {
         self.0.clone_ref(py)
     }
@@ -185,11 +186,11 @@ impl LocalApt {
     pub fn new(rootdir: Option<&std::path::Path>) -> Result<Self, Error> {
         let _mutex = apt_mutex.lock().unwrap();
         Python::with_gil(|py| {
-            let m = PyModule::import_bound(py, "breezy.plugins.debian.apt_repo")?;
+            let m = PyModule::import(py, "breezy.plugins.debian.apt_repo")?;
             let apt = m.getattr("LocalApt")?;
             let apt = apt.call1((rootdir,))?;
 
-            apt.call_method0("__enter__")?;
+            apt.call_method0(intern!(py, "__enter__"))?;
             Ok(Self(apt.to_object(py)))
         })
     }
@@ -205,7 +206,7 @@ impl Drop for LocalApt {
     fn drop(&mut self) {
         Python::with_gil(|py| {
             self.0
-                .call_method1(py, "__exit__", (py.None(), py.None(), py.None()))
+                .call_method1(py, intern!(py, "__exit__"), (py.None(), py.None(), py.None()))
                 .unwrap();
         });
     }
@@ -216,7 +217,7 @@ impl Drop for LocalApt {
 /// This struct provides access to APT repositories on remote servers.
 pub struct RemoteApt(PyObject);
 
-impl ToPyObject for RemoteApt {
+impl<'py> IntoPyObject<'py> for RemoteApt {
     fn to_object(&self, py: Python) -> PyObject {
         self.0.clone_ref(py)
     }
@@ -241,10 +242,10 @@ impl RemoteApt {
     ) -> Result<Self, Error> {
         let _mutex = apt_mutex.lock().unwrap();
         Python::with_gil(|py| {
-            let m = PyModule::import_bound(py, "breezy.plugins.debian.apt_repo")?;
+            let m = PyModule::import(py, "breezy.plugins.debian.apt_repo")?;
             let apt = m.getattr("RemoteApt")?;
             let apt = apt.call1((mirror_uri.as_str(), distribution, components, key_path))?;
-            apt.call_method0("__enter__")?;
+            apt.call_method0(intern!(py, "__enter__"))?;
             Ok(Self(apt.to_object(py)))
         })
     }
@@ -260,10 +261,10 @@ impl RemoteApt {
     pub fn from_string(text: &str, key_path: Option<&std::path::Path>) -> Result<Self, Error> {
         let _mutex = apt_mutex.lock().unwrap();
         Python::with_gil(|py| {
-            let m = PyModule::import_bound(py, "breezy.plugins.debian.apt_repo")?;
+            let m = PyModule::import(py, "breezy.plugins.debian.apt_repo")?;
             let apt = m.getattr("RemoteApt")?;
             let apt = apt.call_method1("from_string", (text, key_path))?;
-            apt.call_method0("__enter__")?;
+            apt.call_method0(intern!(py, "__enter__"))?;
             Ok(Self(apt.to_object(py)))
         })
     }
@@ -275,7 +276,7 @@ impl Drop for RemoteApt {
     fn drop(&mut self) {
         Python::with_gil(|py| {
             self.0
-                .call_method1(py, "__exit__", (py.None(), py.None(), py.None()))
+                .call_method1(py, intern!(py, "__exit__"), (py.None(), py.None(), py.None()))
                 .unwrap();
         });
     }

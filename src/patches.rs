@@ -3,10 +3,11 @@ use crate::transform::TreeTransform;
 use patchkit::unified::{HunkLine, UnifiedPatch};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyList};
+use pyo3::intern;
 
 fn py_patches(iter_patches: impl Iterator<Item = UnifiedPatch>) -> PyResult<PyObject> {
     Python::with_gil(|py| {
-        let m = py.import_bound("breezy.patches")?;
+        let m = py.import("breezy.patches")?;
         let patchc = m.getattr("Patch")?;
         let hunkc = m.getattr("Hunk")?;
         let insertlinec = m.getattr("InsertLine")?;
@@ -15,8 +16,8 @@ fn py_patches(iter_patches: impl Iterator<Item = UnifiedPatch>) -> PyResult<PyOb
         let mut ret = vec![];
         for patch in iter_patches {
             let pypatch = patchc.call1((
-                PyBytes::new_bound(py, &patch.orig_name),
-                PyBytes::new_bound(py, &patch.mod_name),
+                PyBytes::new(py, &patch.orig_name),
+                PyBytes::new(py, &patch.mod_name),
                 patch.orig_ts,
                 patch.mod_ts,
             ))?;
@@ -39,13 +40,13 @@ fn py_patches(iter_patches: impl Iterator<Item = UnifiedPatch>) -> PyResult<PyOb
                         "append",
                         (match line {
                             HunkLine::ContextLine(l) => {
-                                contextlinec.call1((PyBytes::new_bound(py, l.as_slice()),))?
+                                contextlinec.call1((PyBytes::new(py, l.as_slice()),))?
                             }
                             HunkLine::InsertLine(l) => {
-                                insertlinec.call1((PyBytes::new_bound(py, l.as_slice()),))?
+                                insertlinec.call1((PyBytes::new(py, l.as_slice()),))?
                             }
                             HunkLine::RemoveLine(l) => {
-                                removelinec.call1((PyBytes::new_bound(py, l.as_slice()),))?
+                                removelinec.call1((PyBytes::new(py, l.as_slice()),))?
                             }
                         },),
                     )?;
@@ -53,7 +54,7 @@ fn py_patches(iter_patches: impl Iterator<Item = UnifiedPatch>) -> PyResult<PyOb
             }
             ret.push(pypatch);
         }
-        Ok(PyList::new_bound(py, ret.iter()).into_py(py))
+        Ok(PyList::new(py, ret.iter())?.unbind().into())
     })
 }
 
@@ -70,9 +71,9 @@ pub fn apply_patches(
 ) -> crate::Result<()> {
     Python::with_gil(|py| {
         let patches = py_patches(patches)?;
-        let m = py.import_bound("breezy.tree")?;
+        let m = py.import("breezy.tree")?;
         let apply_patches = m.getattr("apply_patches")?;
-        apply_patches.call1((tt.to_object(py), patches, prefix))?;
+        apply_patches.call1((tt.as_pyobject(), patches, prefix))?;
         Ok(())
     })
 }
@@ -102,11 +103,11 @@ impl AppliedPatches {
     ) -> crate::Result<Self> {
         let (ap, tree) = Python::with_gil(|py| -> Result<_, PyErr> {
             let patches = py_patches(patches.into_iter())?;
-            let m = py.import_bound("breezy.patches")?;
+            let m = py.import("breezy.patches")?;
             let c = m.getattr("AppliedPatches")?;
             let ap = c.call1((tree.to_object(py), patches, prefix))?;
-            let tree = ap.call_method0("__enter__")?;
-            Ok((ap.to_object(py), tree.to_object(py)))
+            let tree = ap.call_method0(intern!(py, "__enter__"))?;
+            Ok((ap.unbind(), tree.unbind()))
         })?;
         Ok(Self(tree, ap))
     }
@@ -116,20 +117,28 @@ impl Drop for AppliedPatches {
     fn drop(&mut self) {
         Python::with_gil(|py| -> Result<(), PyErr> {
             self.1
-                .call_method1(py, "__exit__", (py.None(), py.None(), py.None()))?;
+                .call_method1(py, intern!(py, "__exit__"), (py.None(), py.None(), py.None()))?;
             Ok(())
         })
         .unwrap();
     }
 }
 
-impl ToPyObject for AppliedPatches {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.to_object(py)
+impl<'py> IntoPyObject<'py> for AppliedPatches {
+    type Target = PyAny;
+    type Output = Bound<'py, Self::Target>;
+    type Error = std::convert::Infallible;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(self.0.clone_ref(py).into_bound(py))
     }
 }
 
-impl crate::tree::PyTree for AppliedPatches {}
+impl crate::tree::PyTree for AppliedPatches {
+    fn to_object(&self, py: Python) -> PyObject {
+        self.0.clone_ref(py)
+    }
+}
 
 #[cfg(test)]
 mod applied_patches_tests {

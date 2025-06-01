@@ -12,7 +12,7 @@ impl DarcsProber {
     /// Create a new Darcs prober instance.
     pub fn new() -> Option<Self> {
         Python::with_gil(|py| {
-            let m = match py.import_bound("breezy.plugins.darcs") {
+            let m = match py.import("breezy.plugins.darcs") {
                 Ok(m) => m,
                 Err(e) => {
                     if e.is_instance_of::<PyModuleNotFoundError>(py) {
@@ -24,20 +24,24 @@ impl DarcsProber {
                 }
             };
             let prober = m.getattr("DarcsProber").expect("Failed to get DarcsProber");
-            Some(Self(prober.to_object(py)))
+            Some(Self(prober.unbind()))
         })
     }
 }
 
 impl FromPyObject<'_> for DarcsProber {
     fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(Self(obj.to_object(obj.py())))
+        Ok(Self(obj.clone().unbind()))
     }
 }
 
-impl ToPyObject for DarcsProber {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.0.to_object(py)
+impl<'py> IntoPyObject<'py> for DarcsProber {
+    type Target = PyAny;
+    type Output = Bound<'py, Self::Target>;
+    type Error = std::convert::Infallible;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(self.0.into_bound(py))
     }
 }
 
@@ -47,7 +51,11 @@ impl std::fmt::Debug for DarcsProber {
     }
 }
 
-impl crate::controldir::PyProber for DarcsProber {}
+impl crate::controldir::PyProber for DarcsProber {
+    fn to_object(&self, py: Python) -> PyObject {
+        self.0.clone_ref(py)
+    }
+}
 
 #[cfg(test)]
 mod tests {
