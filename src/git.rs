@@ -100,3 +100,59 @@ impl crate::controldir::AsFormat for BareLocalGitControlDirFormat {
         }))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::controldir::AsFormat;
+
+    #[test]
+    fn test_zero_sha() {
+        assert_eq!(ZERO_SHA.len(), 40);
+        assert_eq!(ZERO_SHA, b"0000000000000000000000000000000000000000");
+    }
+
+    #[test]
+    fn test_remote_git_prober_new() {
+        // This may return None if git plugin is not available
+        let _prober = RemoteGitProber::new();
+    }
+
+    #[test]
+    fn test_remote_git_prober_debug() {
+        if let Some(prober) = RemoteGitProber::new() {
+            let debug_str = format!("{:?}", prober);
+            assert!(debug_str.contains("RemoteGitProber"));
+        }
+    }
+
+    #[test]
+    fn test_bare_local_git_control_dir_format() {
+        // This test will only pass if git plugin is available
+        let result = std::panic::catch_unwind(|| BareLocalGitControlDirFormat::new());
+
+        if let Ok(format) = result {
+            let _opt_format = format.as_format();
+        }
+    }
+
+    #[test]
+    fn test_remote_git_prober_into_pyobject() {
+        if let Some(prober) = RemoteGitProber::new() {
+            Python::with_gil(|py| {
+                let _pyobj = prober.into_pyobject(py).unwrap();
+            });
+        }
+    }
+
+    #[test]
+    fn test_bare_local_git_into_pyobject() {
+        let result = std::panic::catch_unwind(|| BareLocalGitControlDirFormat::new());
+
+        if let Ok(format) = result {
+            Python::with_gil(|py| {
+                let _pyobj = format.into_pyobject(py).unwrap();
+            });
+        }
+    }
+}

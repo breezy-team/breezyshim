@@ -540,8 +540,10 @@ pub fn open(base: impl AsLocation) -> Result<GenericRepository, crate::error::Er
 
 #[cfg(test)]
 mod repository_tests {
-    use super::GenericRepository;
+    use super::{GenericRepository, Repository};
     use crate::controldir::ControlDirFormat;
+    use crate::foreign::VcsType;
+    use crate::revisionid::RevisionId;
 
     #[test]
     fn test_simple() {
@@ -564,5 +566,143 @@ mod repository_tests {
         .unwrap();
         let repo: GenericRepository = crate::repository::open(td.path()).unwrap();
         let _repo2 = repo.clone();
+    }
+
+    #[test]
+    fn test_repository_format() {
+        let td = tempfile::tempdir().unwrap();
+        let _dir = crate::controldir::create_standalone_workingtree(
+            td.path(),
+            &ControlDirFormat::default(),
+        )
+        .unwrap();
+        let repo: GenericRepository = crate::repository::open(td.path()).unwrap();
+        let format = repo.format();
+        let _supports_chks = format.supports_chks();
+    }
+
+    #[test]
+    fn test_repository_format_clone() {
+        let td = tempfile::tempdir().unwrap();
+        let _dir = crate::controldir::create_standalone_workingtree(
+            td.path(),
+            &ControlDirFormat::default(),
+        )
+        .unwrap();
+        let repo: GenericRepository = crate::repository::open(td.path()).unwrap();
+        let format = repo.format();
+        let _format2 = format.clone();
+    }
+
+    #[test]
+    fn test_vcs_type() {
+        let td = tempfile::tempdir().unwrap();
+        let _dir = crate::controldir::create_standalone_workingtree(
+            td.path(),
+            &ControlDirFormat::default(),
+        )
+        .unwrap();
+        let repo: GenericRepository = crate::repository::open(td.path()).unwrap();
+        let vcs_type = repo.vcs_type();
+        assert!(matches!(vcs_type, VcsType::Bazaar | VcsType::Git));
+    }
+
+    #[test]
+    fn test_user_url() {
+        let td = tempfile::tempdir().unwrap();
+        let _dir = crate::controldir::create_standalone_workingtree(
+            td.path(),
+            &ControlDirFormat::default(),
+        )
+        .unwrap();
+        let repo: GenericRepository = crate::repository::open(td.path()).unwrap();
+        let _url = repo.get_user_url();
+    }
+
+    #[test]
+    fn test_transports() {
+        let td = tempfile::tempdir().unwrap();
+        let _dir = crate::controldir::create_standalone_workingtree(
+            td.path(),
+            &ControlDirFormat::default(),
+        )
+        .unwrap();
+        let repo: GenericRepository = crate::repository::open(td.path()).unwrap();
+        let _user_transport = repo.user_transport();
+        let _control_transport = repo.control_transport();
+    }
+
+    #[test]
+    fn test_controldir() {
+        let td = tempfile::tempdir().unwrap();
+        let _dir = crate::controldir::create_standalone_workingtree(
+            td.path(),
+            &ControlDirFormat::default(),
+        )
+        .unwrap();
+        let repo: GenericRepository = crate::repository::open(td.path()).unwrap();
+        let _controldir = repo.controldir();
+    }
+
+    #[test]
+    fn test_get_graph() {
+        let td = tempfile::tempdir().unwrap();
+        let _dir = crate::controldir::create_standalone_workingtree(
+            td.path(),
+            &ControlDirFormat::default(),
+        )
+        .unwrap();
+        let repo: GenericRepository = crate::repository::open(td.path()).unwrap();
+        let _graph = repo.get_graph();
+    }
+
+    #[test]
+    fn test_revision_tree() {
+        let td = tempfile::tempdir().unwrap();
+        let _dir = crate::controldir::create_standalone_workingtree(
+            td.path(),
+            &ControlDirFormat::default(),
+        )
+        .unwrap();
+        let repo: GenericRepository = crate::repository::open(td.path()).unwrap();
+
+        // Try to get revision tree for null revision
+        let null_revid = RevisionId::null();
+        let _tree = repo.revision_tree(&null_revid).unwrap();
+    }
+
+    #[test]
+    fn test_iter_revisions() {
+        let td = tempfile::tempdir().unwrap();
+        let _dir = crate::controldir::create_standalone_workingtree(
+            td.path(),
+            &ControlDirFormat::default(),
+        )
+        .unwrap();
+        let repo: GenericRepository = crate::repository::open(td.path()).unwrap();
+
+        // Test with empty list
+        let revisions = vec![];
+        let mut iter = repo.iter_revisions(revisions);
+        assert!(iter.next().is_none());
+    }
+
+    #[test]
+    fn test_lock_operations() {
+        let td = tempfile::tempdir().unwrap();
+        let _dir = crate::controldir::create_standalone_workingtree(
+            td.path(),
+            &ControlDirFormat::default(),
+        )
+        .unwrap();
+        let repo: GenericRepository = crate::repository::open(td.path()).unwrap();
+
+        // Test read lock
+        let read_lock = repo.lock_read();
+        assert!(read_lock.is_ok());
+
+        // Test write lock
+        let write_lock = repo.lock_write();
+        assert!(!write_lock.is_ok());
     }
 }
