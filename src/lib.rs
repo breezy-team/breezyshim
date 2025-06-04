@@ -56,6 +56,7 @@ pub mod merge;
 pub mod osutils;
 pub mod patches;
 pub mod plugin;
+pub mod prelude;
 pub mod rename_map;
 pub mod repository;
 pub mod revisionid;
