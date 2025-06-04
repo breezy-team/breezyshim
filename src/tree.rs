@@ -584,13 +584,15 @@ pub trait MutableTree: Tree {
     /// Remove specified files from version control and from the filesystem.
     fn remove(&self, files: &[&std::path::Path]) -> Result<(), Error>;
     /// Get this object as a reference to the Tree trait.
-    fn as_tree(&self) -> &dyn Tree;
+    fn as_tree(&self) -> &dyn Tree
+    where
+        Self: Sized;
 }
 
 /// A tree that can be modified.
 pub trait PyMutableTree: PyTree {}
 
-impl<T: PyMutableTree> MutableTree for T {
+impl<T: PyMutableTree + ?Sized> MutableTree for T {
     fn add(&self, files: &[&Path]) -> Result<(), Error> {
         for f in files {
             assert!(f.is_relative());
@@ -661,7 +663,10 @@ impl<T: PyMutableTree> MutableTree for T {
         .map_err(|e| e.into())
     }
 
-    fn as_tree(&self) -> &dyn Tree {
+    fn as_tree(&self) -> &dyn Tree
+    where
+        Self: Sized,
+    {
         self
     }
 }
