@@ -54,10 +54,8 @@ impl Transport {
         pyo3::Python::with_gil(|py| {
             Ok(self
                 .0
-                .call_method1(py, "local_abspath", (path,))
-                .unwrap()
-                .extract::<PathBuf>(py)
-                .unwrap())
+                .call_method1(py, "local_abspath", (path.to_string_lossy().as_ref(),))?
+                .extract::<PathBuf>(py)?)
         })
     }
 
@@ -136,4 +134,106 @@ pub fn get_transport(
         let o = urlutils.call_method("get_transport", (url.to_string(),), Some(&kwargs))?;
         Ok(Transport(o.unbind()))
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn test_get_transport() {
+        let td = tempfile::tempdir().unwrap();
+        let url = url::Url::from_file_path(td.path()).unwrap();
+        let transport = get_transport(&url, None).unwrap();
+
+        // Test base URL
+        let base = transport.base();
+        assert!(base.to_string().starts_with("file://"));
+    }
+
+    #[test]
+    fn test_transport_is_local() {
+        let td = tempfile::tempdir().unwrap();
+        let url = url::Url::from_file_path(td.path()).unwrap();
+        let transport = get_transport(&url, None).unwrap();
+
+        assert!(transport.is_local());
+    }
+
+    #[test]
+    fn test_transport_local_abspath() {
+        let td = tempfile::tempdir().unwrap();
+        let url = url::Url::from_file_path(td.path()).unwrap();
+        let transport = get_transport(&url, None).unwrap();
+
+        let path = Path::new("test.txt");
+        let abspath = transport.local_abspath(path).unwrap();
+        assert!(abspath.is_absolute());
+    }
+
+    #[test]
+    fn test_transport_has() {
+        let td = tempfile::tempdir().unwrap();
+        let url = url::Url::from_file_path(td.path()).unwrap();
+        let transport = get_transport(&url, None).unwrap();
+
+        // Test for non-existent file
+        let exists = transport.has("nonexistent.txt").unwrap();
+        assert!(!exists);
+    }
+
+    #[test]
+    fn test_transport_ensure_base() {
+        let td = tempfile::tempdir().unwrap();
+        let url = url::Url::from_file_path(td.path()).unwrap();
+        let transport = get_transport(&url, None).unwrap();
+
+        let result = transport.ensure_base();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_transport_create_prefix() {
+        let td = tempfile::tempdir().unwrap();
+        let url = url::Url::from_file_path(td.path()).unwrap();
+        let transport = get_transport(&url, None).unwrap();
+
+        let result = transport.create_prefix();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_transport_clone() {
+        let td = tempfile::tempdir().unwrap();
+        let url = url::Url::from_file_path(td.path()).unwrap();
+        let transport = get_transport(&url, None).unwrap();
+
+        let cloned = transport.clone("subdir").unwrap();
+        let cloned_base = cloned.base();
+        assert!(cloned_base.to_string().contains("subdir"));
+    }
+
+    #[test]
+    fn test_transport_into_pyobject() {
+        let td = tempfile::tempdir().unwrap();
+        let url = url::Url::from_file_path(td.path()).unwrap();
+        let transport = get_transport(&url, None).unwrap();
+
+        Python::with_gil(|py| {
+            let _pyobj = transport.into_pyobject(py).unwrap();
+        });
+    }
+
+    #[test]
+    fn test_get_transport_with_possible_transports() {
+        let td = tempfile::tempdir().unwrap();
+        let url = url::Url::from_file_path(td.path()).unwrap();
+
+        let mut possible_transports = vec![];
+        let transport = get_transport(&url, Some(&mut possible_transports)).unwrap();
+
+        let base = transport.base();
+        assert!(base.to_string().starts_with("file://"));
+    }
 }
