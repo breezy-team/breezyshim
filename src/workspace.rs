@@ -2,7 +2,8 @@
 #[cfg(feature = "dirty-tracker")]
 use crate::dirty_tracker::{DirtyTreeTracker, State as DirtyTrackerState};
 use crate::error::Error;
-use crate::tree::{PyTree, WorkingTree};
+use crate::tree::PyTree;
+use crate::workingtree::PyWorkingTree;
 use pyo3::prelude::*;
 
 /// Reset a tree with a dirty tracker.
@@ -23,7 +24,7 @@ use pyo3::prelude::*;
 /// `Ok(())` on success, or an error if the tree could not be reset.
 #[cfg(feature = "dirty-tracker")]
 pub fn reset_tree_with_dirty_tracker(
-    local_tree: &WorkingTree,
+    local_tree: &dyn PyWorkingTree,
     basis_tree: Option<&dyn PyTree>,
     subpath: Option<&std::path::Path>,
     dirty_tracker: Option<&mut DirtyTreeTracker>,
@@ -52,7 +53,7 @@ pub fn reset_tree_with_dirty_tracker(
 ///
 /// `Ok(())` on success, or an error if the tree could not be reset.
 pub fn reset_tree(
-    local_tree: &WorkingTree,
+    local_tree: &dyn PyWorkingTree,
     basis_tree: Option<&dyn PyTree>,
     subpath: Option<&std::path::Path>,
 ) -> Result<(), Error> {
@@ -81,7 +82,7 @@ pub fn reset_tree(
 ///
 /// `Ok(())` if the tree is clean, or an error if the tree is dirty or the check failed.
 pub fn check_clean_tree(
-    local_tree: &WorkingTree,
+    local_tree: &dyn PyWorkingTree,
     basis_tree: &dyn PyTree,
     subpath: &std::path::Path,
 ) -> Result<(), Error> {

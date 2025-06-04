@@ -140,7 +140,15 @@ pub trait Branch {
     /// # Returns
     ///
     /// The control directory containing this branch.
-    fn controldir(&self) -> Box<dyn ControlDir>;
+    fn controldir(
+        &self,
+    ) -> Box<
+        dyn ControlDir<
+            Branch = GenericBranch,
+            Repository = crate::repository::GenericRepository,
+            WorkingTree = crate::workingtree::GenericWorkingTree,
+        >,
+    >;
 
     /// Push this branch to a remote branch.
     ///
@@ -246,7 +254,7 @@ pub trait Branch {
     fn create_checkout(
         &self,
         to_location: &std::path::Path,
-    ) -> Result<crate::tree::WorkingTree, Error>;
+    ) -> Result<crate::workingtree::GenericWorkingTree, Error>;
     /// Generate the revision history for this branch.
     ///
     /// # Parameters
@@ -358,11 +366,26 @@ impl<T: PyBranch> Branch for T {
         })
     }
 
-    fn controldir(&self) -> Box<dyn ControlDir> {
+    fn controldir(
+        &self,
+    ) -> Box<
+        dyn ControlDir<
+            Branch = GenericBranch,
+            Repository = crate::repository::GenericRepository,
+            WorkingTree = crate::workingtree::GenericWorkingTree,
+        >,
+    > {
         Python::with_gil(|py| {
             Box::new(GenericControlDir::new(
                 self.to_object(py).getattr(py, "controldir").unwrap(),
-            )) as Box<dyn ControlDir>
+            ))
+                as Box<
+                    dyn ControlDir<
+                        Branch = GenericBranch,
+                        Repository = crate::repository::GenericRepository,
+                        WorkingTree = crate::workingtree::GenericWorkingTree,
+                    >,
+                >
         })
     }
 
@@ -499,7 +522,7 @@ impl<T: PyBranch> Branch for T {
     fn create_checkout(
         &self,
         to_location: &std::path::Path,
-    ) -> Result<crate::tree::WorkingTree, Error> {
+    ) -> Result<crate::workingtree::GenericWorkingTree, Error> {
         Python::with_gil(|py| {
             self.to_object(py)
                 .call_method1(
@@ -507,7 +530,7 @@ impl<T: PyBranch> Branch for T {
                     "create_checkout",
                     (to_location.to_string_lossy().to_string(),),
                 )
-                .map(crate::tree::WorkingTree)
+                .map(crate::workingtree::GenericWorkingTree)
                 .map_err(|e| e.into())
         })
     }

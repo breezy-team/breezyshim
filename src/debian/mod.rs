@@ -30,7 +30,8 @@ pub const DEFAULT_RESULT_DIR: &str = "..";
 use crate::branch::PyBranch;
 use crate::debian::error::Error as DebianError;
 use crate::error::Error;
-use crate::tree::{PyTree, WorkingTree};
+use crate::tree::PyTree;
+use crate::workingtree::PyWorkingTree;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -236,7 +237,7 @@ impl<'py> IntoPyObject<'py> for TarballKind {
 /// # Returns
 /// A map of result file types to their paths, or an error
 pub fn build_helper(
-    local_tree: &WorkingTree,
+    local_tree: &dyn PyWorkingTree,
     subpath: &std::path::Path,
     branch: &dyn PyBranch,
     target_dir: &std::path::Path,

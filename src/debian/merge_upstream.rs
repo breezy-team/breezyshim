@@ -3,7 +3,7 @@ use crate::debian::error::Error;
 use crate::debian::upstream::PyUpstreamSource;
 use crate::debian::TarballKind;
 use crate::tree::PyTree;
-use crate::workingtree::WorkingTree;
+use crate::workingtree::PyWorkingTree;
 use crate::RevisionId;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
@@ -28,7 +28,7 @@ use std::path::{Path, PathBuf};
 /// # Returns
 /// List with (component, tag, revid, pristine_tar_imported, subpath) tuples
 pub fn do_import(
-    tree: &WorkingTree,
+    tree: &dyn PyWorkingTree,
     subpath: &Path,
     tarball_filenames: &[&Path],
     package: &str,

@@ -28,4 +28,4 @@ pub trait MutableInventoryTree: crate::tree::PyMutableTree {
     }
 }
 
-impl MutableInventoryTree for crate::tree::WorkingTree {}
+impl MutableInventoryTree for crate::workingtree::GenericWorkingTree {}

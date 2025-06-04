@@ -1,5 +1,5 @@
 //! Fast and efficient detection of files that have been modified in a directory tree.
-use crate::tree::WorkingTree;
+use crate::workingtree::GenericWorkingTree;
 use dirty_tracker::DirtyTracker;
 pub use dirty_tracker::State;
 
@@ -9,13 +9,13 @@ pub use dirty_tracker::State;
 /// modified in a working tree.
 pub struct DirtyTreeTracker {
     tracker: DirtyTracker,
-    tree: WorkingTree,
+    tree: GenericWorkingTree,
     base: std::path::PathBuf,
 }
 
 impl DirtyTreeTracker {
     /// Create a new DirtyTreeTracker for the given WorkingTree.
-    pub fn new(tree: WorkingTree) -> Self {
+    pub fn new(tree: GenericWorkingTree) -> Self {
         let base = tree.basedir();
         let tracker = DirtyTracker::new(&base).unwrap();
         Self {
@@ -28,7 +28,7 @@ impl DirtyTreeTracker {
     /// Create a new DirtyTreeTracker for a specific subpath within a WorkingTree.
     ///
     /// This allows tracking changes only within a specific subdirectory of the working tree.
-    pub fn new_in_subpath(tree: WorkingTree, subpath: &std::path::Path) -> Self {
+    pub fn new_in_subpath(tree: GenericWorkingTree, subpath: &std::path::Path) -> Self {
         let base = tree.basedir();
         let tracker = DirtyTracker::new(&base.join(subpath)).unwrap();
         Self {
