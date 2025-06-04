@@ -3,7 +3,8 @@ use crate::commit::PyCommitReporter;
 use crate::debian::error::Error;
 use crate::debian::{suite_to_distribution, Vendor};
 use crate::error::Error as BrzError;
-use crate::tree::{Kind, Path, PyTree, Tree, WorkingTree};
+use crate::tree::{Kind, Path, PyTree, Tree};
+use crate::workingtree::PyWorkingTree;
 use crate::RevisionId;
 use debian_changelog::ChangeLog;
 
@@ -22,7 +23,7 @@ use debian_changelog::ChangeLog;
 /// # Returns
 /// The name of the created tag, or an error
 pub fn debcommit_release(
-    tree: &WorkingTree,
+    tree: &dyn PyWorkingTree,
     committer: Option<&str>,
     subpath: Option<&std::path::Path>,
     message: Option<&str>,
@@ -201,7 +202,7 @@ pub fn changelog_commit_message(
 /// # Returns
 /// Created revision id
 pub fn debcommit(
-    tree: &WorkingTree,
+    tree: &dyn PyWorkingTree,
     committer: Option<&str>,
     subpath: &Path,
     paths: Option<&[&Path]>,

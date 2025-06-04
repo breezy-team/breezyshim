@@ -5,33 +5,317 @@
 use crate::branch::{GenericBranch, PyBranch};
 use crate::controldir::{ControlDir, GenericControlDir};
 use crate::error::Error;
-use crate::tree::{PyTree, RevisionTree};
+use crate::tree::{MutableTree, PyMutableTree, PyTree, RevisionTree};
 use crate::RevisionId;
 use pyo3::intern;
 use pyo3::prelude::*;
 use std::path::{Path, PathBuf};
+
+/// Trait representing a working tree in a version control system.
+///
+/// A working tree is a local directory containing the files of a branch that can
+/// be edited. This trait provides methods for interacting with working trees
+/// across various version control systems.
+pub trait WorkingTree: MutableTree {
+    /// Get the base directory path of this working tree.
+    ///
+    /// # Returns
+    ///
+    /// The absolute path to the root directory of this working tree.
+    fn basedir(&self) -> PathBuf;
+
+    /// Get the control directory for this working tree.
+    ///
+    /// # Returns
+    ///
+    /// The control directory containing this working tree.
+    fn controldir(
+        &self,
+    ) -> Box<
+        dyn ControlDir<
+            Branch = GenericBranch,
+            Repository = crate::repository::GenericRepository,
+            WorkingTree = GenericWorkingTree,
+        >,
+    >;
+
+    /// Get the branch associated with this working tree.
+    ///
+    /// # Returns
+    ///
+    /// The branch that this working tree is tracking.
+    fn branch(&self) -> GenericBranch;
+
+    /// Get the user-visible URL for this working tree.
+    ///
+    /// # Returns
+    ///
+    /// The URL that can be used to access this working tree.
+    fn get_user_url(&self) -> url::Url;
+
+    /// Check if this working tree supports setting the last revision.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the working tree supports setting the last revision, `false` otherwise.
+    fn supports_setting_file_ids(&self) -> bool;
+
+    /// Add specified files to version control and the working tree.
+    ///
+    /// # Parameters
+    ///
+    /// * `files` - The list of file paths to add.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or an error if the files could not be added.
+    fn smart_add(&self, files: &[&Path]) -> Result<(), Error>;
+
+    /// Commit changes in this working tree.
+    ///
+    /// # Parameters
+    ///
+    /// * `message` - The commit message.
+    /// * `allow_pointless` - Whether to allow commits with no changes.
+    /// * `committer` - Optional committer identity.
+    /// * `specific_files` - Optional list of specific files to commit.
+    ///
+    /// # Returns
+    ///
+    /// The revision ID of the new commit, or an error if the commit failed.
+    fn commit(
+        &self,
+        message: &str,
+        allow_pointless: Option<bool>,
+        committer: Option<&str>,
+        specific_files: Option<&[&Path]>,
+    ) -> Result<RevisionId, Error>;
+
+    /// Update the working tree to a specific revision.
+    ///
+    /// # Parameters
+    ///
+    /// * `revision_id` - The revision to update to, or None for the latest.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or an error if the update failed.
+    fn update(&self, revision_id: Option<&RevisionId>) -> Result<(), Error>;
+
+    /// Revert changes in the working tree.
+    ///
+    /// # Parameters
+    ///
+    /// * `filenames` - Optional list of specific files to revert.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or an error if the revert failed.
+    fn revert(&self, filenames: Option<&[&Path]>) -> Result<(), Error>;
+
+    /// Create a commit builder for this working tree.
+    ///
+    /// # Returns
+    ///
+    /// A new CommitBuilder instance for this working tree.
+    fn build_commit(&self) -> CommitBuilder;
+
+    /// Get the basis tree for this working tree.
+    ///
+    /// # Returns
+    ///
+    /// The basis tree that this working tree is based on.
+    fn basis_tree(&self) -> Result<RevisionTree, Error>;
+}
+
+/// Trait for working trees that wrap Python working tree objects.
+///
+/// This trait is implemented by working tree types that wrap Python working tree objects.
+pub trait PyWorkingTree: PyMutableTree {
+    /// Get the branch associated with this working tree.
+    fn branch(&self) -> GenericBranch {
+        Python::with_gil(|py| {
+            let branch = self.to_object(py).call_method0(py, "branch").unwrap();
+            GenericBranch::from(branch)
+        })
+    }
+
+    /// Create a commit builder for this working tree.
+    fn build_commit(&self) -> CommitBuilder {
+        Python::with_gil(|py| CommitBuilder::from(GenericWorkingTree::from(self.to_object(py))))
+    }
+
+    /// Get the basis tree for this working tree.
+    fn basis_tree(&self) -> Result<RevisionTree, Error> {
+        Python::with_gil(|py| {
+            let basis_tree = self.to_object(py).call_method0(py, "basis_tree")?;
+            Ok(RevisionTree(basis_tree))
+        })
+    }
+}
+
+impl<T: PyWorkingTree> WorkingTree for T {
+    fn basedir(&self) -> PathBuf {
+        Python::with_gil(|py| {
+            let path: String = self
+                .to_object(py)
+                .getattr(py, "basedir")
+                .unwrap()
+                .extract(py)
+                .unwrap();
+            PathBuf::from(path)
+        })
+    }
+
+    fn controldir(
+        &self,
+    ) -> Box<
+        dyn ControlDir<
+            Branch = GenericBranch,
+            Repository = crate::repository::GenericRepository,
+            WorkingTree = GenericWorkingTree,
+        >,
+    > {
+        Python::with_gil(|py| {
+            let controldir = self.to_object(py).getattr(py, "controldir").unwrap();
+            Box::new(GenericControlDir::new(controldir))
+                as Box<
+                    dyn ControlDir<
+                        Branch = GenericBranch,
+                        Repository = crate::repository::GenericRepository,
+                        WorkingTree = GenericWorkingTree,
+                    >,
+                >
+        })
+    }
+
+    fn branch(&self) -> GenericBranch {
+        Python::with_gil(|py| {
+            GenericBranch::from(self.to_object(py).getattr(py, "branch").unwrap())
+        })
+    }
+
+    fn get_user_url(&self) -> url::Url {
+        Python::with_gil(|py| {
+            let url: String = self
+                .to_object(py)
+                .getattr(py, "user_url")
+                .unwrap()
+                .extract(py)
+                .unwrap();
+            url.parse().unwrap()
+        })
+    }
+
+    fn supports_setting_file_ids(&self) -> bool {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method0(py, "supports_setting_file_ids")
+                .unwrap()
+                .extract(py)
+                .unwrap()
+        })
+    }
+
+    fn smart_add(&self, files: &[&Path]) -> Result<(), Error> {
+        Python::with_gil(|py| {
+            let file_paths: Vec<String> = files
+                .iter()
+                .map(|p| p.to_string_lossy().to_string())
+                .collect();
+            self.to_object(py)
+                .call_method1(py, "smart_add", (file_paths,))?;
+            Ok(())
+        })
+    }
+
+    fn commit(
+        &self,
+        message: &str,
+        allow_pointless: Option<bool>,
+        committer: Option<&str>,
+        specific_files: Option<&[&Path]>,
+    ) -> Result<RevisionId, Error> {
+        Python::with_gil(|py| {
+            let kwargs = pyo3::types::PyDict::new(py);
+            if let Some(allow_pointless) = allow_pointless {
+                kwargs.set_item("allow_pointless", allow_pointless)?;
+            }
+            if let Some(committer) = committer {
+                kwargs.set_item("committer", committer)?;
+            }
+            if let Some(specific_files) = specific_files {
+                let file_paths: Vec<String> = specific_files
+                    .iter()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .collect();
+                kwargs.set_item("specific_files", file_paths)?;
+            }
+
+            let result = self
+                .to_object(py)
+                .call_method(py, "commit", (message,), Some(&kwargs))?;
+            Ok(result.extract(py)?)
+        })
+    }
+
+    fn update(&self, revision_id: Option<&RevisionId>) -> Result<(), Error> {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method1(py, "update", (revision_id.cloned(),))?;
+            Ok(())
+        })
+    }
+
+    fn revert(&self, filenames: Option<&[&Path]>) -> Result<(), Error> {
+        Python::with_gil(|py| {
+            let file_paths = filenames.map(|files| {
+                files
+                    .iter()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .collect::<Vec<String>>()
+            });
+            self.to_object(py)
+                .call_method1(py, "revert", (file_paths,))?;
+            Ok(())
+        })
+    }
+
+    fn build_commit(&self) -> CommitBuilder {
+        Python::with_gil(|py| CommitBuilder::from(GenericWorkingTree(self.to_object(py))))
+    }
+
+    fn basis_tree(&self) -> Result<RevisionTree, Error> {
+        Python::with_gil(|py| {
+            let basis_tree = self.to_object(py).call_method0(py, "basis_tree")?;
+            Ok(RevisionTree(basis_tree))
+        })
+    }
+}
 
 /// A working tree in a version control system.
 ///
 /// A working tree is a local directory containing the files of a branch that can
 /// be edited. This struct wraps a Python working tree object and provides access
 /// to its functionality.
-pub struct WorkingTree(pub PyObject);
+pub struct GenericWorkingTree(pub PyObject);
 
-impl crate::tree::PyTree for WorkingTree {
+impl crate::tree::PyTree for GenericWorkingTree {
     fn to_object(&self, py: Python) -> PyObject {
         self.0.clone_ref(py)
     }
 }
-impl crate::tree::PyMutableTree for WorkingTree {}
+impl crate::tree::PyMutableTree for GenericWorkingTree {}
 
-impl Clone for WorkingTree {
+impl PyWorkingTree for GenericWorkingTree {}
+
+impl Clone for GenericWorkingTree {
     fn clone(&self) -> Self {
-        Python::with_gil(|py| WorkingTree(self.0.clone_ref(py)))
+        Python::with_gil(|py| GenericWorkingTree(self.0.clone_ref(py)))
     }
 }
 
-impl<'py> IntoPyObject<'py> for WorkingTree {
+impl<'py> IntoPyObject<'py> for GenericWorkingTree {
     type Target = PyAny;
     type Output = Bound<'py, Self::Target>;
     type Error = std::convert::Infallible;
@@ -45,9 +329,9 @@ impl<'py> IntoPyObject<'py> for WorkingTree {
 ///
 /// This struct provides a fluent interface for setting the parameters of a commit
 /// and then creating it.
-pub struct CommitBuilder(WorkingTree, Py<pyo3::types::PyDict>);
+pub struct CommitBuilder(GenericWorkingTree, Py<pyo3::types::PyDict>);
 
-impl From<WorkingTree> for CommitBuilder {
+impl From<GenericWorkingTree> for CommitBuilder {
     /// Create a new CommitBuilder from a WorkingTree.
     ///
     /// # Parameters
@@ -57,7 +341,7 @@ impl From<WorkingTree> for CommitBuilder {
     /// # Returns
     ///
     /// A new CommitBuilder instance.
-    fn from(wt: WorkingTree) -> Self {
+    fn from(wt: GenericWorkingTree) -> Self {
         Python::with_gil(|py| {
             let kwargs = pyo3::types::PyDict::new(py);
             CommitBuilder(wt, kwargs.into())
@@ -173,7 +457,7 @@ impl CommitBuilder {
     }
 }
 
-impl WorkingTree {
+impl GenericWorkingTree {
     /// Check if a path is a control filename in this working tree.
     ///
     /// Control filenames are filenames that are used by the version control system
@@ -232,10 +516,25 @@ impl WorkingTree {
     /// # Returns
     ///
     /// The control directory containing this working tree.
-    pub fn controldir(&self) -> Box<dyn ControlDir> {
+    pub fn controldir(
+        &self,
+    ) -> Box<
+        dyn ControlDir<
+            Branch = GenericBranch,
+            Repository = crate::repository::GenericRepository,
+            WorkingTree = GenericWorkingTree,
+        >,
+    > {
         Python::with_gil(|py| {
             let controldir = self.to_object(py).getattr(py, "controldir").unwrap();
-            Box::new(GenericControlDir::new(controldir)) as Box<dyn ControlDir>
+            Box::new(GenericControlDir::new(controldir))
+                as Box<
+                    dyn ControlDir<
+                        Branch = GenericBranch,
+                        Repository = crate::repository::GenericRepository,
+                        WorkingTree = GenericWorkingTree,
+                    >,
+                >
         })
     }
 
@@ -251,7 +550,7 @@ impl WorkingTree {
     ///
     /// The working tree, or an error if it could not be opened.
     #[deprecated = "Use ::open instead"]
-    pub fn open(path: &Path) -> Result<WorkingTree, Error> {
+    pub fn open(path: &Path) -> Result<GenericWorkingTree, Error> {
         open(path)
     }
 
@@ -268,7 +567,7 @@ impl WorkingTree {
     /// A tuple containing the working tree and the relative path, or an error
     /// if no containing working tree could be found.
     #[deprecated = "Use ::open_containing instead"]
-    pub fn open_containing(path: &Path) -> Result<(WorkingTree, PathBuf), Error> {
+    pub fn open_containing(path: &Path) -> Result<(GenericWorkingTree, PathBuf), Error> {
         open_containing(path)
     }
 
@@ -639,12 +938,12 @@ impl WorkingTree {
 /// # Returns
 ///
 /// The working tree, or an error if it could not be opened.
-pub fn open(path: &Path) -> Result<WorkingTree, Error> {
+pub fn open(path: &Path) -> Result<GenericWorkingTree, Error> {
     Python::with_gil(|py| {
         let m = py.import("breezy.workingtree")?;
         let c = m.getattr("WorkingTree")?;
         let wt = c.call_method1("open", (path,))?;
-        Ok(WorkingTree(wt.unbind()))
+        Ok(GenericWorkingTree(wt.unbind()))
     })
 }
 
@@ -661,18 +960,18 @@ pub fn open(path: &Path) -> Result<WorkingTree, Error> {
 ///
 /// A tuple containing the working tree and the relative path, or an error
 /// if no containing working tree could be found.
-pub fn open_containing(path: &Path) -> Result<(WorkingTree, PathBuf), Error> {
+pub fn open_containing(path: &Path) -> Result<(GenericWorkingTree, PathBuf), Error> {
     Python::with_gil(|py| {
         let m = py.import("breezy.workingtree")?;
         let c = m.getattr("WorkingTree")?;
         let (wt, p): (Bound<PyAny>, String) =
             c.call_method1("open_containing", (path,))?.extract()?;
-        Ok((WorkingTree(wt.unbind()), PathBuf::from(p)))
+        Ok((GenericWorkingTree(wt.unbind()), PathBuf::from(p)))
     })
 }
 
-/// Implementation of From<PyObject> for WorkingTree.
-impl From<PyObject> for WorkingTree {
+/// Implementation of From<PyObject> for GenericWorkingTree.
+impl From<PyObject> for GenericWorkingTree {
     /// Create a new WorkingTree from a Python object.
     ///
     /// # Parameters
@@ -683,6 +982,6 @@ impl From<PyObject> for WorkingTree {
     ///
     /// A new WorkingTree instance.
     fn from(obj: PyObject) -> Self {
-        WorkingTree(obj)
+        GenericWorkingTree(obj)
     }
 }

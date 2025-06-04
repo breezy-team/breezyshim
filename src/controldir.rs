@@ -2,9 +2,9 @@
 //! e.g. ".bzr" or ".git" directories.
 use crate::branch::{py_tag_selector, Branch, GenericBranch, PyBranch};
 use crate::error::Error;
-use crate::repository::GenericRepository;
+use crate::repository::{GenericRepository, Repository};
 use crate::transport::Transport;
-use crate::tree::WorkingTree;
+use crate::workingtree::GenericWorkingTree;
 
 use crate::location::AsLocation;
 
@@ -86,6 +86,12 @@ pub trait PyControlDir: std::any::Any + std::fmt::Debug {
 /// like .git or .bzr. This trait defines the interface for accessing and
 /// manipulating control directories.
 pub trait ControlDir: std::fmt::Debug {
+    /// The branch type associated with this control directory.
+    type Branch: Branch + ?Sized;
+    /// The repository type associated with this control directory.
+    type Repository: Repository;
+    /// The working tree type associated with this control directory.
+    type WorkingTree: crate::workingtree::WorkingTree;
     /// Get the user-visible URL for this control directory.
     ///
     /// # Returns
@@ -115,7 +121,7 @@ pub trait ControlDir: std::fmt::Debug {
     /// # Returns
     ///
     /// The repository, or an error if the repository could not be opened.
-    fn open_repository(&self) -> Result<GenericRepository, Error>;
+    fn open_repository(&self) -> Result<Self::Repository, Error>;
     /// Find a repository in this control directory or its parents.
     ///
     /// # Returns
@@ -137,7 +143,7 @@ pub trait ControlDir: std::fmt::Debug {
     /// # Returns
     ///
     /// The newly created branch, or an error if the branch could not be created.
-    fn create_branch(&self, name: Option<&str>) -> Result<Box<dyn Branch>, Error>;
+    fn create_branch(&self, name: Option<&str>) -> Result<Box<Self::Branch>, Error>;
     /// Create a new repository in this control directory.
     ///
     /// # Parameters
@@ -157,13 +163,13 @@ pub trait ControlDir: std::fmt::Debug {
     /// # Returns
     ///
     /// The branch, or an error if the branch could not be opened.
-    fn open_branch(&self, branch_name: Option<&str>) -> Result<Box<dyn Branch>, Error>;
+    fn open_branch(&self, branch_name: Option<&str>) -> Result<Box<Self::Branch>, Error>;
     /// Create a working tree in this control directory.
     ///
     /// # Returns
     ///
     /// The newly created working tree, or an error if the working tree could not be created.
-    fn create_workingtree(&self) -> crate::Result<WorkingTree>;
+    fn create_workingtree(&self) -> crate::Result<GenericWorkingTree>;
     /// Set a branch reference in this control directory.
     ///
     /// # Parameters
@@ -195,7 +201,7 @@ pub trait ControlDir: std::fmt::Debug {
         stop_revision: Option<&crate::RevisionId>,
         overwrite: Option<bool>,
         tag_selector: Option<Box<dyn Fn(String) -> bool>>,
-    ) -> crate::Result<Box<dyn Branch>>;
+    ) -> crate::Result<Box<Self::Branch>>;
     /// Create a new control directory based on this one (similar to clone).
     ///
     /// # Parameters
@@ -216,7 +222,16 @@ pub trait ControlDir: std::fmt::Debug {
         create_tree_if_local: Option<bool>,
         stacked: Option<bool>,
         revision_id: Option<&crate::RevisionId>,
-    ) -> Result<Box<dyn ControlDir>, Error>;
+    ) -> Result<
+        Box<
+            dyn ControlDir<
+                Branch = GenericBranch,
+                Repository = GenericRepository,
+                WorkingTree = crate::workingtree::GenericWorkingTree,
+            >,
+        >,
+        Error,
+    >;
     /// Check if this control directory has a working tree.
     ///
     /// # Returns
@@ -228,7 +243,7 @@ pub trait ControlDir: std::fmt::Debug {
     /// # Returns
     ///
     /// The working tree, or an error if the working tree could not be opened.
-    fn open_workingtree(&self) -> crate::Result<WorkingTree>;
+    fn open_workingtree(&self) -> crate::Result<GenericWorkingTree>;
     /// Get the names of all branches in this control directory.
     ///
     /// # Returns
@@ -281,6 +296,9 @@ impl GenericControlDir {
 }
 
 impl<T: PyControlDir + ?Sized> ControlDir for T {
+    type Branch = GenericBranch;
+    type Repository = crate::repository::GenericRepository;
+    type WorkingTree = crate::workingtree::GenericWorkingTree;
     fn get_user_url(&self) -> url::Url {
         Python::with_gil(|py| {
             let result = self.to_object(py).getattr(py, "user_url").unwrap();
@@ -332,13 +350,13 @@ impl<T: PyControlDir + ?Sized> ControlDir for T {
         .unwrap()
     }
 
-    fn create_branch(&self, name: Option<&str>) -> Result<Box<dyn Branch>, Error> {
+    fn create_branch(&self, name: Option<&str>) -> Result<Box<Self::Branch>, Error> {
         Python::with_gil(|py| {
             let branch: PyObject = self
                 .to_object(py)
                 .call_method(py, "create_branch", (name,), None)?
                 .extract(py)?;
-            Ok(Box::new(GenericBranch::from(branch)) as Box<dyn Branch>)
+            Ok(Box::new(GenericBranch::from(branch)) as Box<Self::Branch>)
         })
     }
 
@@ -356,23 +374,23 @@ impl<T: PyControlDir + ?Sized> ControlDir for T {
         })
     }
 
-    fn open_branch(&self, branch_name: Option<&str>) -> Result<Box<dyn Branch>, Error> {
+    fn open_branch(&self, branch_name: Option<&str>) -> Result<Box<Self::Branch>, Error> {
         Python::with_gil(|py| {
             let branch: PyObject = self
                 .to_object(py)
                 .call_method(py, "open_branch", (branch_name,), None)?
                 .extract(py)?;
-            Ok(Box::new(GenericBranch::from(branch)) as Box<dyn Branch>)
+            Ok(Box::new(GenericBranch::from(branch)) as Box<Self::Branch>)
         })
     }
 
-    fn create_workingtree(&self) -> crate::Result<WorkingTree> {
+    fn create_workingtree(&self) -> crate::Result<GenericWorkingTree> {
         Python::with_gil(|py| {
             let wt = self
                 .to_object(py)
                 .call_method0(py, "create_workingtree")?
                 .extract(py)?;
-            Ok(WorkingTree(wt))
+            Ok(GenericWorkingTree(wt))
         })
     }
 
@@ -394,7 +412,7 @@ impl<T: PyControlDir + ?Sized> ControlDir for T {
         stop_revision: Option<&crate::RevisionId>,
         overwrite: Option<bool>,
         tag_selector: Option<Box<dyn Fn(String) -> bool>>,
-    ) -> crate::Result<Box<dyn Branch>> {
+    ) -> crate::Result<Box<Self::Branch>> {
         Python::with_gil(|py| {
             let kwargs = PyDict::new(py);
             if let Some(to_branch_name) = to_branch_name {
@@ -417,7 +435,7 @@ impl<T: PyControlDir + ?Sized> ControlDir for T {
             )?;
             Ok(
                 Box::new(GenericBranch::from(result.getattr(py, "target_branch")?))
-                    as Box<dyn Branch>,
+                    as Box<Self::Branch>,
             )
         })
     }
@@ -429,7 +447,16 @@ impl<T: PyControlDir + ?Sized> ControlDir for T {
         create_tree_if_local: Option<bool>,
         stacked: Option<bool>,
         revision_id: Option<&crate::RevisionId>,
-    ) -> Result<Box<dyn ControlDir>, Error> {
+    ) -> Result<
+        Box<
+            dyn ControlDir<
+                Branch = GenericBranch,
+                Repository = GenericRepository,
+                WorkingTree = crate::workingtree::GenericWorkingTree,
+            >,
+        >,
+        Error,
+    > {
         Python::with_gil(|py| {
             let kwargs = PyDict::new(py);
             if let Some(create_tree_if_local) = create_tree_if_local {
@@ -455,7 +482,14 @@ impl<T: PyControlDir + ?Sized> ControlDir for T {
                 (target.to_string(),),
                 Some(&kwargs),
             )?;
-            Ok(Box::new(GenericControlDir(cd)) as Box<dyn ControlDir>)
+            Ok(Box::new(GenericControlDir(cd))
+                as Box<
+                    dyn ControlDir<
+                        Branch = GenericBranch,
+                        Repository = GenericRepository,
+                        WorkingTree = crate::workingtree::GenericWorkingTree,
+                    >,
+                >)
         })
     }
 
@@ -469,13 +503,13 @@ impl<T: PyControlDir + ?Sized> ControlDir for T {
         })
     }
 
-    fn open_workingtree(&self) -> crate::Result<WorkingTree> {
+    fn open_workingtree(&self) -> crate::Result<GenericWorkingTree> {
         Python::with_gil(|py| {
             let wt = self
                 .to_object(py)
                 .call_method0(py, "open_workingtree")?
                 .extract(py)?;
-            Ok(WorkingTree(wt))
+            Ok(GenericWorkingTree(wt))
         })
     }
 
@@ -598,12 +632,28 @@ impl ControlDirFormat {
     pub fn initialize_on_transport(
         &self,
         transport: &Transport,
-    ) -> Result<Box<dyn ControlDir>, Error> {
+    ) -> Result<
+        Box<
+            dyn ControlDir<
+                Branch = GenericBranch,
+                Repository = GenericRepository,
+                WorkingTree = crate::workingtree::GenericWorkingTree,
+            >,
+        >,
+        Error,
+    > {
         Python::with_gil(|py| {
             let cd =
                 self.0
                     .call_method1(py, "initialize_on_transport", (transport.as_pyobject(),))?;
-            Ok(Box::new(GenericControlDir(cd)) as Box<dyn ControlDir>)
+            Ok(Box::new(GenericControlDir(cd))
+                as Box<
+                    dyn ControlDir<
+                        Branch = GenericBranch,
+                        Repository = GenericRepository,
+                        WorkingTree = crate::workingtree::GenericWorkingTree,
+                    >,
+                >)
         })
     }
 
@@ -616,12 +666,31 @@ impl ControlDirFormat {
     /// # Returns
     ///
     /// The initialized control directory, or an error if initialization failed.
-    pub fn initialize(&self, location: impl AsLocation) -> Result<Box<dyn ControlDir>, Error> {
+    pub fn initialize(
+        &self,
+        location: impl AsLocation,
+    ) -> Result<
+        Box<
+            dyn ControlDir<
+                Branch = GenericBranch,
+                Repository = GenericRepository,
+                WorkingTree = crate::workingtree::GenericWorkingTree,
+            >,
+        >,
+        Error,
+    > {
         Python::with_gil(|py| {
             let cd = self
                 .0
                 .call_method1(py, "initialize", (location.as_location(),))?;
-            Ok(Box::new(GenericControlDir(cd)) as Box<dyn ControlDir>)
+            Ok(Box::new(GenericControlDir(cd))
+                as Box<
+                    dyn ControlDir<
+                        Branch = GenericBranch,
+                        Repository = GenericRepository,
+                        WorkingTree = crate::workingtree::GenericWorkingTree,
+                    >,
+                >)
         })
     }
 }
@@ -642,7 +711,7 @@ pub fn open_tree_or_branch(
     location: impl AsLocation,
     name: Option<&str>,
     possible_transports: Option<&mut Vec<Transport>>,
-) -> Result<(Option<WorkingTree>, Box<dyn Branch>), Error> {
+) -> Result<(Option<GenericWorkingTree>, Box<dyn Branch>), Error> {
     Python::with_gil(|py| {
         let m = py.import("breezy.controldir")?;
         let cd = m.getattr("ControlDir")?;
@@ -666,7 +735,7 @@ pub fn open_tree_or_branch(
 
         let (tree, branch) = ret.extract::<(Option<PyObject>, PyObject)>()?;
         let branch = Box::new(GenericBranch::from(branch)) as Box<dyn Branch>;
-        let tree = tree.map(WorkingTree);
+        let tree = tree.map(GenericWorkingTree);
         Ok((tree, branch))
     })
 }
@@ -684,7 +753,16 @@ pub fn open_tree_or_branch(
 pub fn open(
     url: impl AsLocation,
     possible_transports: Option<&mut Vec<Transport>>,
-) -> Result<Box<dyn ControlDir>, Error> {
+) -> Result<
+    Box<
+        dyn ControlDir<
+            Branch = GenericBranch,
+            Repository = GenericRepository,
+            WorkingTree = crate::workingtree::GenericWorkingTree,
+        >,
+    >,
+    Error,
+> {
     Python::with_gil(|py| {
         let m = py.import("breezy.controldir")?;
         let cd = m.getattr("ControlDir")?;
@@ -699,7 +777,14 @@ pub fn open(
             )?;
         }
         let controldir = cd.call_method("open", (url.as_location(),), Some(&kwargs))?;
-        Ok(Box::new(GenericControlDir(controldir.unbind())) as Box<dyn ControlDir>)
+        Ok(Box::new(GenericControlDir(controldir.unbind()))
+            as Box<
+                dyn ControlDir<
+                    Branch = GenericBranch,
+                    Repository = GenericRepository,
+                    WorkingTree = crate::workingtree::GenericWorkingTree,
+                >,
+            >)
     })
 }
 /// Create a new control directory at a location.
@@ -717,7 +802,16 @@ pub fn create(
     url: impl AsLocation,
     format: impl AsFormat,
     possible_transports: Option<&mut Vec<Transport>>,
-) -> Result<Box<dyn ControlDir>, Error> {
+) -> Result<
+    Box<
+        dyn ControlDir<
+            Branch = GenericBranch,
+            Repository = GenericRepository,
+            WorkingTree = crate::workingtree::GenericWorkingTree,
+        >,
+    >,
+    Error,
+> {
     Python::with_gil(|py| {
         let m = py.import("breezy.controldir")?;
         let cd = m.getattr("ControlDir")?;
@@ -735,7 +829,14 @@ pub fn create(
             )?;
         }
         let controldir = cd.call_method("create", (url.as_location(),), Some(&kwargs))?;
-        Ok(Box::new(GenericControlDir(controldir.unbind())) as Box<dyn ControlDir>)
+        Ok(Box::new(GenericControlDir(controldir.unbind()))
+            as Box<
+                dyn ControlDir<
+                    Branch = GenericBranch,
+                    Repository = GenericRepository,
+                    WorkingTree = crate::workingtree::GenericWorkingTree,
+                >,
+            >)
     })
 }
 /// Create a new control directory on a transport.
@@ -751,7 +852,16 @@ pub fn create(
 pub fn create_on_transport(
     transport: &Transport,
     format: impl AsFormat,
-) -> Result<Box<dyn ControlDir>, Error> {
+) -> Result<
+    Box<
+        dyn ControlDir<
+            Branch = GenericBranch,
+            Repository = GenericRepository,
+            WorkingTree = crate::workingtree::GenericWorkingTree,
+        >,
+    >,
+    Error,
+> {
     Python::with_gil(|py| {
         let format = format.as_format().unwrap().0;
         Ok(Box::new(GenericControlDir(format.call_method(
@@ -759,7 +869,14 @@ pub fn create_on_transport(
             "initialize_on_transport",
             (transport.as_pyobject(),),
             None,
-        )?)) as Box<dyn ControlDir>)
+        )?))
+            as Box<
+                dyn ControlDir<
+                    Branch = GenericBranch,
+                    Repository = GenericRepository,
+                    WorkingTree = crate::workingtree::GenericWorkingTree,
+                >,
+            >)
     })
 }
 
@@ -778,7 +895,19 @@ pub fn create_on_transport(
 pub fn open_containing_from_transport(
     transport: &Transport,
     probers: Option<&[&dyn PyProber]>,
-) -> Result<(Box<dyn ControlDir>, String), Error> {
+) -> Result<
+    (
+        Box<
+            dyn ControlDir<
+                Branch = GenericBranch,
+                Repository = GenericRepository,
+                WorkingTree = crate::workingtree::GenericWorkingTree,
+            >,
+        >,
+        String,
+    ),
+    Error,
+> {
     Python::with_gil(|py| {
         let m = py.import("breezy.controldir")?;
         let cd = m.getattr("ControlDir")?;
@@ -798,7 +927,14 @@ pub fn open_containing_from_transport(
             )?
             .extract()?;
         Ok((
-            Box::new(GenericControlDir(controldir)) as Box<dyn ControlDir>,
+            Box::new(GenericControlDir(controldir))
+                as Box<
+                    dyn ControlDir<
+                        Branch = GenericBranch,
+                        Repository = GenericRepository,
+                        WorkingTree = crate::workingtree::GenericWorkingTree,
+                    >,
+                >,
             subpath,
         ))
     })
@@ -817,7 +953,16 @@ pub fn open_containing_from_transport(
 pub fn open_from_transport(
     transport: &Transport,
     probers: Option<&[&dyn PyProber]>,
-) -> Result<Box<dyn ControlDir>, Error> {
+) -> Result<
+    Box<
+        dyn ControlDir<
+            Branch = GenericBranch,
+            Repository = GenericRepository,
+            WorkingTree = crate::workingtree::GenericWorkingTree,
+        >,
+    >,
+    Error,
+> {
     Python::with_gil(|py| {
         let m = py.import("breezy.controldir")?;
         let cd = m.getattr("ControlDir")?;
@@ -833,7 +978,14 @@ pub fn open_from_transport(
             (transport.as_pyobject(),),
             Some(&kwargs),
         )?;
-        Ok(Box::new(GenericControlDir(controldir.unbind())) as Box<dyn ControlDir>)
+        Ok(Box::new(GenericControlDir(controldir.unbind()))
+            as Box<
+                dyn ControlDir<
+                    Branch = GenericBranch,
+                    Repository = GenericRepository,
+                    WorkingTree = crate::workingtree::GenericWorkingTree,
+                >,
+            >)
     })
 }
 
@@ -916,7 +1068,7 @@ pub fn create_branch_convenience(
 pub fn create_standalone_workingtree(
     base: &std::path::Path,
     format: impl AsFormat,
-) -> Result<WorkingTree, Error> {
+) -> Result<GenericWorkingTree, Error> {
     let base = base.to_str().unwrap();
     Python::with_gil(|py| {
         let m = py.import("breezy.controldir")?;
@@ -927,7 +1079,7 @@ pub fn create_standalone_workingtree(
             (base, format.unwrap_or_default()),
             None,
         )?;
-        Ok(WorkingTree(wt.unbind()))
+        Ok(GenericWorkingTree(wt.unbind()))
     })
 }
 

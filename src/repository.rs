@@ -1,6 +1,7 @@
 //! Repository handling
 //!
 //! A repository is a collection of revisions and their associated data.
+use crate::branch::GenericBranch;
 use crate::controldir::{ControlDir, GenericControlDir};
 use crate::delta::TreeDelta;
 use crate::foreign::VcsType;
@@ -84,7 +85,15 @@ pub trait Repository {
     fn get_graph(&self) -> Graph;
 
     /// Get the control directory for this repository.
-    fn controldir(&self) -> Box<dyn ControlDir>;
+    fn controldir(
+        &self,
+    ) -> Box<
+        dyn ControlDir<
+            Branch = GenericBranch,
+            Repository = GenericRepository,
+            WorkingTree = crate::workingtree::GenericWorkingTree,
+        >,
+    >;
 
     /// Get the repository format.
     fn format(&self) -> RepositoryFormat;
@@ -389,11 +398,26 @@ impl<T: PyRepository> Repository for T {
         })
     }
 
-    fn controldir(&self) -> Box<dyn ControlDir> {
+    fn controldir(
+        &self,
+    ) -> Box<
+        dyn ControlDir<
+            Branch = GenericBranch,
+            Repository = GenericRepository,
+            WorkingTree = crate::workingtree::GenericWorkingTree,
+        >,
+    > {
         Python::with_gil(|py| {
             Box::new(GenericControlDir::new(
                 self.to_object(py).getattr(py, "controldir").unwrap(),
-            )) as Box<dyn ControlDir>
+            ))
+                as Box<
+                    dyn ControlDir<
+                        Branch = GenericBranch,
+                        Repository = GenericRepository,
+                        WorkingTree = crate::workingtree::GenericWorkingTree,
+                    >,
+                >
         })
     }
 
