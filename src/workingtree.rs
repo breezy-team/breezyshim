@@ -154,7 +154,7 @@ pub trait PyWorkingTree: PyMutableTree {
     }
 }
 
-impl<T: PyWorkingTree> WorkingTree for T {
+impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
     fn basedir(&self) -> PathBuf {
         Python::with_gil(|py| {
             let path: String = self

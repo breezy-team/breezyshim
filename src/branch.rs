@@ -275,7 +275,7 @@ pub trait PyBranch: Send + std::any::Any {
     fn to_object(&self, py: Python<'_>) -> PyObject;
 }
 
-impl<T: PyBranch> Branch for T {
+impl<T: ?Sized + PyBranch> Branch for T {
     fn format(&self) -> BranchFormat {
         Python::with_gil(|py| BranchFormat(self.to_object(py).getattr(py, "_format").unwrap()))
     }

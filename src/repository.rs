@@ -326,7 +326,7 @@ impl From<PyObject> for GenericRepository {
     }
 }
 
-impl<T: PyRepository> Repository for T {
+impl<T: ?Sized + PyRepository> Repository for T {
     fn vcs_type(&self) -> VcsType {
         Python::with_gil(|py| {
             if self.to_object(py).getattr(py, "_git").is_ok() {
