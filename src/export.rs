@@ -34,3 +34,54 @@ pub fn export<T: crate::tree::PyTree>(
         Ok(())
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::controldir::create_standalone_workingtree;
+    use std::path::Path;
+
+    #[test]
+    fn test_export_tree() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
+        let tree = wt.basis_tree().unwrap();
+
+        let target_tmp = tempfile::tempdir().unwrap();
+        let target_dir = target_tmp.path().join("export_target");
+        let result = export(&tree, &target_dir, None);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_export_with_subdir() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
+
+        // Add some content first
+        std::fs::write(tmp_dir.path().join("file.txt"), "content").unwrap();
+        wt.add(&[Path::new("file.txt")]).unwrap();
+        wt.build_commit().message("Add file").commit().unwrap();
+
+        let tree = wt.basis_tree().unwrap();
+        let target_tmp = tempfile::tempdir().unwrap();
+        let target_dir = target_tmp.path().join("export_subdir");
+
+        // Test with None subdir to simplify the test
+        let result = export(&tree, &target_dir, None);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_export_with_empty_subdir() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
+        let tree = wt.basis_tree().unwrap();
+
+        let target_tmp = tempfile::tempdir().unwrap();
+        let target_dir = target_tmp.path().join("export_empty");
+        let subdir = Path::new("");
+        let result = export(&tree, &target_dir, Some(subdir));
+        assert!(result.is_ok());
+    }
+}

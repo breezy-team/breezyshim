@@ -22,3 +22,19 @@ pub fn show_tree_status(wt: &dyn PyWorkingTree) -> crate::Result<()> {
         Ok(())
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::controldir::create_standalone_workingtree;
+
+    #[test]
+    fn test_show_tree_status() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
+
+        // This should not panic and should work with an empty tree
+        let result = show_tree_status(&wt);
+        assert!(result.is_ok());
+    }
+}

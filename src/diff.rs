@@ -50,3 +50,46 @@ pub fn show_diff_trees<T: crate::tree::PyTree, U: crate::tree::PyTree>(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::controldir::create_standalone_workingtree;
+    use std::io::Cursor;
+
+    #[test]
+    fn test_show_diff_trees_empty() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
+        let tree1 = wt.basis_tree().unwrap();
+        let tree2 = wt.basis_tree().unwrap();
+
+        let mut output = Vec::new();
+        let result = show_diff_trees(&tree1, &tree2, &mut output, None, None);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_show_diff_trees_with_labels() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
+        let tree1 = wt.basis_tree().unwrap();
+        let tree2 = wt.basis_tree().unwrap();
+
+        let mut output = Vec::new();
+        let result = show_diff_trees(&tree1, &tree2, &mut output, Some("old"), Some("new"));
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_show_diff_trees_cursor() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
+        let tree1 = wt.basis_tree().unwrap();
+        let tree2 = wt.basis_tree().unwrap();
+
+        let mut cursor = Cursor::new(Vec::new());
+        let result = show_diff_trees(&tree1, &tree2, &mut cursor, None, None);
+        assert!(result.is_ok());
+    }
+}

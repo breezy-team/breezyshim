@@ -51,6 +51,7 @@ import_exception!(breezy.errors, TransportNotPossible);
 import_exception!(breezy.errors, IncompatibleFormat);
 import_exception!(breezy.errors, NoSuchRevision);
 import_exception!(breezy.forge, NoSuchProject);
+import_exception!(breezy.errors, ObjectNotLocked);
 import_exception!(breezy.plugins.gitlab.forge, ForkingDisabled);
 import_exception!(breezy.plugins.gitlab.forge, GitLabConflict);
 import_exception!(breezy.plugins.gitlab.forge, ProjectCreationTimeout);
@@ -226,6 +227,8 @@ pub enum Error {
     NoCompatibleInter,
     /// The resource is read-only.
     ReadOnly,
+    /// An object that needs to be locked is not locked.
+    ObjectNotLocked(String),
 }
 
 impl From<url::ParseError> for Error {
@@ -371,6 +374,7 @@ impl std::fmt::Display for Error {
             Self::NoRoundtrippingSupport => write!(f, "No roundtripping support"),
             Self::NoCompatibleInter => write!(f, "No compatible inter"),
             Self::ReadOnly => write!(f, "Read-only"),
+            Self::ObjectNotLocked(msg) => write!(f, "Object not locked: {}", msg),
             Self::RedirectRequested {
                 source,
                 target,
@@ -695,6 +699,8 @@ impl From<PyErr> for Error {
                 Error::TransportError(value.getattr("msg").unwrap().extract().unwrap())
             } else if err.is_instance_of::<BranchReferenceLoop>(py) {
                 Error::BranchReferenceLoop
+            } else if err.is_instance_of::<ObjectNotLocked>(py) {
+                Error::ObjectNotLocked(err.to_string())
             } else {
                 if std::env::var("BRZ_ERROR").is_ok() {
                     // Print backtrace
@@ -822,6 +828,7 @@ impl From<Error> for PyErr {
             Error::SourceNotDerivedFromTarget => SourceNotDerivedFromTarget::new_err(()),
             Error::BranchReferenceLoop => BranchReferenceLoop::new_err(()),
             Error::ReadOnly => Python::with_gil(|py| ReadOnlyError::new_err((py.None(),))),
+            Error::ObjectNotLocked(msg) => ObjectNotLocked::new_err((msg,)),
             Error::RedirectRequested {
                 source,
                 target,

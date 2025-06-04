@@ -3,6 +3,7 @@
 use crate::dirty_tracker::{DirtyTreeTracker, State as DirtyTrackerState};
 use crate::error::Error;
 use crate::tree::PyTree;
+use crate::tree::{MutableTree, Tree};
 use crate::workingtree::PyWorkingTree;
 use pyo3::prelude::*;
 
@@ -57,14 +58,24 @@ pub fn reset_tree(
     basis_tree: Option<&dyn PyTree>,
     subpath: Option<&std::path::Path>,
 ) -> Result<(), Error> {
-    Python::with_gil(|py| {
+    // Lock the tree before resetting
+    let lock = local_tree.lock_write()?;
+
+    let result = Python::with_gil(|py| {
         let workspace_m = py.import("breezy.workspace")?;
         let reset_tree = workspace_m.getattr("reset_tree")?;
         let local_tree: PyObject = local_tree.to_object(py);
         let basis_tree: Option<PyObject> = basis_tree.map(|o| o.to_object(py));
-        reset_tree.call1((local_tree, basis_tree, subpath))?;
+        reset_tree.call1((
+            local_tree,
+            basis_tree,
+            subpath.map(|p| p.to_string_lossy().to_string()),
+        ))?;
         Ok(())
-    })
+    });
+
+    drop(lock);
+    result
 }
 
 /// Check if a tree is clean.
@@ -86,12 +97,106 @@ pub fn check_clean_tree(
     basis_tree: &dyn PyTree,
     subpath: &std::path::Path,
 ) -> Result<(), Error> {
-    Python::with_gil(|py| {
+    // Lock the tree before checking
+    let lock = local_tree.lock_read()?;
+
+    let result = Python::with_gil(|py| {
         let workspace_m = py.import("breezy.workspace")?;
         let check_clean_tree = workspace_m.getattr("check_clean_tree")?;
         let local_tree: PyObject = local_tree.to_object(py).clone_ref(py);
         let basis_tree: PyObject = basis_tree.to_object(py).clone_ref(py);
-        check_clean_tree.call1((local_tree, basis_tree, subpath.to_path_buf()))?;
+        check_clean_tree.call1((
+            local_tree,
+            basis_tree,
+            subpath.to_string_lossy().to_string(),
+        ))?;
         Ok(())
-    })
+    });
+
+    drop(lock);
+    result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::controldir::create_standalone_workingtree;
+    use std::path::Path;
+
+    #[test]
+    fn test_reset_tree() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
+        let basis_tree = wt.basis_tree().unwrap();
+
+        let result = reset_tree(&wt, Some(&basis_tree), None);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_reset_tree_no_basis() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
+
+        let result = reset_tree(&wt, None, None);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_reset_tree_with_subpath() {
+        let env = crate::testing::TestEnv::new();
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
+
+        // Create a subdir in the working tree
+        let subdir_path = tmp_dir.path().join("subdir");
+        std::fs::create_dir(&subdir_path).unwrap();
+        std::fs::write(subdir_path.join("file.txt"), "content").unwrap();
+        wt.add(&[Path::new("subdir")]).unwrap();
+        wt.add(&[Path::new("subdir/file.txt")]).unwrap();
+        wt.build_commit().message("Add subdir").commit().unwrap();
+
+        let basis_tree = wt.basis_tree().unwrap();
+        let subpath = Path::new("subdir");
+
+        let result = reset_tree(&wt, Some(&basis_tree), Some(subpath));
+        assert!(result.is_ok());
+        std::mem::drop(env); // Ensure the test environment is cleaned up
+    }
+
+    #[test]
+    fn test_check_clean_tree() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
+
+        // Add and commit some content first
+        std::fs::write(tmp_dir.path().join("file.txt"), "content").unwrap();
+        wt.add(&[Path::new("file.txt")]).unwrap();
+        wt.build_commit()
+            .message("Initial commit")
+            .commit()
+            .unwrap();
+
+        let basis_tree = wt.basis_tree().unwrap();
+        let subpath = Path::new("");
+
+        let result = check_clean_tree(&wt, &basis_tree, subpath);
+        assert!(result.is_ok());
+    }
+
+    #[cfg(feature = "dirty-tracker")]
+    #[test]
+    fn test_reset_tree_with_dirty_tracker() {
+        use crate::dirty_tracker::{DirtyTreeTracker, State as DirtyTrackerState};
+
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
+        let basis_tree = wt.basis_tree().unwrap();
+        let mut dirty_tracker = DirtyTreeTracker::new(wt.clone());
+
+        let result =
+            reset_tree_with_dirty_tracker(&wt, Some(&basis_tree), None, Some(&mut dirty_tracker));
+        assert!(result.is_ok());
+    }
 }
