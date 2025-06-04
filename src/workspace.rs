@@ -143,7 +143,9 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_reset_tree_with_subpath() {
+        let env = crate::testing::TestEnv::new();
         let tmp_dir = tempfile::tempdir().unwrap();
         let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
 
@@ -160,6 +162,7 @@ mod tests {
 
         let result = reset_tree(&wt, Some(&basis_tree), Some(subpath));
         assert!(result.is_ok());
+        std::mem::drop(env); // Ensure the test environment is cleaned up
     }
 
     #[test]
