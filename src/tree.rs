@@ -378,7 +378,13 @@ impl<T: PyTree + ?Sized> Tree for T {
         Python::with_gil(|py| {
             let kwargs = pyo3::types::PyDict::new(py);
             if let Some(specific_files) = specific_files {
-                kwargs.set_item("specific_files", specific_files)?;
+                kwargs.set_item(
+                    "specific_files",
+                    specific_files
+                        .iter()
+                        .map(|p| p.to_string_lossy().to_string())
+                        .collect::<Vec<_>>(),
+                )?;
             }
             if let Some(want_unversioned) = want_unversioned {
                 kwargs.set_item("want_unversioned", want_unversioned)?;
@@ -453,7 +459,7 @@ impl<T: PyTree + ?Sized> Tree for T {
                 kwargs.set_item("include_root", include_root)?;
             }
             if let Some(from_dir) = from_dir {
-                kwargs.set_item("from_dir", from_dir)?;
+                kwargs.set_item("from_dir", from_dir.to_string_lossy().to_string())?;
             }
             if let Some(recursive) = recursive {
                 kwargs.set_item("recursive", recursive)?;
