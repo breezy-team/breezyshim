@@ -126,33 +126,130 @@ pub trait WorkingTree: MutableTree {
     ///
     /// The basis tree that this working tree is based on.
     fn basis_tree(&self) -> Result<RevisionTree, Error>;
+
+    /// Check if a path is a control filename in this working tree.
+    ///
+    /// Control filenames are filenames that are used by the version control system
+    /// for its own purposes, like .git or .bzr.
+    ///
+    /// # Parameters
+    ///
+    /// * `path` - The path to check.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the path is a control filename, `false` otherwise.
+    fn is_control_filename(&self, path: &Path) -> bool;
+
+    /// Get a revision tree for a specific revision.
+    ///
+    /// # Parameters
+    ///
+    /// * `revision_id` - The ID of the revision to get the tree for.
+    ///
+    /// # Returns
+    ///
+    /// The revision tree, or an error if it could not be retrieved.
+    fn revision_tree(&self, revision_id: &RevisionId) -> Result<Box<RevisionTree>, Error>;
+
+    /// Get a dictionary of tags mapped to revision IDs.
+    ///
+    /// # Returns
+    ///
+    /// A hash map of tag names to revision IDs, or an error if the tags could not be retrieved.
+    fn get_tag_dict(&self) -> Result<std::collections::HashMap<String, RevisionId>, Error>;
+
+    /// Convert a path to an absolute path relative to the working tree.
+    ///
+    /// # Parameters
+    ///
+    /// * `path` - The path to convert.
+    ///
+    /// # Returns
+    ///
+    /// The absolute path, or an error if the conversion failed.
+    fn abspath(&self, path: &Path) -> Result<PathBuf, Error>;
+
+    /// Convert an absolute path to a path relative to the working tree.
+    ///
+    /// # Parameters
+    ///
+    /// * `path` - The absolute path to convert.
+    ///
+    /// # Returns
+    ///
+    /// The relative path, or an error if the conversion failed.
+    fn relpath(&self, path: &Path) -> Result<PathBuf, Error>;
+
+    /// Get the revision ID of the last commit in this working tree.
+    ///
+    /// # Returns
+    ///
+    /// The revision ID of the last commit, or an error if it could not be retrieved.
+    fn last_revision(&self) -> Result<RevisionId, Error>;
+
+    /// Pull changes from another branch into this working tree.
+    ///
+    /// # Parameters
+    ///
+    /// * `source` - The branch to pull from.
+    /// * `overwrite` - Whether to overwrite diverged changes.
+    /// * `stop_revision` - The revision to stop pulling at.
+    /// * `local` - Whether to only pull locally accessible revisions.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or an error if the pull could not be completed.
+    fn pull(
+        &self,
+        source: &dyn PyBranch,
+        overwrite: Option<bool>,
+        stop_revision: Option<&RevisionId>,
+        local: Option<bool>,
+    ) -> Result<(), Error>;
+
+    /// Merge changes from another branch into this working tree.
+    ///
+    /// # Parameters
+    ///
+    /// * `source` - The branch to merge from.
+    /// * `to_revision` - The revision to merge up to.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or an error if the merge could not be completed.
+    fn merge_from_branch(
+        &self,
+        source: &dyn PyBranch,
+        to_revision: Option<&RevisionId>,
+    ) -> Result<(), Error>;
+
+    /// Convert a list of files to relative paths safely.
+    ///
+    /// This function takes a list of file paths and converts them to paths relative
+    /// to the working tree, with various safety checks.
+    ///
+    /// # Parameters
+    ///
+    /// * `file_list` - The list of file paths to convert.
+    /// * `canonicalize` - Whether to canonicalize the paths first.
+    /// * `apply_view` - Whether to apply the view (if any) to the paths.
+    ///
+    /// # Returns
+    ///
+    /// A list of converted paths, or an error if the conversion failed.
+    fn safe_relpath_files(
+        &self,
+        file_list: &[&Path],
+        canonicalize: bool,
+        apply_view: bool,
+    ) -> Result<Vec<PathBuf>, Error>;
 }
 
 /// Trait for working trees that wrap Python working tree objects.
 ///
 /// This trait is implemented by working tree types that wrap Python working tree objects.
-pub trait PyWorkingTree: PyMutableTree {
-    /// Get the branch associated with this working tree.
-    fn branch(&self) -> GenericBranch {
-        Python::with_gil(|py| {
-            let branch = self.to_object(py).call_method0(py, "branch").unwrap();
-            GenericBranch::from(branch)
-        })
-    }
-
-    /// Create a commit builder for this working tree.
-    fn build_commit(&self) -> CommitBuilder {
-        Python::with_gil(|py| CommitBuilder::from(GenericWorkingTree::from(self.to_object(py))))
-    }
-
-    /// Get the basis tree for this working tree.
-    fn basis_tree(&self) -> Result<RevisionTree, Error> {
-        Python::with_gil(|py| {
-            let basis_tree = self.to_object(py).call_method0(py, "basis_tree")?;
-            Ok(RevisionTree(basis_tree))
-        })
-    }
-}
+pub trait PyWorkingTree: PyMutableTree {}
 
 impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
     fn basedir(&self) -> PathBuf {
@@ -289,6 +386,161 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
         Python::with_gil(|py| {
             let basis_tree = self.to_object(py).call_method0(py, "basis_tree")?;
             Ok(RevisionTree(basis_tree))
+        })
+    }
+
+    fn is_control_filename(&self, path: &Path) -> bool {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method1(
+                    py,
+                    "is_control_filename",
+                    (path.to_string_lossy().as_ref(),),
+                )
+                .unwrap()
+                .extract(py)
+                .unwrap()
+        })
+    }
+
+    /// Get a revision tree for a specific revision.
+    fn revision_tree(&self, revision_id: &RevisionId) -> Result<Box<RevisionTree>, Error> {
+        Python::with_gil(|py| {
+            let tree = self.to_object(py).call_method1(
+                py,
+                "revision_tree",
+                (revision_id.clone().into_pyobject(py).unwrap(),),
+            )?;
+            Ok(Box::new(RevisionTree(tree)))
+        })
+    }
+
+    /// Get a dictionary of tags mapped to revision IDs.
+    fn get_tag_dict(&self) -> Result<std::collections::HashMap<String, RevisionId>, Error> {
+        Python::with_gil(|py| {
+            let branch = self.to_object(py).getattr(py, "branch")?;
+            let tags = branch.getattr(py, "tags")?;
+            let tag_dict = tags.call_method0(py, intern!(py, "get_tag_dict"))?;
+            tag_dict.extract(py)
+        })
+        .map_err(|e: PyErr| -> Error { e.into() })
+    }
+
+    /// Convert a path to an absolute path relative to the working tree.
+    fn abspath(&self, path: &Path) -> Result<PathBuf, Error> {
+        Python::with_gil(|py| {
+            Ok(self
+                .to_object(py)
+                .call_method1(py, "abspath", (path,))?
+                .extract(py)?)
+        })
+    }
+
+    /// Convert an absolute path to a path relative to the working tree.
+    fn relpath(&self, path: &Path) -> Result<PathBuf, Error> {
+        Python::with_gil(|py| {
+            Ok(self
+                .to_object(py)
+                .call_method1(py, "relpath", (path,))?
+                .extract(py)?)
+        })
+    }
+
+    /// Get the revision ID of the last commit in this working tree.
+    fn last_revision(&self) -> Result<RevisionId, Error> {
+        Python::with_gil(|py| {
+            let last_revision = self
+                .to_object(py)
+                .call_method0(py, intern!(py, "last_revision"))?;
+            Ok(RevisionId::from(last_revision.extract::<Vec<u8>>(py)?))
+        })
+    }
+
+    /// Pull changes from another branch into this working tree.
+    fn pull(
+        &self,
+        source: &dyn PyBranch,
+        overwrite: Option<bool>,
+        stop_revision: Option<&RevisionId>,
+        local: Option<bool>,
+    ) -> Result<(), Error> {
+        Python::with_gil(|py| {
+            let kwargs = {
+                let kwargs = pyo3::types::PyDict::new(py);
+                if let Some(overwrite) = overwrite {
+                    kwargs.set_item("overwrite", overwrite).unwrap();
+                }
+                if let Some(stop_revision) = stop_revision {
+                    kwargs
+                        .set_item(
+                            "stop_revision",
+                            stop_revision.clone().into_pyobject(py).unwrap(),
+                        )
+                        .unwrap();
+                }
+                if let Some(local) = local {
+                    kwargs.set_item("local", local).unwrap();
+                }
+                kwargs
+            };
+            self.to_object(py)
+                .call_method(py, "pull", (source.to_object(py),), Some(&kwargs))
+        })
+        .map_err(|e| e.into())
+        .map(|_| ())
+    }
+
+    /// Merge changes from another branch into this working tree.
+    fn merge_from_branch(
+        &self,
+        source: &dyn PyBranch,
+        to_revision: Option<&RevisionId>,
+    ) -> Result<(), Error> {
+        Python::with_gil(|py| {
+            let kwargs = {
+                let kwargs = pyo3::types::PyDict::new(py);
+                if let Some(to_revision) = to_revision {
+                    kwargs
+                        .set_item(
+                            "to_revision",
+                            to_revision.clone().into_pyobject(py).unwrap(),
+                        )
+                        .unwrap();
+                }
+                kwargs
+            };
+            self.to_object(py).call_method(
+                py,
+                "merge_from_branch",
+                (source.to_object(py),),
+                Some(&kwargs),
+            )
+        })
+        .map_err(|e| e.into())
+        .map(|_| ())
+    }
+
+    /// Convert a list of files to relative paths safely.
+    fn safe_relpath_files(
+        &self,
+        file_list: &[&Path],
+        canonicalize: bool,
+        apply_view: bool,
+    ) -> Result<Vec<PathBuf>, Error> {
+        Python::with_gil(|py| {
+            let result = self.to_object(py).call_method1(
+                py,
+                "safe_relpath_files",
+                (
+                    file_list
+                        .iter()
+                        .map(|x| x.to_path_buf())
+                        .collect::<Vec<_>>(),
+                    canonicalize,
+                    apply_view,
+                ),
+            )?;
+            Ok(result.extract(py)?)
         })
     }
 }
@@ -458,86 +710,6 @@ impl CommitBuilder {
 }
 
 impl GenericWorkingTree {
-    /// Check if a path is a control filename in this working tree.
-    ///
-    /// Control filenames are filenames that are used by the version control system
-    /// for its own purposes, like .git or .bzr.
-    ///
-    /// # Parameters
-    ///
-    /// * `path` - The path to check.
-    ///
-    /// # Returns
-    ///
-    /// `true` if the path is a control filename, `false` otherwise.
-    pub fn is_control_filename(&self, path: &Path) -> bool {
-        Python::with_gil(|py| {
-            self.to_object(py)
-                .call_method1(
-                    py,
-                    "is_control_filename",
-                    (path.to_string_lossy().as_ref(),),
-                )
-                .unwrap()
-                .extract(py)
-                .unwrap()
-        })
-    }
-
-    /// Return the base path for this working tree.
-    ///
-    /// # Returns
-    ///
-    /// The base directory path of this working tree.
-    pub fn basedir(&self) -> PathBuf {
-        Python::with_gil(|py| {
-            self.to_object(py)
-                .getattr(py, "basedir")
-                .unwrap()
-                .extract(py)
-                .unwrap()
-        })
-    }
-
-    /// Return the branch for this working tree.
-    ///
-    /// # Returns
-    ///
-    /// The branch associated with this working tree.
-    pub fn branch(&self) -> GenericBranch {
-        Python::with_gil(|py| {
-            let branch = self.to_object(py).getattr(py, "branch").unwrap();
-            GenericBranch::from(branch)
-        })
-    }
-
-    /// Return the control directory for this working tree.
-    ///
-    /// # Returns
-    ///
-    /// The control directory containing this working tree.
-    pub fn controldir(
-        &self,
-    ) -> Box<
-        dyn ControlDir<
-            Branch = GenericBranch,
-            Repository = crate::repository::GenericRepository,
-            WorkingTree = GenericWorkingTree,
-        >,
-    > {
-        Python::with_gil(|py| {
-            let controldir = self.to_object(py).getattr(py, "controldir").unwrap();
-            Box::new(GenericControlDir::new(controldir))
-                as Box<
-                    dyn ControlDir<
-                        Branch = GenericBranch,
-                        Repository = crate::repository::GenericRepository,
-                        WorkingTree = GenericWorkingTree,
-                    >,
-                >
-        })
-    }
-
     /// Open a working tree at the specified path.
     ///
     /// This method is deprecated, use the module-level `open` function instead.
@@ -569,162 +741,6 @@ impl GenericWorkingTree {
     #[deprecated = "Use ::open_containing instead"]
     pub fn open_containing(path: &Path) -> Result<(GenericWorkingTree, PathBuf), Error> {
         open_containing(path)
-    }
-
-    /// Get the basis tree for this working tree.
-    ///
-    /// The basis tree is the tree of the last revision, which is the state
-    /// of the tree before any uncommitted changes.
-    ///
-    /// # Returns
-    ///
-    /// The basis tree, or an error if it could not be retrieved.
-    pub fn basis_tree(&self) -> Result<crate::tree::RevisionTree, Error> {
-        Python::with_gil(|py| {
-            let tree = self.to_object(py).call_method0(py, "basis_tree")?;
-            Ok(RevisionTree(tree))
-        })
-    }
-
-    /// Get a revision tree for a specific revision.
-    ///
-    /// # Parameters
-    ///
-    /// * `revision_id` - The ID of the revision to get the tree for.
-    ///
-    /// # Returns
-    ///
-    /// The revision tree, or an error if it could not be retrieved.
-    pub fn revision_tree(&self, revision_id: &RevisionId) -> Result<Box<RevisionTree>, Error> {
-        Python::with_gil(|py| {
-            let tree = self.to_object(py).call_method1(
-                py,
-                "revision_tree",
-                (revision_id.clone().into_pyobject(py).unwrap(),),
-            )?;
-            Ok(Box::new(RevisionTree(tree)))
-        })
-    }
-
-    /// Get a dictionary of tags mapped to revision IDs.
-    ///
-    /// # Returns
-    ///
-    /// A hash map of tag names to revision IDs, or an error if the tags could not be retrieved.
-    pub fn get_tag_dict(&self) -> Result<std::collections::HashMap<String, RevisionId>, Error> {
-        Python::with_gil(|py| {
-            let branch = self.to_object(py).getattr(py, "branch")?;
-            let tags = branch.getattr(py, "tags")?;
-            let tag_dict = tags.call_method0(py, intern!(py, "get_tag_dict"))?;
-            tag_dict.extract(py)
-        })
-        .map_err(|e: PyErr| -> Error { e.into() })
-    }
-
-    /// Convert a path to an absolute path relative to the working tree.
-    ///
-    /// # Parameters
-    ///
-    /// * `path` - The path to convert.
-    ///
-    /// # Returns
-    ///
-    /// The absolute path, or an error if the conversion failed.
-    pub fn abspath(&self, path: &Path) -> Result<PathBuf, Error> {
-        Python::with_gil(|py| {
-            Ok(self
-                .to_object(py)
-                .call_method1(py, "abspath", (path,))?
-                .extract(py)?)
-        })
-    }
-
-    /// Convert an absolute path to a path relative to the working tree.
-    ///
-    /// # Parameters
-    ///
-    /// * `path` - The absolute path to convert.
-    ///
-    /// # Returns
-    ///
-    /// The relative path, or an error if the conversion failed.
-    pub fn relpath(&self, path: &Path) -> Result<PathBuf, Error> {
-        Python::with_gil(|py| {
-            Ok(self
-                .to_object(py)
-                .call_method1(py, "relpath", (path,))?
-                .extract(py)?)
-        })
-    }
-
-    /// Check if this working tree supports setting file IDs.
-    ///
-    /// # Returns
-    ///
-    /// `true` if this working tree supports setting file IDs, `false` otherwise.
-    pub fn supports_setting_file_ids(&self) -> bool {
-        Python::with_gil(|py| {
-            self.to_object(py)
-                .call_method0(py, "supports_setting_file_ids")
-                .unwrap()
-                .extract(py)
-                .unwrap()
-        })
-    }
-
-    /// Add files to version control.
-    ///
-    /// # Parameters
-    ///
-    /// * `paths` - The paths of files to add.
-    ///
-    /// # Returns
-    ///
-    /// `Ok(())` on success, or an error if the files could not be added.
-    pub fn add(&self, paths: &[&Path]) -> Result<(), Error> {
-        Python::with_gil(|py| {
-            let path_strings: Vec<String> = paths
-                .iter()
-                .map(|p| p.to_string_lossy().to_string())
-                .collect();
-            self.to_object(py).call_method1(py, "add", (path_strings,))
-        })
-        .map_err(|e| e.into())
-        .map(|_| ())
-    }
-
-    /// Add files to version control, recursively adding subdirectories.
-    ///
-    /// This is similar to `add`, but smarter - it will recursively add
-    /// subdirectories and handle ignored files appropriately.
-    ///
-    /// # Parameters
-    ///
-    /// * `paths` - The paths of files to add.
-    ///
-    /// # Returns
-    ///
-    /// `Ok(())` on success, or an error if the files could not be added.
-    pub fn smart_add(&self, paths: &[&Path]) -> Result<(), Error> {
-        Python::with_gil(|py| {
-            let path_strings: Vec<String> = paths
-                .iter()
-                .map(|p| p.to_string_lossy().to_string())
-                .collect();
-            self.to_object(py)
-                .call_method1(py, "smart_add", (path_strings,))
-        })
-        .map_err(|e| e.into())
-        .map(|_| ())
-    }
-
-    /// Create a commit builder for this working tree.
-    ///
-    /// # Returns
-    ///
-    /// A new CommitBuilder instance for this working tree.
-    pub fn build_commit(&self) -> CommitBuilder {
-        CommitBuilder::from(self.clone())
     }
 
     /// Create a commit with the specified parameters.
@@ -764,168 +780,6 @@ impl GenericWorkingTree {
         }
 
         builder.commit()
-    }
-
-    /// Get the revision ID of the last commit in this working tree.
-    ///
-    /// # Returns
-    ///
-    /// The revision ID of the last commit, or an error if it could not be retrieved.
-    pub fn last_revision(&self) -> Result<RevisionId, Error> {
-        Python::with_gil(|py| {
-            let last_revision = self
-                .to_object(py)
-                .call_method0(py, intern!(py, "last_revision"))?;
-            Ok(RevisionId::from(last_revision.extract::<Vec<u8>>(py)?))
-        })
-    }
-
-    /// Pull changes from another branch into this working tree.
-    ///
-    /// # Parameters
-    ///
-    /// * `source` - The branch to pull from.
-    /// * `overwrite` - Whether to overwrite diverged changes.
-    /// * `stop_revision` - The revision to stop pulling at.
-    /// * `local` - Whether to only pull locally accessible revisions.
-    ///
-    /// # Returns
-    ///
-    /// `Ok(())` on success, or an error if the pull could not be completed.
-    pub fn pull<B: PyBranch>(
-        &self,
-        source: &B,
-        overwrite: Option<bool>,
-        stop_revision: Option<&RevisionId>,
-        local: Option<bool>,
-    ) -> Result<(), Error> {
-        Python::with_gil(|py| {
-            let kwargs = {
-                let kwargs = pyo3::types::PyDict::new(py);
-                if let Some(overwrite) = overwrite {
-                    kwargs.set_item("overwrite", overwrite).unwrap();
-                }
-                if let Some(stop_revision) = stop_revision {
-                    kwargs
-                        .set_item(
-                            "stop_revision",
-                            stop_revision.clone().into_pyobject(py).unwrap(),
-                        )
-                        .unwrap();
-                }
-                if let Some(local) = local {
-                    kwargs.set_item("local", local).unwrap();
-                }
-                kwargs
-            };
-            self.to_object(py)
-                .call_method(py, "pull", (source.to_object(py),), Some(&kwargs))
-        })
-        .map_err(|e| e.into())
-        .map(|_| ())
-    }
-
-    /// Merge changes from another branch into this working tree.
-    ///
-    /// # Parameters
-    ///
-    /// * `source` - The branch to merge from.
-    /// * `to_revision` - The revision to merge up to.
-    ///
-    /// # Returns
-    ///
-    /// `Ok(())` on success, or an error if the merge could not be completed.
-    pub fn merge_from_branch<B: PyBranch>(
-        &self,
-        source: &B,
-        to_revision: Option<&RevisionId>,
-    ) -> Result<(), Error> {
-        Python::with_gil(|py| {
-            let kwargs = {
-                let kwargs = pyo3::types::PyDict::new(py);
-                if let Some(to_revision) = to_revision {
-                    kwargs
-                        .set_item(
-                            "to_revision",
-                            to_revision.clone().into_pyobject(py).unwrap(),
-                        )
-                        .unwrap();
-                }
-                kwargs
-            };
-            self.to_object(py).call_method(
-                py,
-                "merge_from_branch",
-                (source.to_object(py),),
-                Some(&kwargs),
-            )
-        })
-        .map_err(|e| e.into())
-        .map(|_| ())
-    }
-
-    /// Update the working tree to a different revision.
-    ///
-    /// # Parameters
-    ///
-    /// * `revision` - The revision to update to, or None for the latest revision.
-    ///
-    /// # Returns
-    ///
-    /// `Ok(())` on success, or an error if the update could not be completed.
-    pub fn update(&self, revision: Option<&RevisionId>) -> Result<(), Error> {
-        Python::with_gil(|py| {
-            let kwargs = {
-                let kwargs = pyo3::types::PyDict::new(py);
-                if let Some(revision) = revision {
-                    kwargs
-                        .set_item("revision", revision.clone().into_pyobject(py).unwrap())
-                        .unwrap();
-                }
-                kwargs
-            };
-            self.to_object(py)
-                .call_method(py, "update", (), Some(&kwargs))
-        })
-        .map_err(|e| e.into())
-        .map(|_| ())
-    }
-
-    /// Convert a list of files to relative paths safely.
-    ///
-    /// This function takes a list of file paths and converts them to paths relative
-    /// to the working tree, with various safety checks.
-    ///
-    /// # Parameters
-    ///
-    /// * `file_list` - The list of file paths to convert.
-    /// * `canonicalize` - Whether to canonicalize the paths first.
-    /// * `apply_view` - Whether to apply the view (if any) to the paths.
-    ///
-    /// # Returns
-    ///
-    /// A list of converted paths, or an error if the conversion failed.
-    pub fn safe_relpath_files(
-        &self,
-        file_list: &[&Path],
-        canonicalize: bool,
-        apply_view: bool,
-    ) -> Result<Vec<PathBuf>, Error> {
-        Python::with_gil(|py| {
-            let result = self.to_object(py).call_method1(
-                py,
-                "safe_relpath_files",
-                (
-                    file_list
-                        .iter()
-                        .map(|x| x.to_path_buf())
-                        .collect::<Vec<_>>(),
-                    canonicalize,
-                    apply_view,
-                ),
-            )?;
-            Ok(result.extract(py)?)
-        })
     }
 }
 

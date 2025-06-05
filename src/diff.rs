@@ -55,6 +55,7 @@ pub fn show_diff_trees<T: crate::tree::PyTree, U: crate::tree::PyTree>(
 mod tests {
     use super::*;
     use crate::controldir::create_standalone_workingtree;
+    use crate::workingtree::WorkingTree;
     use std::io::Cursor;
 
     #[test]

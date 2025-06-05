@@ -1,5 +1,5 @@
 //! Fast and efficient detection of files that have been modified in a directory tree.
-use crate::workingtree::GenericWorkingTree;
+use crate::workingtree::{GenericWorkingTree, WorkingTree};
 use dirty_tracker::DirtyTracker;
 pub use dirty_tracker::State;
 

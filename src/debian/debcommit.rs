@@ -5,6 +5,7 @@ use crate::debian::{suite_to_distribution, Vendor};
 use crate::error::Error as BrzError;
 use crate::tree::{Kind, Path, PyTree, Tree};
 use crate::workingtree::PyWorkingTree;
+use crate::workingtree::WorkingTree;
 use crate::RevisionId;
 use debian_changelog::ChangeLog;
 
