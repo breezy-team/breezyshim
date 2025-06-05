@@ -147,7 +147,9 @@ impl crate::tree::PyTree for AppliedPatches {
 mod applied_patches_tests {
     use super::*;
     use crate::controldir::ControlDirFormat;
+    use crate::tree::MutableTree;
     use crate::tree::Tree;
+    use crate::workingtree::WorkingTree;
     use serial_test::serial;
 
     #[test]

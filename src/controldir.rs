@@ -1216,6 +1216,7 @@ lazy_static::lazy_static! {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::workingtree::WorkingTree;
 
     #[test]
     fn test_control_dir_format_registry() {

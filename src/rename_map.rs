@@ -36,6 +36,8 @@ pub fn guess_renames<T: PyTree, U: PyMutableTree>(
 mod tests {
     use super::*;
     use crate::controldir::create_standalone_workingtree;
+    use crate::tree::MutableTree;
+    use crate::workingtree::WorkingTree;
     use std::path::Path;
 
     #[test]

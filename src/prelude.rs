@@ -4,4 +4,5 @@
 pub use crate::branch::Branch;
 pub use crate::controldir::ControlDir;
 pub use crate::repository::Repository;
-pub use crate::tree::Tree;
+pub use crate::tree::{MutableTree, Tree};
+pub use crate::workingtree::WorkingTree;

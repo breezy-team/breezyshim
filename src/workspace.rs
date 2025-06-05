@@ -121,6 +121,7 @@ pub fn check_clean_tree(
 mod tests {
     use super::*;
     use crate::controldir::create_standalone_workingtree;
+    use crate::workingtree::WorkingTree;
     use std::path::Path;
 
     #[test]
@@ -188,7 +189,7 @@ mod tests {
     #[cfg(feature = "dirty-tracker")]
     #[test]
     fn test_reset_tree_with_dirty_tracker() {
-        use crate::dirty_tracker::{DirtyTreeTracker, State as DirtyTrackerState};
+        use crate::dirty_tracker::DirtyTreeTracker;
 
         let tmp_dir = tempfile::tempdir().unwrap();
         let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
