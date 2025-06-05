@@ -431,7 +431,7 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
         Python::with_gil(|py| {
             Ok(self
                 .to_object(py)
-                .call_method1(py, "abspath", (path,))?
+                .call_method1(py, "abspath", (path.to_string_lossy().as_ref(),))?
                 .extract(py)?)
         })
     }
@@ -441,7 +441,7 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
         Python::with_gil(|py| {
             Ok(self
                 .to_object(py)
-                .call_method1(py, "relpath", (path,))?
+                .call_method1(py, "relpath", (path.to_string_lossy().as_ref(),))?
                 .extract(py)?)
         })
     }
@@ -534,7 +534,7 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
                 (
                     file_list
                         .iter()
-                        .map(|x| x.to_path_buf())
+                        .map(|x| x.to_string_lossy().to_string())
                         .collect::<Vec<_>>(),
                     canonicalize,
                     apply_view,
@@ -818,8 +818,9 @@ pub fn open_containing(path: &Path) -> Result<(GenericWorkingTree, PathBuf), Err
     Python::with_gil(|py| {
         let m = py.import("breezy.workingtree")?;
         let c = m.getattr("WorkingTree")?;
-        let (wt, p): (Bound<PyAny>, String) =
-            c.call_method1("open_containing", (path,))?.extract()?;
+        let (wt, p): (Bound<PyAny>, String) = c
+            .call_method1("open_containing", (path.to_string_lossy(),))?
+            .extract()?;
         Ok((GenericWorkingTree(wt.unbind()), PathBuf::from(p)))
     })
 }
