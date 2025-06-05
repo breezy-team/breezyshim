@@ -14,9 +14,9 @@ use std::io::Write;
 ///
 /// # Returns
 /// Result with empty success value or error
-pub fn show_diff_trees<T: crate::tree::PyTree, U: crate::tree::PyTree>(
-    tree1: &T,
-    tree2: &U,
+pub fn show_diff_trees(
+    tree1: &dyn crate::tree::PyTree,
+    tree2: &dyn crate::tree::PyTree,
     mut w: impl Write,
     old_label: Option<&str>,
     new_label: Option<&str>,

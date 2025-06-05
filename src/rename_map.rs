@@ -16,9 +16,9 @@ use pyo3::prelude::*;
 /// # Returns
 ///
 /// `Ok(())` on success, or an error if the operation fails
-pub fn guess_renames<T: PyTree, U: PyMutableTree>(
-    from_tree: &T,
-    mutable_tree: &U,
+pub fn guess_renames(
+    from_tree: &dyn PyTree,
+    mutable_tree: &dyn PyMutableTree,
 ) -> Result<(), crate::error::Error> {
     pyo3::Python::with_gil(|py| -> Result<(), pyo3::PyErr> {
         let m = py.import("breezy.rename_map")?;
