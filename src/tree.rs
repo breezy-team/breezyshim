@@ -760,7 +760,20 @@ impl<'py> IntoPyObject<'py> for TreeChange {
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
         let dict = pyo3::types::PyDict::new(py);
-        dict.set_item("path", &self.path).unwrap();
+        dict.set_item(
+            "path",
+            (
+                self.path
+                    .0
+                    .as_ref()
+                    .map(|p| p.to_string_lossy().to_string()),
+                self.path
+                    .1
+                    .as_ref()
+                    .map(|p| p.to_string_lossy().to_string()),
+            ),
+        )
+        .unwrap();
         dict.set_item("changed_content", self.changed_content)
             .unwrap();
         dict.set_item("versioned", self.versioned).unwrap();

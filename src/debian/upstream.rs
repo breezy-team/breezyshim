@@ -543,10 +543,10 @@ pub fn run_dist_command(
         kwargs.set_item("revtree", revtree.to_object(py))?;
         kwargs.set_item("package", package)?;
         kwargs.set_item("version", version.to_string())?;
-        kwargs.set_item("target_dir", target_dir)?;
+        kwargs.set_item("target_dir", target_dir.to_string_lossy().to_string())?;
         kwargs.set_item("dist_command", dist_command)?;
         kwargs.set_item("include_controldir", include_controldir)?;
-        kwargs.set_item("subpath", subpath)?;
+        kwargs.set_item("subpath", subpath.to_string_lossy().to_string())?;
 
         Ok(run_dist_command.call((), Some(&kwargs))?.extract()?)
     })

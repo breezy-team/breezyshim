@@ -289,7 +289,10 @@ impl RemoteApt {
         Python::with_gil(|py| {
             let m = PyModule::import(py, "breezy.plugins.debian.apt_repo")?;
             let apt = m.getattr("RemoteApt")?;
-            let apt = apt.call_method1("from_string", (text, key_path))?;
+            let apt = apt.call_method1(
+                "from_string",
+                (text, key_path.map(|p| p.to_string_lossy().to_string())),
+            )?;
             apt.call_method0(intern!(py, "__enter__"))?;
             Ok(Self(apt.into()))
         })

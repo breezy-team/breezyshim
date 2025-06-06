@@ -47,7 +47,7 @@ pub fn do_import(
         let do_import = m.getattr("do_import").unwrap();
         let kwargs = PyDict::new(py);
         kwargs.set_item("tree", tree.to_object(py))?;
-        kwargs.set_item("subpath", subpath)?;
+        kwargs.set_item("subpath", subpath.to_string_lossy().to_string())?;
         kwargs.set_item("tarball_filenames", tarball_filenames.to_vec())?;
         kwargs.set_item("package", package)?;
         kwargs.set_item("version", version)?;

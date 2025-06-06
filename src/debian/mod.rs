@@ -250,9 +250,9 @@ pub fn build_helper(
     Python::with_gil(|py| -> PyResult<HashMap<String, PathBuf>> {
         let locals = PyDict::new(py);
         locals.set_item("local_tree", local_tree.to_object(py))?;
-        locals.set_item("subpath", subpath)?;
+        locals.set_item("subpath", subpath.to_string_lossy().to_string())?;
         locals.set_item("branch", branch.to_object(py))?;
-        locals.set_item("target_dir", target_dir)?;
+        locals.set_item("target_dir", target_dir.to_string_lossy().to_string())?;
         locals.set_item("builder", builder)?;
         locals.set_item("guess_upstream_branch_url", guess_upstream_branch_url)?;
 

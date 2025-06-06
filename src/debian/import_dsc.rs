@@ -128,7 +128,11 @@ impl DistributionBranch {
     ) -> Result<String, crate::debian::error::Error> {
         Ok(Python::with_gil(|py| -> PyResult<String> {
             self.0
-                .call_method1(py, "import_package", (dsc_path, apply_patches))?
+                .call_method1(
+                    py,
+                    "import_package",
+                    (dsc_path.to_string_lossy().to_string(), apply_patches),
+                )?
                 .extract::<String>(py)
         })?)
     }

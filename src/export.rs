@@ -24,11 +24,16 @@ pub fn export<T: crate::tree::PyTree>(
         let subdir = if subdir.is_none() || subdir == Some(Path::new("")) {
             None
         } else {
-            Some(subdir)
+            Some(subdir.unwrap().to_string_lossy().to_string())
         };
         kwargs.set_item("subdir", subdir).unwrap();
         export.call(
-            (tree.to_object(py), target, "dir", py.None()),
+            (
+                tree.to_object(py),
+                target.to_string_lossy().to_string(),
+                "dir",
+                py.None(),
+            ),
             Some(&kwargs),
         )?;
         Ok(())

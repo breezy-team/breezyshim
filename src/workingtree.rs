@@ -644,7 +644,10 @@ impl CommitBuilder {
     ///
     /// Self for method chaining.
     pub fn specific_files(self, specific_files: &[&Path]) -> Self {
-        let specific_files: Vec<PathBuf> = specific_files.iter().map(|x| x.to_path_buf()).collect();
+        let specific_files: Vec<String> = specific_files
+            .iter()
+            .map(|x| x.to_string_lossy().to_string())
+            .collect();
         Python::with_gil(|py| {
             self.1
                 .bind(py)
@@ -796,7 +799,7 @@ pub fn open(path: &Path) -> Result<GenericWorkingTree, Error> {
     Python::with_gil(|py| {
         let m = py.import("breezy.workingtree")?;
         let c = m.getattr("WorkingTree")?;
-        let wt = c.call_method1("open", (path,))?;
+        let wt = c.call_method1("open", (path.to_string_lossy().to_string(),))?;
         Ok(GenericWorkingTree(wt.unbind()))
     })
 }

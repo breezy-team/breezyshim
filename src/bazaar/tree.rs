@@ -20,8 +20,17 @@ pub trait MutableInventoryTree: crate::tree::PyMutableTree {
     /// `Ok(())` on success, or an error if the files could not be added.
     fn add(&self, paths: &[&Path], file_ids: &[crate::bazaar::FileId]) -> Result<(), Error> {
         Python::with_gil(|py| {
-            self.to_object(py)
-                .call_method1(py, "add", (paths.to_vec(), file_ids.to_vec()))
+            self.to_object(py).call_method1(
+                py,
+                "add",
+                (
+                    paths
+                        .iter()
+                        .map(|p| p.to_string_lossy().to_string())
+                        .collect::<Vec<_>>(),
+                    file_ids.to_vec(),
+                ),
+            )
         })
         .map_err(|e| e.into())
         .map(|_| ())
