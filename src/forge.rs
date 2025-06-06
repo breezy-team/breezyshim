@@ -401,7 +401,7 @@ impl Forge {
     }
 
     /// Returns the web URL for a given branch on this forge.
-    pub fn get_web_url<B: PyBranch>(&self, branch: &B) -> Result<url::Url, crate::error::Error> {
+    pub fn get_web_url(&self, branch: &dyn PyBranch) -> Result<url::Url, crate::error::Error> {
         Python::with_gil(|py| {
             let forge_obj = self.to_object();
             let branch_obj = branch.to_object(py);
@@ -476,10 +476,10 @@ impl Forge {
     }
 
     /// Creates a proposal builder for a merge proposal from one branch to another.
-    pub fn get_proposer<B1: PyBranch, B2: PyBranch>(
+    pub fn get_proposer(
         &self,
-        from_branch: &B1,
-        to_branch: &B2,
+        from_branch: &dyn PyBranch,
+        to_branch: &dyn PyBranch,
     ) -> Result<ProposalBuilder, crate::error::Error> {
         Python::with_gil(|py| {
             let from_branch_obj = from_branch.to_object(py);
@@ -513,9 +513,9 @@ impl Forge {
     }
 
     /// Gets a branch derived from a main branch with the given name and optional owner.
-    pub fn get_derived_branch<B: PyBranch>(
+    pub fn get_derived_branch(
         &self,
-        main_branch: &B,
+        main_branch: &dyn PyBranch,
         name: &str,
         owner: Option<&str>,
         preferred_schemes: Option<&[&str]>,
