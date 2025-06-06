@@ -64,7 +64,7 @@ impl Merger {
     /// # Returns
     ///
     /// A new Merger object
-    pub fn new<T: PyTree, B: PyBranch>(branch: &B, this_tree: &T, revision_graph: &Graph) -> Self {
+    pub fn new<T: PyTree>(branch: &dyn PyBranch, this_tree: &T, revision_graph: &Graph) -> Self {
         Python::with_gil(|py| {
             let m = py.import("breezy.merge").unwrap();
             let cls = m.getattr("Merger").unwrap();
@@ -114,10 +114,10 @@ impl Merger {
     /// # Returns
     ///
     /// Ok(()) on success, or an error if the operation fails
-    pub fn set_other_revision<B: PyBranch>(
+    pub fn set_other_revision(
         &mut self,
         other_revision: &RevisionId,
-        other_branch: &B,
+        other_branch: &dyn PyBranch,
     ) -> Result<(), crate::error::Error> {
         Python::with_gil(|py| {
             self.0.call_method1(
@@ -139,10 +139,10 @@ impl Merger {
     /// # Returns
     ///
     /// Ok(()) on success, or an error if the operation fails
-    pub fn set_base_revision<B: PyBranch>(
+    pub fn set_base_revision(
         &mut self,
         base_revision: &RevisionId,
-        base_branch: &B,
+        base_branch: &dyn PyBranch,
     ) -> Result<(), crate::error::Error> {
         Python::with_gil(|py| {
             self.0.call_method1(
@@ -193,11 +193,11 @@ impl Merger {
     /// # Returns
     ///
     /// A new Merger object, or an error if the operation fails
-    pub fn from_revision_ids<T: PyTree, B1: PyBranch, B2: PyBranch>(
+    pub fn from_revision_ids<T: PyTree>(
         other_tree: &T,
-        other_branch: &B1,
+        other_branch: &dyn PyBranch,
         other: &RevisionId,
-        tree_branch: &B2,
+        tree_branch: &dyn PyBranch,
     ) -> Result<Self, Error> {
         Python::with_gil(|py| {
             let m = py.import("breezy.merge").unwrap();
