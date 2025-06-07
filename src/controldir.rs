@@ -1138,8 +1138,8 @@ impl std::fmt::Debug for GenericProber {
 /// # Returns
 ///
 /// A list of all available probers.
-pub fn all_probers() -> Vec<Box<dyn Prober>> {
-    Python::with_gil(|py| -> PyResult<Vec<Box<dyn Prober>>> {
+pub fn all_probers() -> Vec<Box<dyn PyProber>> {
+    Python::with_gil(|py| -> PyResult<Vec<Box<dyn PyProber>>> {
         let m = py.import("breezy.controldir")?;
         let cdf = m.getattr("ControlDirFormat")?;
         let probers = cdf
@@ -1147,7 +1147,7 @@ pub fn all_probers() -> Vec<Box<dyn Prober>> {
             .extract::<Vec<PyObject>>()?;
         Ok(probers
             .into_iter()
-            .map(|p| Box::new(GenericProber::new(p)) as Box<dyn Prober>)
+            .map(|p| Box::new(GenericProber::new(p)) as Box<dyn PyProber>)
             .collect::<Vec<_>>())
     })
     .unwrap()
