@@ -371,6 +371,17 @@ impl ProposalBuilder {
         self
     }
 
+    /// Sets whether the merge proposal is a work in progress.
+    pub fn work_in_progress(self, work_in_progress: bool) -> Self {
+        Python::with_gil(|py| {
+            self.1
+                .bind(py)
+                .set_item("work_in_progress", work_in_progress)
+                .unwrap();
+        });
+        self
+    }
+
     /// Creates the merge proposal with all configured properties.
     pub fn build(self) -> Result<MergeProposal, crate::error::Error> {
         Python::with_gil(|py| {
