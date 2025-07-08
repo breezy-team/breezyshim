@@ -16,6 +16,7 @@ use pyo3::exceptions::PyStopIteration;
 use pyo3::intern;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
+use std::collections::HashMap;
 
 /// Represents the format of a repository.
 ///
@@ -45,11 +46,34 @@ impl RepositoryFormat {
     }
 }
 
+/// Represents the lock status of a repository.
+#[derive(Debug, Clone)]
+pub struct LockStatus {
+    /// Whether the repository is locked.
+    pub is_locked: bool,
+    /// The holder of the lock, if any.
+    pub lock_holder: Option<String>,
+}
+
+/// Statistics about a repository.
+#[derive(Debug, Clone)]
+pub struct RepositoryStats {
+    /// Number of revisions in the repository.
+    pub revision_count: u32,
+    /// Number of files in the repository.
+    pub file_count: u32,
+    /// Committer statistics, if requested.
+    pub committers: Option<HashMap<String, u32>>,
+}
+
 /// Trait for repository operations.
 ///
 /// This trait defines the operations that can be performed on a repository,
 /// such as fetching revisions, getting a revision tree, or looking up revisions.
 pub trait Repository {
+    /// Get a reference to the underlying Any type for downcasting.
+    fn as_any(&self) -> &dyn std::any::Any;
+
     /// Get the version control system type for this repository.
     fn vcs_type(&self) -> VcsType;
 
@@ -68,9 +92,9 @@ pub trait Repository {
     ///
     /// * `other_repository` - The repository to fetch from
     /// * `stop_revision` - Optional revision to stop fetching at
-    fn fetch<R: PyRepository>(
+    fn fetch(
         &self,
-        other_repository: &R,
+        other_repository: &dyn Repository,
         stop_revision: Option<&RevisionId>,
     ) -> Result<(), crate::error::Error>;
 
@@ -106,7 +130,7 @@ pub trait Repository {
     fn iter_revisions(
         &self,
         revision_ids: Vec<RevisionId>,
-    ) -> impl Iterator<Item = (RevisionId, Option<Revision>)>;
+    ) -> Box<dyn Iterator<Item = (RevisionId, Option<Revision>)>>;
 
     /// Get revision deltas for the given revisions.
     ///
@@ -118,7 +142,7 @@ pub trait Repository {
         &self,
         revs: &[Revision],
         specific_files: Option<&[&std::path::Path]>,
-    ) -> impl Iterator<Item = TreeDelta>;
+    ) -> Box<dyn Iterator<Item = TreeDelta>>;
 
     /// Get a specific revision.
     ///
@@ -152,13 +176,132 @@ pub trait Repository {
 
     /// Lock the repository for writing.
     fn lock_write(&self) -> Result<Lock, crate::error::Error>;
+
+    /// Check if the repository has a specific revision.
+    ///
+    /// # Arguments
+    ///
+    /// * `revision_id` - The revision ID to check for
+    fn has_revision(&self, revision_id: &RevisionId) -> Result<bool, crate::error::Error>;
+
+    /// Get all revision IDs in the repository.
+    fn all_revision_ids(&self) -> Result<Vec<RevisionId>, crate::error::Error>;
+
+    /// Check if the repository is shared (can be used by multiple branches).
+    fn is_shared(&self) -> Result<bool, crate::error::Error>;
+
+    /// Get the signature text for a revision.
+    ///
+    /// # Arguments
+    ///
+    /// * `revision_id` - The revision ID to get the signature for
+    fn get_signature_text(&self, revision_id: &RevisionId) -> Result<String, crate::error::Error>;
+
+    /// Check if a revision has a signature.
+    ///
+    /// # Arguments
+    ///
+    /// * `revision_id` - The revision ID to check
+    fn has_signature_for_revision_id(
+        &self,
+        revision_id: &RevisionId,
+    ) -> Result<bool, crate::error::Error>;
+
+    /// Pack the repository to optimize storage.
+    ///
+    /// # Arguments
+    ///
+    /// * `hint` - Optional list of revision IDs to focus on
+    /// * `clean_obsolete_packs` - Whether to clean obsolete packs
+    fn pack(
+        &self,
+        hint: Option<&[RevisionId]>,
+        clean_obsolete_packs: bool,
+    ) -> Result<(), crate::error::Error>;
+
+    /// Start a write group for batch operations.
+    fn start_write_group(&self) -> Result<(), crate::error::Error>;
+
+    /// Commit a write group.
+    fn commit_write_group(&self) -> Result<(), crate::error::Error>;
+
+    /// Abort a write group.
+    fn abort_write_group(&self) -> Result<(), crate::error::Error>;
+
+    /// Check if a write group is active.
+    fn is_in_write_group(&self) -> bool;
+
+    /// Get parent revision IDs for given revisions.
+    ///
+    /// # Arguments
+    ///
+    /// * `revision_ids` - The revision IDs to get parents for
+    fn get_parent_map(
+        &self,
+        revision_ids: &[RevisionId],
+    ) -> Result<std::collections::HashMap<RevisionId, Vec<RevisionId>>, crate::error::Error>;
+
+    /// Get missing revision IDs between this repository and another.
+    ///
+    /// # Arguments
+    ///
+    /// * `other` - The other repository to compare with
+    /// * `revision_id` - Optional revision to stop at
+    fn missing_revision_ids(
+        &self,
+        other: &dyn Repository,
+        revision_id: Option<&RevisionId>,
+    ) -> Result<Vec<RevisionId>, crate::error::Error>;
+
+    /// Find branches that use this repository.
+    fn find_branches(&self) -> Result<Vec<GenericBranch>, crate::error::Error>;
+
+    /// Get physical lock status.
+    fn get_physical_lock_status(&self) -> Result<LockStatus, crate::error::Error>;
+
+    /// Add a fallback repository.
+    ///
+    /// # Arguments
+    ///
+    /// * `repository` - The repository to add as a fallback
+    fn add_fallback_repository(
+        &self,
+        repository: &dyn Repository,
+    ) -> Result<(), crate::error::Error>;
+
+    /// Get ancestry of revisions.
+    ///
+    /// # Arguments
+    ///
+    /// * `revision_ids` - The revision IDs to get ancestry for
+    /// * `topo_sorted` - Whether to sort topologically
+    fn get_ancestry(
+        &self,
+        revision_ids: &[RevisionId],
+        topo_sorted: bool,
+    ) -> Result<Vec<RevisionId>, crate::error::Error>;
+
+    /// Gather statistics about the repository.
+    ///
+    /// # Arguments
+    ///
+    /// * `committers` - Whether to gather committer statistics
+    /// * `log` - Whether to log progress
+    fn gather_stats(
+        &self,
+        committers: Option<bool>,
+        log: Option<bool>,
+    ) -> Result<RepositoryStats, crate::error::Error>;
+
+    /// Get file graph for specific files.
+    fn get_file_graph(&self) -> Result<Graph, crate::error::Error>;
 }
 
 /// Trait for types that can be converted to Python repository objects.
 ///
 /// This trait is implemented by types that represent Breezy repositories
 /// and can be converted to Python objects.
-pub trait PyRepository: std::any::Any {
+pub trait PyRepository: Repository + std::any::Any {
     /// Get the underlying Python object for this repository.
     fn to_object(&self, py: Python) -> PyObject;
 }
@@ -326,7 +469,11 @@ impl From<PyObject> for GenericRepository {
     }
 }
 
-impl<T: ?Sized + PyRepository> Repository for T {
+impl<T: PyRepository> Repository for T {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
     fn vcs_type(&self) -> VcsType {
         Python::with_gil(|py| {
             if self.to_object(py).getattr(py, "_git").is_ok() {
@@ -365,17 +512,30 @@ impl<T: ?Sized + PyRepository> Repository for T {
         })
     }
 
-    fn fetch<R: PyRepository>(
+    fn fetch(
         &self,
-        other_repository: &R,
+        other_repository: &dyn Repository,
         stop_revision: Option<&RevisionId>,
     ) -> Result<(), crate::error::Error> {
         Python::with_gil(|py| {
+            // Try to get the Python object from the other repository
+            let other_py = if let Some(py_repo) = other_repository
+                .as_any()
+                .downcast_ref::<GenericRepository>()
+            {
+                py_repo.to_object(py)
+            } else {
+                return Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
+                    "Repository must be a PyRepository",
+                )
+                .into());
+            };
+
             self.to_object(py).call_method1(
                 py,
                 "fetch",
                 (
-                    other_repository.to_object(py),
+                    other_py,
                     stop_revision.map(|r| r.clone().into_pyobject(py).unwrap().unbind()),
                 ),
             )?;
@@ -428,13 +588,13 @@ impl<T: ?Sized + PyRepository> Repository for T {
     fn iter_revisions(
         &self,
         revision_ids: Vec<RevisionId>,
-    ) -> impl Iterator<Item = (RevisionId, Option<Revision>)> {
+    ) -> Box<dyn Iterator<Item = (RevisionId, Option<Revision>)>> {
         Python::with_gil(|py| {
             let o = self
                 .to_object(py)
                 .call_method1(py, "iter_revisions", (revision_ids,))
                 .unwrap();
-            RevisionIterator(o)
+            Box::new(RevisionIterator(o))
         })
     }
 
@@ -442,7 +602,7 @@ impl<T: ?Sized + PyRepository> Repository for T {
         &self,
         revs: &[Revision],
         specific_files: Option<&[&std::path::Path]>,
-    ) -> impl Iterator<Item = TreeDelta> {
+    ) -> Box<dyn Iterator<Item = TreeDelta>> {
         Python::with_gil(|py| {
             let revs = revs
                 .iter()
@@ -454,7 +614,7 @@ impl<T: ?Sized + PyRepository> Repository for T {
                 .to_object(py)
                 .call_method1(py, "get_revision_deltas", (revs, specific_files))
                 .unwrap();
-            DeltaIterator(o)
+            Box::new(DeltaIterator(o))
         })
     }
 
@@ -507,6 +667,313 @@ impl<T: ?Sized + PyRepository> Repository for T {
             Ok(Lock::from(
                 self.to_object(py)
                     .call_method0(py, intern!(py, "lock_write"))?,
+            ))
+        })
+    }
+
+    fn has_revision(&self, revision_id: &RevisionId) -> Result<bool, crate::error::Error> {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method1(py, "has_revision", (revision_id.clone(),))?
+                .extract(py)
+                .map_err(|e| e.into())
+        })
+    }
+
+    fn all_revision_ids(&self) -> Result<Vec<RevisionId>, crate::error::Error> {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method0(py, "all_revision_ids")?
+                .extract(py)
+                .map_err(|e| e.into())
+        })
+    }
+
+    fn is_shared(&self) -> Result<bool, crate::error::Error> {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method0(py, "is_shared")?
+                .extract(py)
+                .map_err(|e| e.into())
+        })
+    }
+
+    fn get_signature_text(&self, revision_id: &RevisionId) -> Result<String, crate::error::Error> {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method1(py, "get_signature_text", (revision_id.clone(),))?
+                .extract(py)
+                .map_err(|e| e.into())
+        })
+    }
+
+    fn has_signature_for_revision_id(
+        &self,
+        revision_id: &RevisionId,
+    ) -> Result<bool, crate::error::Error> {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method1(py, "has_signature_for_revision_id", (revision_id.clone(),))?
+                .extract(py)
+                .map_err(|e| e.into())
+        })
+    }
+
+    fn pack(
+        &self,
+        hint: Option<&[RevisionId]>,
+        clean_obsolete_packs: bool,
+    ) -> Result<(), crate::error::Error> {
+        Python::with_gil(|py| {
+            let hint_py = hint.map(|h| h.to_vec());
+            self.to_object(py)
+                .call_method1(py, "pack", (hint_py, clean_obsolete_packs))?;
+            Ok(())
+        })
+    }
+
+    fn start_write_group(&self) -> Result<(), crate::error::Error> {
+        Python::with_gil(|py| {
+            self.to_object(py).call_method0(py, "start_write_group")?;
+            Ok(())
+        })
+    }
+
+    fn commit_write_group(&self) -> Result<(), crate::error::Error> {
+        Python::with_gil(|py| {
+            self.to_object(py).call_method0(py, "commit_write_group")?;
+            Ok(())
+        })
+    }
+
+    fn abort_write_group(&self) -> Result<(), crate::error::Error> {
+        Python::with_gil(|py| {
+            self.to_object(py).call_method0(py, "abort_write_group")?;
+            Ok(())
+        })
+    }
+
+    fn is_in_write_group(&self) -> bool {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method0(py, "is_in_write_group")
+                .and_then(|r| r.extract(py))
+                .unwrap_or(false)
+        })
+    }
+
+    fn get_parent_map(
+        &self,
+        revision_ids: &[RevisionId],
+    ) -> Result<HashMap<RevisionId, Vec<RevisionId>>, crate::error::Error> {
+        Python::with_gil(|py| {
+            let result =
+                self.to_object(py)
+                    .call_method1(py, "get_parent_map", (revision_ids.to_vec(),))?;
+
+            let dict = result
+                .downcast_bound::<pyo3::types::PyDict>(py)
+                .expect("get_parent_map should return a dict");
+            let mut map = HashMap::new();
+
+            for (key, value) in dict.iter() {
+                let rev_id: RevisionId = key.extract()?;
+                let parents: Vec<RevisionId> = value.extract()?;
+                map.insert(rev_id, parents);
+            }
+
+            Ok(map)
+        })
+    }
+
+    fn missing_revision_ids(
+        &self,
+        other: &dyn Repository,
+        revision_id: Option<&RevisionId>,
+    ) -> Result<Vec<RevisionId>, crate::error::Error> {
+        Python::with_gil(|py| {
+            // Try to get the Python object from the other repository
+            let other_py = if let Some(py_repo) = other.as_any().downcast_ref::<GenericRepository>()
+            {
+                py_repo.to_object(py)
+            } else {
+                return Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
+                    "Repository must be a PyRepository",
+                )
+                .into());
+            };
+
+            self.to_object(py)
+                .call_method1(py, "missing_revision_ids", (other_py, revision_id.cloned()))?
+                .extract(py)
+                .map_err(|e| e.into())
+        })
+    }
+
+    fn find_branches(&self) -> Result<Vec<GenericBranch>, crate::error::Error> {
+        Python::with_gil(|py| {
+            let result = self.to_object(py).call_method0(py, "find_branches")?;
+
+            // find_branches returns a generator, so we need to convert it to a list
+            let list_module = py.import("builtins")?;
+            let list_result = list_module.call_method1("list", (result,))?;
+
+            let list = list_result
+                .downcast::<pyo3::types::PyList>()
+                .expect("list() should return a list");
+            let mut branches = Vec::new();
+
+            for item in list.iter() {
+                branches.push(GenericBranch::from(item));
+            }
+
+            Ok(branches)
+        })
+    }
+
+    fn get_physical_lock_status(&self) -> Result<LockStatus, crate::error::Error> {
+        Python::with_gil(|py| {
+            let result = self
+                .to_object(py)
+                .call_method0(py, "get_physical_lock_status")?;
+
+            if result.is_none(py) {
+                return Ok(LockStatus {
+                    is_locked: false,
+                    lock_holder: None,
+                });
+            }
+
+            // The result is typically a tuple (is_locked, lock_info)
+            if let Ok(tuple) = result.downcast_bound::<pyo3::types::PyTuple>(py) {
+                if tuple.len() >= 2 {
+                    let is_locked = tuple.get_item(0)?.extract::<bool>()?;
+                    let lock_info = tuple.get_item(1)?;
+
+                    let lock_holder = if lock_info.is_none() {
+                        None
+                    } else if let Ok(info_dict) = lock_info.downcast::<pyo3::types::PyDict>() {
+                        info_dict
+                            .get_item("user")?
+                            .and_then(|u| u.extract::<String>().ok())
+                    } else {
+                        lock_info.extract::<String>().ok()
+                    };
+
+                    return Ok(LockStatus {
+                        is_locked,
+                        lock_holder,
+                    });
+                }
+            }
+
+            // Fallback: try to extract as bool
+            let is_locked = result.extract::<bool>(py)?;
+            Ok(LockStatus {
+                is_locked,
+                lock_holder: None,
+            })
+        })
+    }
+
+    fn add_fallback_repository(
+        &self,
+        repository: &dyn Repository,
+    ) -> Result<(), crate::error::Error> {
+        Python::with_gil(|py| {
+            // Try to get the Python object from the repository
+            let repo_py =
+                if let Some(py_repo) = repository.as_any().downcast_ref::<GenericRepository>() {
+                    py_repo.to_object(py)
+                } else {
+                    return Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
+                        "Repository must be a PyRepository",
+                    )
+                    .into());
+                };
+
+            self.to_object(py)
+                .call_method1(py, "add_fallback_repository", (repo_py,))?;
+            Ok(())
+        })
+    }
+
+    fn get_ancestry(
+        &self,
+        revision_ids: &[RevisionId],
+        topo_sorted: bool,
+    ) -> Result<Vec<RevisionId>, crate::error::Error> {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method1(py, "get_ancestry", (revision_ids.to_vec(), topo_sorted))?
+                .extract(py)
+                .map_err(|e| e.into())
+        })
+    }
+
+    fn gather_stats(
+        &self,
+        committers: Option<bool>,
+        log: Option<bool>,
+    ) -> Result<RepositoryStats, crate::error::Error> {
+        Python::with_gil(|py| {
+            let kwargs = PyDict::new(py);
+            if let Some(c) = committers {
+                kwargs.set_item("committers", c)?;
+            }
+            if let Some(l) = log {
+                kwargs.set_item("log", l)?;
+            }
+
+            let result = self
+                .to_object(py)
+                .call_method(py, "gather_stats", (), Some(&kwargs))?;
+
+            let stats_dict = result
+                .downcast_bound::<pyo3::types::PyDict>(py)
+                .expect("gather_stats should return a dict");
+
+            let revision_count = stats_dict
+                .get_item("revisions")?
+                .and_then(|v| v.extract::<u32>().ok())
+                .unwrap_or(0);
+
+            let file_count = stats_dict
+                .get_item("files")?
+                .and_then(|v| v.extract::<u32>().ok())
+                .unwrap_or(0);
+
+            let committers = if let Some(committers_dict) = stats_dict.get_item("committers")? {
+                if !committers_dict.is_none() {
+                    let dict = committers_dict
+                        .downcast::<pyo3::types::PyDict>()
+                        .expect("committers should be a dict");
+                    let mut map = HashMap::new();
+                    for (key, value) in dict.iter() {
+                        let name: String = key.extract()?;
+                        let count: u32 = value.extract()?;
+                        map.insert(name, count);
+                    }
+                    Some(map)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            Ok(RepositoryStats {
+                revision_count,
+                file_count,
+                committers,
+            })
+        })
+    }
+
+    fn get_file_graph(&self) -> Result<Graph, crate::error::Error> {
+        Python::with_gil(|py| {
+            Ok(Graph::from(
+                self.to_object(py).call_method0(py, "get_file_graph")?,
             ))
         })
     }
@@ -704,5 +1171,177 @@ mod repository_tests {
         // Test write lock
         let write_lock = repo.lock_write();
         assert!(!write_lock.is_ok());
+    }
+
+    #[test]
+    fn test_has_revision() {
+        let td = tempfile::tempdir().unwrap();
+        let _dir = crate::controldir::create_standalone_workingtree(
+            td.path(),
+            &ControlDirFormat::default(),
+        )
+        .unwrap();
+        let repo: GenericRepository = crate::repository::open(td.path()).unwrap();
+
+        // Test with null revision
+        let null_revid = RevisionId::null();
+        let has_null = repo.has_revision(&null_revid).unwrap();
+        assert!(has_null);
+
+        // Test with non-existent revision
+        let fake_revid = RevisionId::from("fake-revision-id".as_bytes());
+        let has_fake = repo.has_revision(&fake_revid).unwrap();
+        assert!(!has_fake);
+    }
+
+    #[test]
+    fn test_all_revision_ids() {
+        let td = tempfile::tempdir().unwrap();
+        let _dir = crate::controldir::create_standalone_workingtree(
+            td.path(),
+            &ControlDirFormat::default(),
+        )
+        .unwrap();
+        let repo: GenericRepository = crate::repository::open(td.path()).unwrap();
+
+        let revision_ids = repo.all_revision_ids().unwrap();
+        // New repository should have no revisions
+        assert_eq!(revision_ids.len(), 0);
+    }
+
+    #[test]
+    fn test_is_shared() {
+        let td = tempfile::tempdir().unwrap();
+        let _dir = crate::controldir::create_standalone_workingtree(
+            td.path(),
+            &ControlDirFormat::default(),
+        )
+        .unwrap();
+        let repo: GenericRepository = crate::repository::open(td.path()).unwrap();
+
+        let _is_shared = repo.is_shared().unwrap();
+        // Just test that the method works
+    }
+
+    #[test]
+    fn test_write_group_operations() {
+        let td = tempfile::tempdir().unwrap();
+        let _dir = crate::controldir::create_standalone_workingtree(
+            td.path(),
+            &ControlDirFormat::default(),
+        )
+        .unwrap();
+        let repo: GenericRepository = crate::repository::open(td.path()).unwrap();
+
+        // Test initial state
+        assert!(!repo.is_in_write_group());
+
+        // Acquire write lock first
+        let _lock = repo.lock_write().unwrap();
+
+        // Start a write group
+        repo.start_write_group().unwrap();
+        assert!(repo.is_in_write_group());
+
+        // Abort the write group
+        repo.abort_write_group().unwrap();
+        assert!(!repo.is_in_write_group());
+    }
+
+    #[test]
+    fn test_get_parent_map() {
+        let td = tempfile::tempdir().unwrap();
+        let _dir = crate::controldir::create_standalone_workingtree(
+            td.path(),
+            &ControlDirFormat::default(),
+        )
+        .unwrap();
+        let repo: GenericRepository = crate::repository::open(td.path()).unwrap();
+
+        // Test with empty list
+        let parent_map = repo.get_parent_map(&[]).unwrap();
+        assert!(parent_map.is_empty());
+
+        // Test with null revision
+        let null_revid = RevisionId::null();
+        let parent_map = repo.get_parent_map(&[null_revid]).unwrap();
+        assert_eq!(parent_map.len(), 1);
+    }
+
+    #[test]
+    fn test_find_branches() {
+        let td = tempfile::tempdir().unwrap();
+        let _dir = crate::controldir::create_standalone_workingtree(
+            td.path(),
+            &ControlDirFormat::default(),
+        )
+        .unwrap();
+        let repo: GenericRepository = crate::repository::open(td.path()).unwrap();
+
+        let branches = repo.find_branches().unwrap();
+        // A new standalone workingtree should have at least one branch
+        assert!(!branches.is_empty());
+    }
+
+    #[test]
+    fn test_get_physical_lock_status() {
+        let td = tempfile::tempdir().unwrap();
+        let _dir = crate::controldir::create_standalone_workingtree(
+            td.path(),
+            &ControlDirFormat::default(),
+        )
+        .unwrap();
+        let repo: GenericRepository = crate::repository::open(td.path()).unwrap();
+
+        let status = repo.get_physical_lock_status().unwrap();
+        // Repository should not be locked initially
+        assert!(!status.is_locked);
+        assert!(status.lock_holder.is_none());
+    }
+
+    #[test]
+    fn test_gather_stats() {
+        let td = tempfile::tempdir().unwrap();
+        let _dir = crate::controldir::create_standalone_workingtree(
+            td.path(),
+            &ControlDirFormat::default(),
+        )
+        .unwrap();
+        let repo: GenericRepository = crate::repository::open(td.path()).unwrap();
+
+        let stats = repo.gather_stats(None, None).unwrap();
+        // New repository should have 0 revisions
+        assert_eq!(stats.revision_count, 0);
+    }
+
+    #[test]
+    fn test_get_file_graph() {
+        let td = tempfile::tempdir().unwrap();
+        let _dir = crate::controldir::create_standalone_workingtree(
+            td.path(),
+            &ControlDirFormat::default(),
+        )
+        .unwrap();
+        let repo: GenericRepository = crate::repository::open(td.path()).unwrap();
+
+        let _graph = repo.get_file_graph().unwrap();
+        // Just test that the method works
+    }
+
+    #[test]
+    fn test_pack() {
+        let td = tempfile::tempdir().unwrap();
+        let _dir = crate::controldir::create_standalone_workingtree(
+            td.path(),
+            &ControlDirFormat::default(),
+        )
+        .unwrap();
+        let repo: GenericRepository = crate::repository::open(td.path()).unwrap();
+
+        // Test pack without hints
+        repo.pack(None, false).unwrap();
+
+        // Test pack with empty hints
+        repo.pack(Some(&[]), true).unwrap();
     }
 }
