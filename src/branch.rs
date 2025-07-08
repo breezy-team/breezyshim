@@ -57,6 +57,8 @@ impl BranchFormat {
 /// at a particular point in time. This trait provides methods for interacting with
 /// branches across various version control systems.
 pub trait Branch {
+    /// Get a reference to self as Any for downcasting.
+    fn as_any(&self) -> &dyn std::any::Any;
     /// Get the format of this branch.
     ///
     /// # Returns
@@ -265,17 +267,188 @@ pub trait Branch {
     ///
     /// `Ok(())` on success, or an error if the history could not be generated.
     fn generate_revision_history(&self, last_revision: &RevisionId) -> Result<(), Error>;
+    /// Bind this branch to another branch.
+    ///
+    /// Binding a branch means that commits to this branch will also be made
+    /// to the master branch.
+    ///
+    /// # Parameters
+    ///
+    /// * `other` - The branch to bind to.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or an error if the branch could not be bound.
+    fn bind(&self, other: &dyn Branch) -> Result<(), Error>;
+    /// Unbind this branch from any master branch.
+    ///
+    /// After unbinding, commits will only be made to this branch.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or an error if the branch could not be unbound.
+    fn unbind(&self) -> Result<(), Error>;
+    /// Get the location of the branch this branch is bound to.
+    ///
+    /// # Returns
+    ///
+    /// The URL of the bound branch as a string, or None if not bound.
+    fn get_bound_location(&self) -> Option<String>;
+    /// Get the location this branch used to be bound to.
+    ///
+    /// # Returns
+    ///
+    /// The URL of the old bound branch as a string, or None if there was no previous binding.
+    fn get_old_bound_location(&self) -> Option<String>;
+    /// Check if this branch is locked.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the branch is locked, `false` otherwise.
+    fn is_locked(&self) -> bool;
+    /// Get the current lock mode of the branch.
+    ///
+    /// # Returns
+    ///
+    /// 'r' for read lock, 'w' for write lock, or None if not locked.
+    fn peek_lock_mode(&self) -> Option<char>;
+    /// Get the revision ID for a given revision number.
+    ///
+    /// # Parameters
+    ///
+    /// * `revno` - The revision number.
+    ///
+    /// # Returns
+    ///
+    /// The revision ID corresponding to the revision number.
+    fn get_rev_id(&self, revno: u32) -> Result<RevisionId, Error>;
+    /// Convert a revision ID to its revision number.
+    ///
+    /// # Parameters
+    ///
+    /// * `revision_id` - The revision ID to convert.
+    ///
+    /// # Returns
+    ///
+    /// The revision number, or an error if the revision ID is not in the branch.
+    fn revision_id_to_revno(&self, revision_id: &RevisionId) -> Result<u32, Error>;
+    /// Check whether a revision number corresponds to a real revision.
+    ///
+    /// # Parameters
+    ///
+    /// * `revno` - The revision number to check.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the revision number corresponds to a real revision, `false` otherwise.
+    fn check_real_revno(&self, revno: u32) -> bool;
+    /// Get information about the last revision.
+    ///
+    /// # Returns
+    ///
+    /// A tuple containing the revision number and revision ID of the last revision.
+    fn last_revision_info(&self) -> (u32, RevisionId);
+    /// Set the last revision information for this branch.
+    ///
+    /// # Parameters
+    ///
+    /// * `revno` - The revision number.
+    /// * `revision_id` - The revision ID.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or an error if the information could not be set.
+    fn set_last_revision_info(&self, revno: u32, revision_id: &RevisionId) -> Result<(), Error>;
+    /// Get the URL this branch is stacked on.
+    ///
+    /// # Returns
+    ///
+    /// The URL of the stacked-on branch, or an error if not stacked.
+    fn get_stacked_on_url(&self) -> Result<String, Error>;
+    /// Set the URL this branch is stacked on.
+    ///
+    /// # Parameters
+    ///
+    /// * `url` - The URL to stack on.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or an error if stacking could not be set.
+    fn set_stacked_on_url(&self, url: &str) -> Result<(), Error>;
+    /// Copy revisions from another branch into this branch.
+    ///
+    /// # Parameters
+    ///
+    /// * `from_branch` - The branch to fetch revisions from.
+    /// * `last_revision` - The last revision to fetch, or None to fetch all.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or an error if the fetch failed.
+    fn fetch(
+        &self,
+        from_branch: &dyn Branch,
+        last_revision: Option<&RevisionId>,
+    ) -> Result<(), Error>;
+    /// Update this branch to match the master branch.
+    ///
+    /// This is used when the branch is bound to synchronize changes.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or an error if the update failed.
+    fn update(&self) -> Result<(), Error>;
+    /// Set the location to push this branch to.
+    ///
+    /// # Parameters
+    ///
+    /// * `location` - The push location URL.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or an error if the location could not be set.
+    fn set_push_location(&self, location: &str) -> Result<(), Error>;
+    /// Set the public branch location.
+    ///
+    /// # Parameters
+    ///
+    /// * `location` - The public branch URL.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or an error if the location could not be set.
+    fn set_public_branch(&self, location: &str) -> Result<(), Error>;
+    /// Check if this branch is configured to only allow appending revisions.
+    ///
+    /// # Returns
+    ///
+    /// `true` if only appending is allowed, `false` otherwise.
+    fn get_append_revisions_only(&self) -> bool;
+    /// Set whether this branch should only allow appending revisions.
+    ///
+    /// # Parameters
+    ///
+    /// * `value` - Whether to only allow appending.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or an error if the setting could not be changed.
+    fn set_append_revisions_only(&self, value: bool) -> Result<(), Error>;
 }
 
 /// Trait for branches that wrap Python branch objects.
 ///
 /// This trait is implemented by branch types that wrap Breezy's Python branch objects.
-pub trait PyBranch: Send + std::any::Any {
+pub trait PyBranch: Branch + Send + std::any::Any {
     /// Get the underlying Python object.
     fn to_object(&self, py: Python<'_>) -> PyObject;
 }
 
-impl<T: ?Sized + PyBranch> Branch for T {
+impl<T: PyBranch> Branch for T {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
     fn format(&self) -> BranchFormat {
         Python::with_gil(|py| BranchFormat(self.to_object(py).getattr(py, "_format").unwrap()))
     }
@@ -542,6 +715,210 @@ impl<T: ?Sized + PyBranch> Branch for T {
                 "generate_revision_history",
                 (last_revision.clone().into_pyobject(py).unwrap(),),
             )?;
+            Ok(())
+        })
+    }
+
+    fn bind(&self, other: &dyn Branch) -> Result<(), Error> {
+        Python::with_gil(|py| {
+            // Try to downcast to concrete PyBranch types
+            if let Some(gb) = other.as_any().downcast_ref::<GenericBranch>() {
+                self.to_object(py)
+                    .call_method1(py, "bind", (gb.to_object(py),))?;
+            } else if let Some(mb) = other.as_any().downcast_ref::<MemoryBranch>() {
+                self.to_object(py)
+                    .call_method1(py, "bind", (mb.to_object(py),))?;
+            } else {
+                return Err(Error::Other(pyo3::exceptions::PyTypeError::new_err(
+                    "Branch must be a PyBranch",
+                )));
+            }
+            Ok(())
+        })
+    }
+
+    fn unbind(&self) -> Result<(), Error> {
+        Python::with_gil(|py| {
+            self.to_object(py).call_method0(py, "unbind")?;
+            Ok(())
+        })
+    }
+
+    fn get_bound_location(&self) -> Option<String> {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method0(py, "get_bound_location")
+                .unwrap()
+                .extract(py)
+                .unwrap()
+        })
+    }
+
+    fn get_old_bound_location(&self) -> Option<String> {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method0(py, "get_old_bound_location")
+                .unwrap()
+                .extract(py)
+                .unwrap()
+        })
+    }
+
+    fn is_locked(&self) -> bool {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method0(py, "is_locked")
+                .unwrap()
+                .extract(py)
+                .unwrap()
+        })
+    }
+
+    fn peek_lock_mode(&self) -> Option<char> {
+        Python::with_gil(|py| {
+            let result = self
+                .to_object(py)
+                .call_method0(py, "peek_lock_mode")
+                .unwrap();
+            if result.is_none(py) {
+                None
+            } else {
+                let mode: String = result.extract(py).unwrap();
+                mode.chars().next()
+            }
+        })
+    }
+
+    fn get_rev_id(&self, revno: u32) -> Result<RevisionId, Error> {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method1(py, "get_rev_id", (revno,))?
+                .extract(py)
+                .map_err(Into::into)
+        })
+    }
+
+    fn revision_id_to_revno(&self, revision_id: &RevisionId) -> Result<u32, Error> {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method1(py, "revision_id_to_revno", (revision_id.clone(),))?
+                .extract(py)
+                .map_err(Into::into)
+        })
+    }
+
+    fn check_real_revno(&self, revno: u32) -> bool {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method1(py, "check_real_revno", (revno,))
+                .unwrap()
+                .extract(py)
+                .unwrap()
+        })
+    }
+
+    fn last_revision_info(&self) -> (u32, RevisionId) {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method0(py, "last_revision_info")
+                .unwrap()
+                .extract(py)
+                .unwrap()
+        })
+    }
+
+    fn set_last_revision_info(&self, revno: u32, revision_id: &RevisionId) -> Result<(), Error> {
+        Python::with_gil(|py| {
+            self.to_object(py).call_method1(
+                py,
+                "set_last_revision_info",
+                (revno, revision_id.clone()),
+            )?;
+            Ok(())
+        })
+    }
+
+    fn get_stacked_on_url(&self) -> Result<String, Error> {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method0(py, "get_stacked_on_url")?
+                .extract(py)
+                .map_err(Into::into)
+        })
+    }
+
+    fn set_stacked_on_url(&self, url: &str) -> Result<(), Error> {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method1(py, "set_stacked_on_url", (url,))?;
+            Ok(())
+        })
+    }
+
+    fn fetch(
+        &self,
+        from_branch: &dyn Branch,
+        last_revision: Option<&RevisionId>,
+    ) -> Result<(), Error> {
+        Python::with_gil(|py| {
+            let kwargs = PyDict::new(py);
+            if let Some(rev) = last_revision {
+                kwargs.set_item("last_revision", rev.clone())?;
+            }
+
+            // Try to downcast to concrete PyBranch types
+            if let Some(gb) = from_branch.as_any().downcast_ref::<GenericBranch>() {
+                self.to_object(py)
+                    .call_method(py, "fetch", (gb.to_object(py),), Some(&kwargs))?;
+            } else if let Some(mb) = from_branch.as_any().downcast_ref::<MemoryBranch>() {
+                self.to_object(py)
+                    .call_method(py, "fetch", (mb.to_object(py),), Some(&kwargs))?;
+            } else {
+                return Err(Error::Other(pyo3::exceptions::PyTypeError::new_err(
+                    "Branch must be a PyBranch",
+                )));
+            }
+            Ok(())
+        })
+    }
+
+    fn update(&self) -> Result<(), Error> {
+        Python::with_gil(|py| {
+            self.to_object(py).call_method0(py, "update")?;
+            Ok(())
+        })
+    }
+
+    fn set_push_location(&self, location: &str) -> Result<(), Error> {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method1(py, "set_push_location", (location,))?;
+            Ok(())
+        })
+    }
+
+    fn set_public_branch(&self, location: &str) -> Result<(), Error> {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method1(py, "set_public_branch", (location,))?;
+            Ok(())
+        })
+    }
+
+    fn get_append_revisions_only(&self) -> bool {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method0(py, "get_append_revisions_only")
+                .unwrap()
+                .extract(py)
+                .unwrap()
+        })
+    }
+
+    fn set_append_revisions_only(&self, value: bool) -> Result<(), Error> {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method1(py, "set_append_revisions_only", (value,))?;
             Ok(())
         })
     }
