@@ -10,6 +10,103 @@ pub type Path = std::path::Path;
 /// Type alias for std::path::PathBuf.
 pub type PathBuf = std::path::PathBuf;
 
+/// Result of walking directories in a tree.
+#[derive(Debug)]
+pub struct WalkdirResult {
+    /// The path relative to the tree root.
+    pub relpath: PathBuf,
+    /// The absolute path.
+    pub abspath: PathBuf,
+    /// The kind of the entry.
+    pub kind: Kind,
+    /// The stat information for the entry.
+    pub stat: Option<std::fs::Metadata>,
+    /// Whether the entry is versioned.
+    pub versioned: bool,
+}
+
+/// Summary of path content.
+#[derive(Debug)]
+pub struct PathContentSummary {
+    /// The kind of the content.
+    pub kind: Kind,
+    /// The size in bytes (for files).
+    pub size: Option<u64>,
+    /// Whether the file is executable.
+    pub executable: Option<bool>,
+    /// The SHA1 hash (for files).
+    pub sha1: Option<String>,
+    /// The target (for symlinks).
+    pub target: Option<String>,
+}
+
+/// Search rule for path matching.
+#[derive(Debug)]
+pub struct SearchRule {
+    /// The pattern to match.
+    pub pattern: String,
+    /// The type of rule.
+    pub rule_type: SearchRuleType,
+}
+
+/// Type of search rule.
+#[derive(Debug)]
+pub enum SearchRuleType {
+    /// Include the matched paths.
+    Include,
+    /// Exclude the matched paths.
+    Exclude,
+}
+
+/// Represents a conflict in a tree.
+#[derive(Debug)]
+pub struct Conflict {
+    /// The path involved in the conflict.
+    pub path: PathBuf,
+    /// The type of conflict.
+    pub conflict_type: String,
+    /// Additional information about the conflict.
+    pub message: Option<String>,
+}
+
+impl FromPyObject<'_> for Conflict {
+    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
+        let path: String = ob.getattr("path")?.extract()?;
+        let conflict_type: String = ob.getattr("typestring")?.extract()?;
+        let message: Option<String> = ob.getattr("message").ok().and_then(|m| m.extract().ok());
+
+        Ok(Conflict {
+            path: PathBuf::from(path),
+            conflict_type,
+            message,
+        })
+    }
+}
+
+/// Represents a tree reference.
+#[derive(Debug)]
+pub struct TreeReference {
+    /// The path where the reference should be added.
+    pub path: PathBuf,
+    /// The kind of reference.
+    pub kind: Kind,
+    /// The reference revision.
+    pub reference_revision: Option<RevisionId>,
+}
+
+/// Represents a change in the inventory.
+#[derive(Debug)]
+pub struct InventoryDelta {
+    /// The old path (None if new).
+    pub old_path: Option<PathBuf>,
+    /// The new path (None if deleted).
+    pub new_path: Option<PathBuf>,
+    /// The file ID.
+    pub file_id: String,
+    /// The entry details.
+    pub entry: Option<TreeEntry>,
+}
+
 #[derive(Debug, PartialEq, Clone, Eq)]
 /// Kind of object in a tree.
 pub enum Kind {
@@ -93,6 +190,7 @@ impl pyo3::FromPyObject<'_> for Kind {
 }
 
 /// A tree entry, representing different types of objects in a tree.
+#[derive(Debug)]
 pub enum TreeEntry {
     /// A regular file entry.
     File {
@@ -164,6 +262,51 @@ impl FromPyObject<'_> for TreeEntry {
             }
             kind => panic!("Invalid kind: {}", kind),
         }
+    }
+}
+
+impl<'py> IntoPyObject<'py> for TreeEntry {
+    type Target = PyAny;
+    type Output = Bound<'py, Self::Target>;
+    type Error = std::convert::Infallible;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        let dict = pyo3::types::PyDict::new(py);
+        match self {
+            TreeEntry::File {
+                executable,
+                kind: _,
+                revision,
+                size,
+            } => {
+                dict.set_item("kind", "file").unwrap();
+                dict.set_item("executable", executable).unwrap();
+                dict.set_item("size", size).unwrap();
+                dict.set_item("revision", revision).unwrap();
+            }
+            TreeEntry::Directory { revision } => {
+                dict.set_item("kind", "directory").unwrap();
+                dict.set_item("revision", revision).unwrap();
+            }
+            TreeEntry::Symlink {
+                revision,
+                symlink_target,
+            } => {
+                dict.set_item("kind", "symlink").unwrap();
+                dict.set_item("revision", revision).unwrap();
+                dict.set_item("symlink_target", symlink_target).unwrap();
+            }
+            TreeEntry::TreeReference {
+                revision,
+                reference_revision,
+            } => {
+                dict.set_item("kind", "tree-reference").unwrap();
+                dict.set_item("revision", revision).unwrap();
+                dict.set_item("reference_revision", reference_revision)
+                    .unwrap();
+            }
+        }
+        Ok(dict.into_any())
     }
 }
 
@@ -242,6 +385,118 @@ pub trait Tree {
         &self,
         path: &std::path::Path,
     ) -> Result<Box<dyn Iterator<Item = Result<(PathBuf, Kind, TreeEntry), Error>>>, Error>;
+
+    /// Get the size of a file in bytes.
+    fn get_file_size(&self, path: &Path) -> Result<u64, Error>;
+
+    /// Get the SHA1 hash of a file's contents.
+    fn get_file_sha1(
+        &self,
+        path: &Path,
+        stat_value: Option<&std::fs::Metadata>,
+    ) -> Result<String, Error>;
+
+    /// Get the modification time of a file.
+    fn get_file_mtime(&self, path: &Path) -> Result<u64, Error>;
+
+    /// Check if a file is executable.
+    fn is_executable(&self, path: &Path) -> Result<bool, Error>;
+
+    /// Get the stored kind of a file (as opposed to the actual kind on disk).
+    fn stored_kind(&self, path: &Path) -> Result<Kind, Error>;
+
+    /// Check if the tree supports content filtering.
+    fn supports_content_filtering(&self) -> bool;
+
+    /// Check if the tree supports file IDs.
+    fn supports_file_ids(&self) -> bool;
+
+    /// Check if the tree supports rename tracking.
+    fn supports_rename_tracking(&self) -> bool;
+
+    /// Check if the tree supports symbolic links.
+    fn supports_symlinks(&self) -> bool;
+
+    /// Check if the tree supports tree references.
+    fn supports_tree_reference(&self) -> bool;
+
+    /// Get unversioned files in the tree.
+    fn unknowns(&self) -> Result<Vec<PathBuf>, Error>;
+
+    /// Get all versioned paths in the tree.
+    fn all_versioned_paths(
+        &self,
+    ) -> Result<Box<dyn Iterator<Item = Result<PathBuf, Error>>>, Error>;
+
+    /// Get conflicts in the tree.
+    fn conflicts(&self) -> Result<Vec<Conflict>, Error>;
+
+    /// Get extra (unversioned) files in the tree.
+    fn extras(&self) -> Result<Vec<PathBuf>, Error>;
+
+    /// Filter out versioned files from a list of paths.
+    fn filter_unversioned_files(&self, paths: &[&Path]) -> Result<Vec<PathBuf>, Error>;
+
+    /// Walk directories in the tree.
+    fn walkdirs(
+        &self,
+        prefix: Option<&Path>,
+    ) -> Result<Box<dyn Iterator<Item = Result<WalkdirResult, Error>>>, Error>;
+
+    /// Check if a file kind is versionable.
+    fn versionable_kind(&self, kind: &Kind) -> bool;
+
+    /// Get file content summary for a path.
+    fn path_content_summary(&self, path: &Path) -> Result<PathContentSummary, Error>;
+
+    /// Iterate through file bytes.
+    fn iter_files_bytes(
+        &self,
+        paths: &[&Path],
+    ) -> Result<Box<dyn Iterator<Item = Result<(PathBuf, Vec<u8>), Error>>>, Error>;
+
+    /// Iterate through entries by directory.
+    fn iter_entries_by_dir(
+        &self,
+        specific_files: Option<&[&Path]>,
+    ) -> Result<Box<dyn Iterator<Item = Result<(PathBuf, TreeEntry), Error>>>, Error>;
+
+    /// Get file verifier information.
+    fn get_file_verifier(
+        &self,
+        path: &Path,
+        stat_value: Option<&std::fs::Metadata>,
+    ) -> Result<(String, Vec<u8>), Error>;
+
+    /// Get the reference revision for a tree reference.
+    fn get_reference_revision(&self, path: &Path) -> Result<RevisionId, Error>;
+
+    /// Create an archive of the tree.
+    fn archive(
+        &self,
+        format: &str,
+        name: &str,
+        root: Option<&str>,
+        subdir: Option<&Path>,
+        force_mtime: Option<f64>,
+        recurse_nested: bool,
+    ) -> Result<Box<dyn Iterator<Item = Result<Vec<u8>, Error>>>, Error>;
+
+    /// Annotate a file with revision information.
+    fn annotate_iter(
+        &self,
+        path: &Path,
+        default_revision: Option<&RevisionId>,
+    ) -> Result<Box<dyn Iterator<Item = Result<(RevisionId, Vec<u8>), Error>>>, Error>;
+
+    /// Check if a path is a special path (e.g., control directory).
+    fn is_special_path(&self, path: &Path) -> bool;
+
+    /// Iterate through search rules.
+    fn iter_search_rules(
+        &self,
+        paths: &[&Path],
+    ) -> Result<Box<dyn Iterator<Item = Result<SearchRule, Error>>>, Error>;
 }
 
 /// Trait for Python tree objects that can be converted to and from Python objects.
@@ -548,6 +803,593 @@ impl<T: PyTree + ?Sized> Tree for T {
             )
         })
     }
+
+    fn get_file_size(&self, path: &Path) -> Result<u64, Error> {
+        Python::with_gil(|py| {
+            let path_str = path.to_string_lossy().to_string();
+            let size = self
+                .to_object(py)
+                .call_method1(py, "get_file_size", (path_str,))?;
+            size.extract(py).map_err(|e| e.into())
+        })
+    }
+
+    fn get_file_sha1(
+        &self,
+        path: &Path,
+        _stat_value: Option<&std::fs::Metadata>,
+    ) -> Result<String, Error> {
+        Python::with_gil(|py| {
+            let path_str = path.to_string_lossy().to_string();
+            let sha1 = self
+                .to_object(py)
+                .call_method1(py, "get_file_sha1", (path_str,))?;
+            sha1.extract(py).map_err(|e| e.into())
+        })
+    }
+
+    fn get_file_mtime(&self, path: &Path) -> Result<u64, Error> {
+        Python::with_gil(|py| {
+            let path_str = path.to_string_lossy().to_string();
+            let mtime = self
+                .to_object(py)
+                .call_method1(py, "get_file_mtime", (path_str,))?;
+            mtime.extract(py).map_err(|e| e.into())
+        })
+    }
+
+    fn is_executable(&self, path: &Path) -> Result<bool, Error> {
+        Python::with_gil(|py| {
+            let path_str = path.to_string_lossy().to_string();
+            let result = self
+                .to_object(py)
+                .call_method1(py, "is_executable", (path_str,))?;
+            result.extract(py).map_err(|e| e.into())
+        })
+    }
+
+    fn stored_kind(&self, path: &Path) -> Result<Kind, Error> {
+        Python::with_gil(|py| {
+            let path_str = path.to_string_lossy().to_string();
+            self.to_object(py)
+                .call_method1(py, "stored_kind", (path_str,))?
+                .extract(py)
+                .map_err(|e| e.into())
+        })
+    }
+
+    fn supports_content_filtering(&self) -> bool {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method0(py, "supports_content_filtering")
+                .unwrap()
+                .extract(py)
+                .unwrap()
+        })
+    }
+
+    fn supports_file_ids(&self) -> bool {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method0(py, "supports_file_ids")
+                .unwrap()
+                .extract(py)
+                .unwrap()
+        })
+    }
+
+    fn supports_rename_tracking(&self) -> bool {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method0(py, "supports_rename_tracking")
+                .unwrap()
+                .extract(py)
+                .unwrap()
+        })
+    }
+
+    fn supports_symlinks(&self) -> bool {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method0(py, "supports_symlinks")
+                .unwrap()
+                .extract(py)
+                .unwrap()
+        })
+    }
+
+    fn supports_tree_reference(&self) -> bool {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method0(py, "supports_tree_reference")
+                .unwrap()
+                .extract(py)
+                .unwrap()
+        })
+    }
+
+    fn unknowns(&self) -> Result<Vec<PathBuf>, Error> {
+        Python::with_gil(|py| {
+            let unknowns = self.to_object(py).call_method0(py, "unknowns")?;
+            unknowns.extract(py).map_err(|e| e.into())
+        })
+    }
+
+    fn all_versioned_paths(
+        &self,
+    ) -> Result<Box<dyn Iterator<Item = Result<PathBuf, Error>>>, Error> {
+        Python::with_gil(|py| {
+            struct AllVersionedPathsIter(pyo3::PyObject);
+
+            impl Iterator for AllVersionedPathsIter {
+                type Item = Result<PathBuf, Error>;
+
+                fn next(&mut self) -> Option<Self::Item> {
+                    Python::with_gil(|py| {
+                        let next = match self.0.call_method0(py, intern!(py, "__next__")) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                if e.is_instance_of::<pyo3::exceptions::PyStopIteration>(py) {
+                                    return None;
+                                }
+                                return Some(Err(e.into()));
+                            }
+                        };
+
+                        if next.is_none(py) {
+                            None
+                        } else {
+                            Some(next.extract(py).map_err(|e| e.into()))
+                        }
+                    })
+                }
+            }
+
+            Ok(Box::new(AllVersionedPathsIter(
+                self.to_object(py).call_method0(py, "all_versioned_paths")?,
+            ))
+                as Box<dyn Iterator<Item = Result<PathBuf, Error>>>)
+        })
+    }
+
+    fn conflicts(&self) -> Result<Vec<Conflict>, Error> {
+        Python::with_gil(|py| {
+            let conflicts = self.to_object(py).call_method0(py, "conflicts")?;
+            conflicts.extract(py).map_err(|e| e.into())
+        })
+    }
+
+    fn extras(&self) -> Result<Vec<PathBuf>, Error> {
+        Python::with_gil(|py| {
+            let extras = self.to_object(py).call_method0(py, "extras")?;
+            extras.extract(py).map_err(|e| e.into())
+        })
+    }
+
+    fn filter_unversioned_files(&self, paths: &[&Path]) -> Result<Vec<PathBuf>, Error> {
+        Python::with_gil(|py| {
+            let path_strings: Vec<String> = paths
+                .iter()
+                .map(|p| p.to_string_lossy().to_string())
+                .collect();
+            let result =
+                self.to_object(py)
+                    .call_method1(py, "filter_unversioned_files", (path_strings,))?;
+            result.extract(py).map_err(|e| e.into())
+        })
+    }
+
+    fn walkdirs(
+        &self,
+        prefix: Option<&Path>,
+    ) -> Result<Box<dyn Iterator<Item = Result<WalkdirResult, Error>>>, Error> {
+        Python::with_gil(|py| {
+            struct WalkdirsIter(pyo3::PyObject);
+
+            impl Iterator for WalkdirsIter {
+                type Item = Result<WalkdirResult, Error>;
+
+                fn next(&mut self) -> Option<Self::Item> {
+                    Python::with_gil(|py| {
+                        let next = match self.0.call_method0(py, intern!(py, "__next__")) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                if e.is_instance_of::<pyo3::exceptions::PyStopIteration>(py) {
+                                    return None;
+                                }
+                                return Some(Err(e.into()));
+                            }
+                        };
+
+                        if next.is_none(py) {
+                            None
+                        } else {
+                            let tuple = match next
+                                .extract::<(String, String, String, Option<PyObject>, bool)>(py)
+                            {
+                                Ok(t) => t,
+                                Err(e) => return Some(Err(e.into())),
+                            };
+
+                            Some(Ok(WalkdirResult {
+                                relpath: PathBuf::from(tuple.0),
+                                abspath: PathBuf::from(tuple.1),
+                                kind: tuple.2.parse().unwrap(),
+                                stat: None, // TODO: convert Python stat to Rust metadata
+                                versioned: tuple.4,
+                            }))
+                        }
+                    })
+                }
+            }
+
+            let prefix_str = prefix.map(|p| p.to_string_lossy().to_string());
+            Ok(Box::new(WalkdirsIter(self.to_object(py).call_method1(
+                py,
+                "walkdirs",
+                (prefix_str,),
+            )?))
+                as Box<dyn Iterator<Item = Result<WalkdirResult, Error>>>)
+        })
+    }
+
+    fn versionable_kind(&self, kind: &Kind) -> bool {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method1(py, "versionable_kind", (kind.clone(),))
+                .unwrap()
+                .extract(py)
+                .unwrap()
+        })
+    }
+
+    fn path_content_summary(&self, path: &Path) -> Result<PathContentSummary, Error> {
+        Python::with_gil(|py| {
+            let path_str = path.to_string_lossy().to_string();
+            let summary =
+                self.to_object(py)
+                    .call_method1(py, "path_content_summary", (path_str,))?;
+
+            let summary_bound = summary.bind(py);
+            let kind: String = summary_bound.get_item("kind")?.extract()?;
+            let size: Option<u64> = summary_bound
+                .get_item("size")
+                .ok()
+                .map(|v| v.extract().expect("size should be u64"));
+            let executable: Option<bool> = summary_bound
+                .get_item("executable")
+                .ok()
+                .map(|v| v.extract().expect("executable should be bool"));
+            let sha1: Option<String> = summary_bound
+                .get_item("sha1")
+                .ok()
+                .map(|v| v.extract().expect("sha1 should be string"));
+            let target: Option<String> = summary_bound
+                .get_item("target")
+                .ok()
+                .map(|v| v.extract().expect("target should be string"));
+
+            Ok(PathContentSummary {
+                kind: kind.parse().unwrap(),
+                size,
+                executable,
+                sha1,
+                target,
+            })
+        })
+    }
+
+    fn iter_files_bytes(
+        &self,
+        paths: &[&Path],
+    ) -> Result<Box<dyn Iterator<Item = Result<(PathBuf, Vec<u8>), Error>>>, Error> {
+        Python::with_gil(|py| {
+            struct IterFilesBytesIter(pyo3::PyObject);
+
+            impl Iterator for IterFilesBytesIter {
+                type Item = Result<(PathBuf, Vec<u8>), Error>;
+
+                fn next(&mut self) -> Option<Self::Item> {
+                    Python::with_gil(|py| {
+                        let next = match self.0.call_method0(py, intern!(py, "__next__")) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                if e.is_instance_of::<pyo3::exceptions::PyStopIteration>(py) {
+                                    return None;
+                                }
+                                return Some(Err(e.into()));
+                            }
+                        };
+
+                        if next.is_none(py) {
+                            None
+                        } else {
+                            Some(next.extract(py).map_err(|e| e.into()))
+                        }
+                    })
+                }
+            }
+
+            let path_strings: Vec<String> = paths
+                .iter()
+                .map(|p| p.to_string_lossy().to_string())
+                .collect();
+            Ok(Box::new(IterFilesBytesIter(self.to_object(py).call_method1(
+                py,
+                "iter_files_bytes",
+                (path_strings,),
+            )?))
+                as Box<
+                    dyn Iterator<Item = Result<(PathBuf, Vec<u8>), Error>>,
+                >)
+        })
+    }
+
+    fn iter_entries_by_dir(
+        &self,
+        specific_files: Option<&[&Path]>,
+    ) -> Result<Box<dyn Iterator<Item = Result<(PathBuf, TreeEntry), Error>>>, Error> {
+        Python::with_gil(|py| {
+            struct IterEntriesByDirIter(pyo3::PyObject);
+
+            impl Iterator for IterEntriesByDirIter {
+                type Item = Result<(PathBuf, TreeEntry), Error>;
+
+                fn next(&mut self) -> Option<Self::Item> {
+                    Python::with_gil(|py| {
+                        let next = match self.0.call_method0(py, intern!(py, "__next__")) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                if e.is_instance_of::<pyo3::exceptions::PyStopIteration>(py) {
+                                    return None;
+                                }
+                                return Some(Err(e.into()));
+                            }
+                        };
+
+                        if next.is_none(py) {
+                            None
+                        } else {
+                            Some(next.extract(py).map_err(|e| e.into()))
+                        }
+                    })
+                }
+            }
+
+            let kwargs = pyo3::types::PyDict::new(py);
+            if let Some(specific_files) = specific_files {
+                let path_strings: Vec<String> = specific_files
+                    .iter()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .collect();
+                kwargs.set_item("specific_files", path_strings)?;
+            }
+
+            Ok(
+                Box::new(IterEntriesByDirIter(self.to_object(py).call_method(
+                    py,
+                    "iter_entries_by_dir",
+                    (),
+                    Some(&kwargs),
+                )?))
+                    as Box<dyn Iterator<Item = Result<(PathBuf, TreeEntry), Error>>>,
+            )
+        })
+    }
+
+    fn get_file_verifier(
+        &self,
+        path: &Path,
+        _stat_value: Option<&std::fs::Metadata>,
+    ) -> Result<(String, Vec<u8>), Error> {
+        Python::with_gil(|py| {
+            let path_str = path.to_string_lossy().to_string();
+            let result = self
+                .to_object(py)
+                .call_method1(py, "get_file_verifier", (path_str,))?;
+            result.extract(py).map_err(|e| e.into())
+        })
+    }
+
+    fn get_reference_revision(&self, path: &Path) -> Result<RevisionId, Error> {
+        Python::with_gil(|py| {
+            let path_str = path.to_string_lossy().to_string();
+            let rev = self
+                .to_object(py)
+                .call_method1(py, "get_reference_revision", (path_str,))?;
+            rev.extract(py).map_err(|e| e.into())
+        })
+    }
+
+    fn archive(
+        &self,
+        format: &str,
+        name: &str,
+        root: Option<&str>,
+        subdir: Option<&Path>,
+        force_mtime: Option<f64>,
+        recurse_nested: bool,
+    ) -> Result<Box<dyn Iterator<Item = Result<Vec<u8>, Error>>>, Error> {
+        Python::with_gil(|py| {
+            struct ArchiveIter(pyo3::PyObject);
+
+            impl Iterator for ArchiveIter {
+                type Item = Result<Vec<u8>, Error>;
+
+                fn next(&mut self) -> Option<Self::Item> {
+                    Python::with_gil(|py| {
+                        let next = match self.0.call_method0(py, intern!(py, "__next__")) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                if e.is_instance_of::<pyo3::exceptions::PyStopIteration>(py) {
+                                    return None;
+                                }
+                                return Some(Err(e.into()));
+                            }
+                        };
+
+                        if next.is_none(py) {
+                            None
+                        } else {
+                            Some(next.extract(py).map_err(|e| e.into()))
+                        }
+                    })
+                }
+            }
+
+            let kwargs = pyo3::types::PyDict::new(py);
+            kwargs.set_item("format", format)?;
+            kwargs.set_item("name", name)?;
+            if let Some(root) = root {
+                kwargs.set_item("root", root)?;
+            }
+            if let Some(subdir) = subdir {
+                kwargs.set_item("subdir", subdir.to_string_lossy().to_string())?;
+            }
+            if let Some(force_mtime) = force_mtime {
+                kwargs.set_item("force_mtime", force_mtime)?;
+            }
+            kwargs.set_item("recurse_nested", recurse_nested)?;
+
+            Ok(Box::new(ArchiveIter(self.to_object(py).call_method(
+                py,
+                "archive",
+                (),
+                Some(&kwargs),
+            )?))
+                as Box<dyn Iterator<Item = Result<Vec<u8>, Error>>>)
+        })
+    }
+
+    fn annotate_iter(
+        &self,
+        path: &Path,
+        default_revision: Option<&RevisionId>,
+    ) -> Result<Box<dyn Iterator<Item = Result<(RevisionId, Vec<u8>), Error>>>, Error> {
+        Python::with_gil(|py| {
+            struct AnnotateIter(pyo3::PyObject);
+
+            impl Iterator for AnnotateIter {
+                type Item = Result<(RevisionId, Vec<u8>), Error>;
+
+                fn next(&mut self) -> Option<Self::Item> {
+                    Python::with_gil(|py| {
+                        let next = match self.0.call_method0(py, intern!(py, "__next__")) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                if e.is_instance_of::<pyo3::exceptions::PyStopIteration>(py) {
+                                    return None;
+                                }
+                                return Some(Err(e.into()));
+                            }
+                        };
+
+                        if next.is_none(py) {
+                            None
+                        } else {
+                            Some(next.extract(py).map_err(|e| e.into()))
+                        }
+                    })
+                }
+            }
+
+            let path_str = path.to_string_lossy().to_string();
+            let kwargs = pyo3::types::PyDict::new(py);
+            if let Some(default_revision) = default_revision {
+                kwargs.set_item(
+                    "default_revision",
+                    default_revision.clone().into_pyobject(py).unwrap(),
+                )?;
+            }
+
+            Ok(Box::new(AnnotateIter(self.to_object(py).call_method(
+                py,
+                "annotate_iter",
+                (path_str,),
+                Some(&kwargs),
+            )?))
+                as Box<
+                    dyn Iterator<Item = Result<(RevisionId, Vec<u8>), Error>>,
+                >)
+        })
+    }
+
+    fn is_special_path(&self, path: &Path) -> bool {
+        Python::with_gil(|py| {
+            let path_str = path.to_string_lossy().to_string();
+            self.to_object(py)
+                .call_method1(py, "is_special_path", (path_str,))
+                .unwrap()
+                .extract(py)
+                .unwrap()
+        })
+    }
+
+    fn iter_search_rules(
+        &self,
+        paths: &[&Path],
+    ) -> Result<Box<dyn Iterator<Item = Result<SearchRule, Error>>>, Error> {
+        Python::with_gil(|py| {
+            struct IterSearchRulesIter(pyo3::PyObject);
+
+            impl Iterator for IterSearchRulesIter {
+                type Item = Result<SearchRule, Error>;
+
+                fn next(&mut self) -> Option<Self::Item> {
+                    Python::with_gil(|py| {
+                        let next = match self.0.call_method0(py, intern!(py, "__next__")) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                if e.is_instance_of::<pyo3::exceptions::PyStopIteration>(py) {
+                                    return None;
+                                }
+                                return Some(Err(e.into()));
+                            }
+                        };
+
+                        if next.is_none(py) {
+                            None
+                        } else {
+                            let tuple = match next.extract::<(String, String)>(py) {
+                                Ok(t) => t,
+                                Err(e) => return Some(Err(e.into())),
+                            };
+
+                            let rule_type = match tuple.1.as_str() {
+                                "include" => SearchRuleType::Include,
+                                "exclude" => SearchRuleType::Exclude,
+                                _ => {
+                                    return Some(Err(Error::Other(PyErr::new::<
+                                        pyo3::exceptions::PyValueError,
+                                        _,
+                                    >(
+                                        "Unknown search rule type"
+                                    ))))
+                                }
+                            };
+
+                            Some(Ok(SearchRule {
+                                pattern: tuple.0,
+                                rule_type,
+                            }))
+                        }
+                    })
+                }
+            }
+
+            let path_strings: Vec<String> = paths
+                .iter()
+                .map(|p| p.to_string_lossy().to_string())
+                .collect();
+            Ok(
+                Box::new(IterSearchRulesIter(self.to_object(py).call_method1(
+                    py,
+                    "iter_search_rules",
+                    (path_strings,),
+                )?)) as Box<dyn Iterator<Item = Result<SearchRule, Error>>>,
+            )
+        })
+    }
 }
 
 /// A generic tree implementation that wraps any Python tree object.
@@ -593,6 +1435,35 @@ pub trait MutableTree: Tree {
     fn as_tree(&self) -> &dyn Tree
     where
         Self: Sized;
+
+    /// Add a tree reference.
+    fn add_reference(&self, reference: &TreeReference) -> Result<(), Error>;
+
+    /// Copy a file or directory to a new location.
+    fn copy_one(&self, from_path: &Path, to_path: &Path) -> Result<(), Error>;
+
+    /// Get the last revision ID.
+    fn last_revision(&self) -> Result<RevisionId, Error>;
+
+    /// Lock the tree for write operations.
+    fn lock_tree_write(&self) -> Result<Lock, Error>;
+
+    /// Set the parent IDs for this tree.
+    fn set_parent_ids(&self, parent_ids: &[RevisionId]) -> Result<(), Error>;
+
+    /// Set the parent trees for this tree.
+    fn set_parent_trees(&self, parent_trees: &[(RevisionId, RevisionTree)]) -> Result<(), Error>;
+
+    /// Apply a delta to the tree.
+    fn apply_inventory_delta(&self, delta: Vec<InventoryDelta>) -> Result<(), Error>;
+
+    /// Commit changes in the tree.
+    fn commit(
+        &self,
+        message: &str,
+        committer: Option<&str>,
+        timestamp: Option<f64>,
+    ) -> Result<RevisionId, Error>;
 }
 
 /// A tree that can be modified.
@@ -674,6 +1545,130 @@ impl<T: PyMutableTree + ?Sized> MutableTree for T {
         Self: Sized,
     {
         self
+    }
+
+    fn add_reference(&self, reference: &TreeReference) -> Result<(), Error> {
+        Python::with_gil(|py| {
+            let kwargs = pyo3::types::PyDict::new(py);
+            kwargs.set_item("path", reference.path.to_string_lossy().to_string())?;
+            kwargs.set_item("kind", reference.kind.clone())?;
+            if let Some(ref rev) = reference.reference_revision {
+                kwargs.set_item("reference_revision", rev.clone().into_pyobject(py).unwrap())?;
+            }
+            self.to_object(py)
+                .call_method(py, "add_reference", (), Some(&kwargs))?;
+            Ok(())
+        })
+    }
+
+    fn copy_one(&self, from_path: &Path, to_path: &Path) -> Result<(), Error> {
+        assert!(from_path.is_relative());
+        assert!(to_path.is_relative());
+        Python::with_gil(|py| {
+            let from_str = from_path.to_string_lossy().to_string();
+            let to_str = to_path.to_string_lossy().to_string();
+            self.to_object(py)
+                .call_method1(py, "copy_one", (from_str, to_str))?;
+            Ok(())
+        })
+    }
+
+    fn last_revision(&self) -> Result<RevisionId, Error> {
+        Python::with_gil(|py| {
+            let last_revision = self
+                .to_object(py)
+                .call_method0(py, intern!(py, "last_revision"))?;
+            Ok(RevisionId::from(last_revision.extract::<Vec<u8>>(py)?))
+        })
+    }
+
+    fn lock_tree_write(&self) -> Result<Lock, Error> {
+        Python::with_gil(|py| {
+            let lock = self.to_object(py).call_method0(py, "lock_tree_write")?;
+            Ok(Lock::from(lock))
+        })
+    }
+
+    fn set_parent_ids(&self, parent_ids: &[RevisionId]) -> Result<(), Error> {
+        Python::with_gil(|py| {
+            let parent_ids_py: Vec<PyObject> = parent_ids
+                .iter()
+                .map(|id| id.clone().into_pyobject(py).unwrap().unbind())
+                .collect();
+            self.to_object(py)
+                .call_method1(py, "set_parent_ids", (parent_ids_py,))?;
+            Ok(())
+        })
+    }
+
+    fn set_parent_trees(&self, parent_trees: &[(RevisionId, RevisionTree)]) -> Result<(), Error> {
+        Python::with_gil(|py| {
+            let parent_trees_py: Vec<(PyObject, PyObject)> = parent_trees
+                .iter()
+                .map(|(id, tree)| {
+                    (
+                        id.clone().into_pyobject(py).unwrap().unbind(),
+                        tree.to_object(py),
+                    )
+                })
+                .collect();
+            self.to_object(py)
+                .call_method1(py, "set_parent_trees", (parent_trees_py,))?;
+            Ok(())
+        })
+    }
+
+    fn apply_inventory_delta(&self, delta: Vec<InventoryDelta>) -> Result<(), Error> {
+        Python::with_gil(|py| {
+            let delta_py: Vec<PyObject> = delta
+                .into_iter()
+                .map(|d| {
+                    let tuple = pyo3::types::PyTuple::new(
+                        py,
+                        vec![
+                            d.old_path
+                                .map(|p| p.to_string_lossy().to_string())
+                                .into_pyobject(py)
+                                .unwrap()
+                                .into_any(),
+                            d.new_path
+                                .map(|p| p.to_string_lossy().to_string())
+                                .into_pyobject(py)
+                                .unwrap()
+                                .into_any(),
+                            d.file_id.into_pyobject(py).unwrap().into_any(),
+                            d.entry.into_pyobject(py).unwrap().into_any(),
+                        ],
+                    )
+                    .unwrap();
+                    tuple.into_any().unbind()
+                })
+                .collect();
+            self.to_object(py)
+                .call_method1(py, "apply_inventory_delta", (delta_py,))?;
+            Ok(())
+        })
+    }
+
+    fn commit(
+        &self,
+        message: &str,
+        committer: Option<&str>,
+        timestamp: Option<f64>,
+    ) -> Result<RevisionId, Error> {
+        Python::with_gil(|py| {
+            let kwargs = pyo3::types::PyDict::new(py);
+            if let Some(committer) = committer {
+                kwargs.set_item("committer", committer)?;
+            }
+            if let Some(timestamp) = timestamp {
+                kwargs.set_item("timestamp", timestamp)?;
+            }
+            let result = self
+                .to_object(py)
+                .call_method(py, "commit", (message,), Some(&kwargs))?;
+            result.extract(py).map_err(|e| e.into())
+        })
     }
 }
 

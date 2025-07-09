@@ -9,7 +9,7 @@ use crate::workingtree::GenericWorkingTree;
 use crate::location::AsLocation;
 
 use pyo3::prelude::*;
-use pyo3::types::PyDict;
+use pyo3::types::{PyDict, PyList};
 
 /// Trait for Python probers that can detect control directories.
 ///
@@ -250,6 +250,141 @@ pub trait ControlDir: std::fmt::Debug {
     ///
     /// A list of branch names, or an error if the branch names could not be retrieved.
     fn branch_names(&self) -> crate::Result<Vec<String>>;
+
+    /// Check if a branch with the given name exists in this control directory.
+    ///
+    /// # Parameters
+    ///
+    /// * `name` - The name of the branch to check, or None for the default branch.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the branch exists, `false` otherwise.
+    fn has_branch(&self, name: Option<&str>) -> bool;
+
+    /// Create both a branch and repository in this control directory.
+    ///
+    /// # Parameters
+    ///
+    /// * `name` - The name of the branch to create, or None for the default branch.
+    /// * `shared` - Whether the repository should be shared.
+    ///
+    /// # Returns
+    ///
+    /// The created branch, or an error if the branch could not be created.
+    fn create_branch_and_repo(
+        &self,
+        name: Option<&str>,
+        shared: Option<bool>,
+    ) -> Result<Box<Self::Branch>, Error>;
+
+    /// Get all branches in this control directory.
+    ///
+    /// # Returns
+    ///
+    /// A hashmap of branch names to branches, or an error if the branches could not be retrieved.
+    fn get_branches(&self) -> crate::Result<std::collections::HashMap<String, Box<Self::Branch>>>;
+
+    /// List all branches in this control directory.
+    ///
+    /// # Returns
+    ///
+    /// A list of branch names, or an error if the branches could not be listed.
+    fn list_branches(&self) -> crate::Result<Vec<String>>;
+
+    /// Find branches in the repository.
+    ///
+    /// # Parameters
+    ///
+    /// * `using` - Whether to use the repository's revisions.
+    ///
+    /// # Returns
+    ///
+    /// A vector of branches found, or an error if the branches could not be found.
+    fn find_branches(&self, using: Option<bool>) -> crate::Result<Vec<Box<Self::Branch>>>;
+
+    /// Get the reference location for a branch.
+    ///
+    /// # Parameters
+    ///
+    /// * `name` - The name of the branch, or None for the default branch.
+    ///
+    /// # Returns
+    ///
+    /// The branch reference location, or an error if the reference could not be found.
+    fn get_branch_reference(&self, name: Option<&str>) -> crate::Result<String>;
+
+    /// Check if this control directory can be converted to the given format.
+    ///
+    /// # Parameters
+    ///
+    /// * `format` - The format to check conversion to.
+    ///
+    /// # Returns
+    ///
+    /// `true` if conversion is possible, `false` otherwise.
+    fn can_convert_format(&self, format: &ControlDirFormat) -> bool;
+
+    /// Check if the target format is a valid conversion target.
+    ///
+    /// # Parameters
+    ///
+    /// * `target_format` - The format to check as a conversion target.
+    ///
+    /// # Returns
+    ///
+    /// An error if the target format is not valid for conversion.
+    fn check_conversion_target(&self, target_format: &ControlDirFormat) -> crate::Result<()>;
+
+    /// Check if this control directory needs format conversion.
+    ///
+    /// # Parameters
+    ///
+    /// * `format` - The format to check against.
+    ///
+    /// # Returns
+    ///
+    /// `true` if format conversion is needed, `false` otherwise.
+    fn needs_format_conversion(&self, format: Option<&ControlDirFormat>) -> bool;
+
+    /// Destroy the branch in this control directory.
+    ///
+    /// # Parameters
+    ///
+    /// * `name` - The name of the branch to destroy, or None for the default branch.
+    ///
+    /// # Returns
+    ///
+    /// An error if the branch could not be destroyed.
+    fn destroy_branch(&self, name: Option<&str>) -> crate::Result<()>;
+
+    /// Destroy the repository in this control directory.
+    ///
+    /// # Returns
+    ///
+    /// An error if the repository could not be destroyed.
+    fn destroy_repository(&self) -> crate::Result<()>;
+
+    /// Destroy the working tree in this control directory.
+    ///
+    /// # Returns
+    ///
+    /// An error if the working tree could not be destroyed.
+    fn destroy_workingtree(&self) -> crate::Result<()>;
+
+    /// Destroy the working tree metadata in this control directory.
+    ///
+    /// # Returns
+    ///
+    /// An error if the working tree metadata could not be destroyed.
+    fn destroy_workingtree_metadata(&self) -> crate::Result<()>;
+
+    /// Get the configuration for this control directory.
+    ///
+    /// # Returns
+    ///
+    /// A configuration stack for this control directory.
+    fn get_config(&self) -> crate::Result<crate::config::ConfigStack>;
 }
 
 /// A generic wrapper for a Python control directory object.
@@ -520,6 +655,164 @@ impl<T: PyControlDir + ?Sized> ControlDir for T {
                 .call_method0(py, "branch_names")?
                 .extract::<Vec<String>>(py)?;
             Ok(names)
+        })
+    }
+
+    fn has_branch(&self, name: Option<&str>) -> bool {
+        Python::with_gil(|py| {
+            let result = self
+                .to_object(py)
+                .call_method1(py, "has_branch", (name,))
+                .unwrap();
+            result.extract(py).unwrap()
+        })
+    }
+
+    fn create_branch_and_repo(
+        &self,
+        name: Option<&str>,
+        shared: Option<bool>,
+    ) -> Result<Box<Self::Branch>, Error> {
+        Python::with_gil(|py| {
+            let kwargs = PyDict::new(py);
+            if let Some(shared) = shared {
+                kwargs.set_item("shared", shared)?;
+            }
+            let branch: PyObject = self
+                .to_object(py)
+                .call_method(py, "create_branch_and_repo", (name,), Some(&kwargs))?
+                .extract(py)?;
+            Ok(Box::new(GenericBranch::from(branch)) as Box<Self::Branch>)
+        })
+    }
+
+    fn get_branches(&self) -> crate::Result<std::collections::HashMap<String, Box<Self::Branch>>> {
+        Python::with_gil(|py| {
+            let branches_dict = self.to_object(py).call_method0(py, "get_branches")?;
+            let mut branches = std::collections::HashMap::new();
+            let dict: &Bound<PyDict> = branches_dict
+                .downcast_bound(py)
+                .map_err(|_| PyErr::new::<pyo3::exceptions::PyTypeError, _>("Expected a dict"))?;
+            for (key, value) in dict.iter() {
+                let name: String = key.extract()?;
+                let branch = GenericBranch::from(value.unbind());
+                branches.insert(name, Box::new(branch) as Box<Self::Branch>);
+            }
+            Ok(branches)
+        })
+    }
+
+    fn list_branches(&self) -> crate::Result<Vec<String>> {
+        Python::with_gil(|py| {
+            let names = self
+                .to_object(py)
+                .call_method0(py, "list_branches")?
+                .extract::<Vec<String>>(py)?;
+            Ok(names)
+        })
+    }
+
+    fn find_branches(&self, using: Option<bool>) -> crate::Result<Vec<Box<Self::Branch>>> {
+        Python::with_gil(|py| {
+            let kwargs = PyDict::new(py);
+            if let Some(using) = using {
+                kwargs.set_item("using", using)?;
+            }
+            let branches_list =
+                self.to_object(py)
+                    .call_method(py, "find_branches", (), Some(&kwargs))?;
+            let mut branches = Vec::new();
+            let list: &Bound<PyList> = branches_list
+                .downcast_bound(py)
+                .map_err(|_| PyErr::new::<pyo3::exceptions::PyTypeError, _>("Expected a list"))?;
+            for item in list.iter() {
+                let branch = GenericBranch::from(item.unbind());
+                branches.push(Box::new(branch) as Box<Self::Branch>);
+            }
+            Ok(branches)
+        })
+    }
+
+    fn get_branch_reference(&self, name: Option<&str>) -> crate::Result<String> {
+        Python::with_gil(|py| {
+            let reference = self
+                .to_object(py)
+                .call_method1(py, "get_branch_reference", (name,))?
+                .extract::<String>(py)?;
+            Ok(reference)
+        })
+    }
+
+    fn can_convert_format(&self, format: &ControlDirFormat) -> bool {
+        Python::with_gil(|py| {
+            let result = self
+                .to_object(py)
+                .call_method1(py, "can_convert_format", (format.0.clone_ref(py),))
+                .unwrap();
+            result.extract(py).unwrap()
+        })
+    }
+
+    fn check_conversion_target(&self, target_format: &ControlDirFormat) -> crate::Result<()> {
+        Python::with_gil(|py| {
+            self.to_object(py).call_method1(
+                py,
+                "check_conversion_target",
+                (target_format.0.clone_ref(py),),
+            )?;
+            Ok(())
+        })
+    }
+
+    fn needs_format_conversion(&self, format: Option<&ControlDirFormat>) -> bool {
+        Python::with_gil(|py| {
+            let result = if let Some(format) = format {
+                self.to_object(py)
+                    .call_method1(py, "needs_format_conversion", (format.0.clone_ref(py),))
+                    .unwrap()
+            } else {
+                self.to_object(py)
+                    .call_method0(py, "needs_format_conversion")
+                    .unwrap()
+            };
+            result.extract(py).unwrap()
+        })
+    }
+
+    fn destroy_branch(&self, name: Option<&str>) -> crate::Result<()> {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method1(py, "destroy_branch", (name,))?;
+            Ok(())
+        })
+    }
+
+    fn destroy_repository(&self) -> crate::Result<()> {
+        Python::with_gil(|py| {
+            self.to_object(py).call_method0(py, "destroy_repository")?;
+            Ok(())
+        })
+    }
+
+    fn destroy_workingtree(&self) -> crate::Result<()> {
+        Python::with_gil(|py| {
+            self.to_object(py).call_method0(py, "destroy_workingtree")?;
+            Ok(())
+        })
+    }
+
+    fn destroy_workingtree_metadata(&self) -> crate::Result<()> {
+        Python::with_gil(|py| {
+            self.to_object(py)
+                .call_method0(py, "destroy_workingtree_metadata")?;
+            Ok(())
+        })
+    }
+
+    fn get_config(&self) -> crate::Result<crate::config::ConfigStack> {
+        Python::with_gil(|py| {
+            let config = self.to_object(py).call_method0(py, "get_config")?;
+            Ok(crate::config::ConfigStack::new(config))
         })
     }
 }
