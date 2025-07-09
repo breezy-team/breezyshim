@@ -7,7 +7,6 @@ use crate::controldir::{ControlDir, GenericControlDir};
 use crate::error::Error;
 use crate::tree::{MutableTree, PyMutableTree, PyTree, RevisionTree};
 use crate::RevisionId;
-use pyo3::intern;
 use pyo3::prelude::*;
 use std::path::{Path, PathBuf};
 
@@ -71,26 +70,6 @@ pub trait WorkingTree: MutableTree {
     /// `Ok(())` on success, or an error if the files could not be added.
     fn smart_add(&self, files: &[&Path]) -> Result<(), Error>;
 
-    /// Commit changes in this working tree.
-    ///
-    /// # Parameters
-    ///
-    /// * `message` - The commit message.
-    /// * `allow_pointless` - Whether to allow commits with no changes.
-    /// * `committer` - Optional committer identity.
-    /// * `specific_files` - Optional list of specific files to commit.
-    ///
-    /// # Returns
-    ///
-    /// The revision ID of the new commit, or an error if the commit failed.
-    fn commit(
-        &self,
-        message: &str,
-        allow_pointless: Option<bool>,
-        committer: Option<&str>,
-        specific_files: Option<&[&Path]>,
-    ) -> Result<RevisionId, Error>;
-
     /// Update the working tree to a specific revision.
     ///
     /// # Parameters
@@ -152,13 +131,6 @@ pub trait WorkingTree: MutableTree {
     /// The revision tree, or an error if it could not be retrieved.
     fn revision_tree(&self, revision_id: &RevisionId) -> Result<Box<RevisionTree>, Error>;
 
-    /// Get a dictionary of tags mapped to revision IDs.
-    ///
-    /// # Returns
-    ///
-    /// A hash map of tag names to revision IDs, or an error if the tags could not be retrieved.
-    fn get_tag_dict(&self) -> Result<std::collections::HashMap<String, RevisionId>, Error>;
-
     /// Convert a path to an absolute path relative to the working tree.
     ///
     /// # Parameters
@@ -180,13 +152,6 @@ pub trait WorkingTree: MutableTree {
     ///
     /// The relative path, or an error if the conversion failed.
     fn relpath(&self, path: &Path) -> Result<PathBuf, Error>;
-
-    /// Get the revision ID of the last commit in this working tree.
-    ///
-    /// # Returns
-    ///
-    /// The revision ID of the last commit, or an error if it could not be retrieved.
-    fn last_revision(&self) -> Result<RevisionId, Error>;
 
     /// Pull changes from another branch into this working tree.
     ///
@@ -453,36 +418,6 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
         })
     }
 
-    fn commit(
-        &self,
-        message: &str,
-        allow_pointless: Option<bool>,
-        committer: Option<&str>,
-        specific_files: Option<&[&Path]>,
-    ) -> Result<RevisionId, Error> {
-        Python::with_gil(|py| {
-            let kwargs = pyo3::types::PyDict::new(py);
-            if let Some(allow_pointless) = allow_pointless {
-                kwargs.set_item("allow_pointless", allow_pointless)?;
-            }
-            if let Some(committer) = committer {
-                kwargs.set_item("committer", committer)?;
-            }
-            if let Some(specific_files) = specific_files {
-                let file_paths: Vec<String> = specific_files
-                    .iter()
-                    .map(|p| p.to_string_lossy().to_string())
-                    .collect();
-                kwargs.set_item("specific_files", file_paths)?;
-            }
-
-            let result = self
-                .to_object(py)
-                .call_method(py, "commit", (message,), Some(&kwargs))?;
-            Ok(result.extract(py)?)
-        })
-    }
-
     fn update(&self, revision_id: Option<&RevisionId>) -> Result<(), Error> {
         Python::with_gil(|py| {
             self.to_object(py)
@@ -542,17 +477,6 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
         })
     }
 
-    /// Get a dictionary of tags mapped to revision IDs.
-    fn get_tag_dict(&self) -> Result<std::collections::HashMap<String, RevisionId>, Error> {
-        Python::with_gil(|py| {
-            let branch = self.to_object(py).getattr(py, "branch")?;
-            let tags = branch.getattr(py, "tags")?;
-            let tag_dict = tags.call_method0(py, intern!(py, "get_tag_dict"))?;
-            tag_dict.extract(py)
-        })
-        .map_err(|e: PyErr| -> Error { e.into() })
-    }
-
     /// Convert a path to an absolute path relative to the working tree.
     fn abspath(&self, path: &Path) -> Result<PathBuf, Error> {
         Python::with_gil(|py| {
@@ -573,15 +497,6 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
         })
     }
 
-    /// Get the revision ID of the last commit in this working tree.
-    fn last_revision(&self) -> Result<RevisionId, Error> {
-        Python::with_gil(|py| {
-            let last_revision = self
-                .to_object(py)
-                .call_method0(py, intern!(py, "last_revision"))?;
-            Ok(RevisionId::from(last_revision.extract::<Vec<u8>>(py)?))
-        })
-    }
 
     /// Pull changes from another branch into this working tree.
     fn pull(
@@ -1289,6 +1204,22 @@ impl CommitBuilder {
         self
     }
 
+    /// Set the timestamp for this commit.
+    ///
+    /// # Parameters
+    ///
+    /// * `timestamp` - The timestamp for the commit.
+    ///
+    /// # Returns
+    ///
+    /// Self for method chaining.
+    pub fn timestamp(self, timestamp: f64) -> Self {
+        Python::with_gil(|py| {
+            self.1.bind(py).set_item("timestamp", timestamp).unwrap();
+        });
+        self
+    }
+
     /// Create the commit.
     ///
     /// # Returns
@@ -1358,8 +1289,9 @@ impl GenericWorkingTree {
     pub fn commit(
         &self,
         message: &str,
-        allow_pointless: Option<bool>,
         committer: Option<&str>,
+        timestamp: Option<f64>,
+        allow_pointless: Option<bool>,
         specific_files: Option<&[&Path]>,
     ) -> Result<RevisionId, Error> {
         let mut builder = self.build_commit().message(message);
@@ -1374,6 +1306,10 @@ impl GenericWorkingTree {
 
         if let Some(committer) = committer {
             builder = builder.committer(committer);
+        }
+
+        if let Some(timestamp) = timestamp {
+            builder = builder.timestamp(timestamp);
         }
 
         builder.commit()

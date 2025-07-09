@@ -1431,10 +1431,6 @@ pub trait MutableTree: Tree {
     fn mkdir(&self, path: &Path) -> Result<(), Error>;
     /// Remove specified files from version control and from the filesystem.
     fn remove(&self, files: &[&std::path::Path]) -> Result<(), Error>;
-    /// Get this object as a reference to the Tree trait.
-    fn as_tree(&self) -> &dyn Tree
-    where
-        Self: Sized;
 
     /// Add a tree reference.
     fn add_reference(&self, reference: &TreeReference) -> Result<(), Error>;
@@ -1463,6 +1459,8 @@ pub trait MutableTree: Tree {
         message: &str,
         committer: Option<&str>,
         timestamp: Option<f64>,
+        allow_pointless: Option<bool>,
+        specific_files: Option<&[&Path]>,
     ) -> Result<RevisionId, Error>;
 }
 
@@ -1538,13 +1536,6 @@ impl<T: PyMutableTree + ?Sized> MutableTree for T {
             Ok(())
         })
         .map_err(|e| e.into())
-    }
-
-    fn as_tree(&self) -> &dyn Tree
-    where
-        Self: Sized,
-    {
-        self
     }
 
     fn add_reference(&self, reference: &TreeReference) -> Result<(), Error> {
@@ -1655,6 +1646,8 @@ impl<T: PyMutableTree + ?Sized> MutableTree for T {
         message: &str,
         committer: Option<&str>,
         timestamp: Option<f64>,
+        allow_pointless: Option<bool>,
+        specific_files: Option<&[&Path]>,
     ) -> Result<RevisionId, Error> {
         Python::with_gil(|py| {
             let kwargs = pyo3::types::PyDict::new(py);
@@ -1663,6 +1656,16 @@ impl<T: PyMutableTree + ?Sized> MutableTree for T {
             }
             if let Some(timestamp) = timestamp {
                 kwargs.set_item("timestamp", timestamp)?;
+            }
+            if let Some(allow_pointless) = allow_pointless {
+                kwargs.set_item("allow_pointless", allow_pointless)?;
+            }
+            if let Some(specific_files) = specific_files {
+                let file_paths: Vec<String> = specific_files
+                    .iter()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .collect();
+                kwargs.set_item("specific_files", file_paths)?;
             }
             let result = self
                 .to_object(py)
