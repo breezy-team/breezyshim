@@ -3,6 +3,7 @@ use crate::revisionid::RevisionId;
 use pyo3::exceptions::PyStopIteration;
 use pyo3::import_exception;
 use pyo3::prelude::*;
+use pyo3::types::{PyFrozenSet, PyIterator, PyTuple};
 
 import_exception!(breezy.errors, RevisionNotPresent);
 
@@ -125,5 +126,82 @@ impl Graph {
                 .unwrap();
             RevIter(iter)
         })
+    }
+}
+
+/// A key identifying a specific version of a file
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Key(Vec<String>);
+
+impl From<Vec<String>> for Key {
+    fn from(v: Vec<String>) -> Self {
+        Key(v)
+    }
+}
+
+impl From<Key> for Vec<String> {
+    fn from(k: Key) -> Self {
+        k.0
+    }
+}
+
+impl<'py> IntoPyObject<'py> for Key {
+    type Target = PyTuple;
+    type Output = Bound<'py, Self::Target>;
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(PyTuple::new(py, self.0)?)
+    }
+}
+
+impl<'py> FromPyObject<'py> for Key {
+    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
+        let tuple = ob.downcast::<PyTuple>()?;
+        let mut items = Vec::new();
+        for item in tuple {
+            items.push(item.extract::<String>()?);
+        }
+        Ok(Key(items))
+    }
+}
+
+/// A known graph of file versions
+pub struct KnownGraph(PyObject);
+
+impl KnownGraph {
+    /// Create a new KnownGraph from a Python object
+    pub fn new(py_obj: PyObject) -> Self {
+        Self(py_obj)
+    }
+
+    /// Get the heads of the given keys
+    pub fn heads(&self, keys: Vec<Key>) -> Result<Vec<Key>, crate::error::Error> {
+        Python::with_gil(|py| {
+            let keys_py: Vec<_> = keys
+                .into_iter()
+                .map(|k| k.into_pyobject(py))
+                .collect::<Result<Vec<_>, _>>()?;
+            let keys_frozenset = PyFrozenSet::new(py, &keys_py)?;
+
+            let result = self.0.call_method1(py, "heads", (keys_frozenset,))?;
+
+            let mut heads = Vec::new();
+            for head_py in result
+                .downcast_bound::<PyIterator>(py)
+                .map_err(|_| pyo3::exceptions::PyTypeError::new_err("Expected iterator"))?
+            {
+                let head = Key::extract_bound(&head_py?)?;
+                heads.push(head);
+            }
+
+            Ok(heads)
+        })
+    }
+}
+
+impl Clone for KnownGraph {
+    fn clone(&self) -> Self {
+        Python::with_gil(|py| KnownGraph(self.0.clone_ref(py)))
     }
 }
