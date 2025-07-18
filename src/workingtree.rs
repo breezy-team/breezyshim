@@ -497,7 +497,6 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
         })
     }
 
-
     /// Pull changes from another branch into this working tree.
     fn pull(
         &self,
