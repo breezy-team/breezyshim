@@ -3,7 +3,6 @@
 use crate::dirty_tracker::{DirtyTreeTracker, State as DirtyTrackerState};
 use crate::error::Error;
 use crate::tree::PyTree;
-use crate::tree::{MutableTree, Tree};
 use crate::workingtree::PyWorkingTree;
 use pyo3::prelude::*;
 
@@ -121,6 +120,7 @@ pub fn check_clean_tree(
 mod tests {
     use super::*;
     use crate::controldir::create_standalone_workingtree;
+    use crate::tree::MutableTree;
     use crate::workingtree::WorkingTree;
     use std::path::Path;
 

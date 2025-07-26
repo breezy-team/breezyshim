@@ -2,7 +2,7 @@
 use crate::error::Error;
 use debian_control::apt::{Package, Source};
 use debversion::Version;
-use pyo3::exceptions::PyStopIteration;
+use pyo3::exceptions::{PyModuleNotFoundError, PyStopIteration};
 use pyo3::intern;
 use pyo3::prelude::*;
 
@@ -204,7 +204,16 @@ impl LocalApt {
     pub fn new(rootdir: Option<&std::path::Path>) -> Result<Self, Error> {
         let _mutex = apt_mutex.lock().unwrap();
         Python::with_gil(|py| {
-            let m = PyModule::import(py, "breezy.plugins.debian.apt_repo")?;
+            let m = match PyModule::import(py, "breezy.plugins.debian.apt_repo") {
+                Ok(m) => m,
+                Err(e) if e.is_instance_of::<PyModuleNotFoundError>(py) => {
+                    return Err(Error::DependencyNotPresent(
+                        "breezy.plugins.debian".to_string(),
+                        "Install the brz-debian plugin".to_string(),
+                    ));
+                }
+                Err(e) => return Err(e.into()),
+            };
             let apt = m.getattr("LocalApt")?;
             let apt = apt.call1((rootdir,))?;
 
@@ -216,7 +225,7 @@ impl LocalApt {
 
 impl Default for LocalApt {
     fn default() -> Self {
-        LocalApt::new(None).unwrap()
+        LocalApt::new(None).expect("Failed to create LocalApt instance")
     }
 }
 
@@ -268,7 +277,16 @@ impl RemoteApt {
     ) -> Result<Self, Error> {
         let _mutex = apt_mutex.lock().unwrap();
         Python::with_gil(|py| {
-            let m = PyModule::import(py, "breezy.plugins.debian.apt_repo")?;
+            let m = match PyModule::import(py, "breezy.plugins.debian.apt_repo") {
+                Ok(m) => m,
+                Err(e) if e.is_instance_of::<PyModuleNotFoundError>(py) => {
+                    return Err(Error::DependencyNotPresent(
+                        "breezy.plugins.debian".to_string(),
+                        "Install the brz-debian plugin".to_string(),
+                    ));
+                }
+                Err(e) => return Err(e.into()),
+            };
             let apt = m.getattr("RemoteApt")?;
             let apt = apt.call1((mirror_uri.as_str(), distribution, components, key_path))?;
             apt.call_method0(intern!(py, "__enter__"))?;
@@ -287,7 +305,16 @@ impl RemoteApt {
     pub fn from_string(text: &str, key_path: Option<&std::path::Path>) -> Result<Self, Error> {
         let _mutex = apt_mutex.lock().unwrap();
         Python::with_gil(|py| {
-            let m = PyModule::import(py, "breezy.plugins.debian.apt_repo")?;
+            let m = match PyModule::import(py, "breezy.plugins.debian.apt_repo") {
+                Ok(m) => m,
+                Err(e) if e.is_instance_of::<PyModuleNotFoundError>(py) => {
+                    return Err(Error::DependencyNotPresent(
+                        "breezy.plugins.debian".to_string(),
+                        "Install the brz-debian plugin".to_string(),
+                    ));
+                }
+                Err(e) => return Err(e.into()),
+            };
             let apt = m.getattr("RemoteApt")?;
             let apt = apt.call_method1(
                 "from_string",
@@ -325,7 +352,14 @@ mod tests {
 
     #[test]
     fn test_local_apt_retrieve_orig() {
-        let apt = LocalApt::new(None).unwrap();
+        let apt = match LocalApt::new(None) {
+            Ok(apt) => apt,
+            Err(Error::DependencyNotPresent(dep, _)) if dep == "breezy.plugins.debian" => {
+                // Skip test if brz-debian plugin is not installed
+                return;
+            }
+            Err(e) => panic!("Unexpected error creating LocalApt: {:?}", e),
+        };
         let td = tempfile::tempdir().unwrap();
 
         match apt.retrieve_orig("apt", td.path(), None) {
@@ -351,7 +385,14 @@ mod tests {
     #[test]
     #[ignore] // Sometimes hangs
     fn test_local_apt() {
-        let apt = LocalApt::new(None).unwrap();
+        let apt = match LocalApt::new(None) {
+            Ok(apt) => apt,
+            Err(Error::DependencyNotPresent(dep, _)) if dep == "breezy.plugins.debian" => {
+                // Skip test if brz-debian plugin is not installed
+                return;
+            }
+            Err(e) => panic!("Unexpected error creating LocalApt: {:?}", e),
+        };
         let package = apt.iter_binaries().next().unwrap();
         assert!(package.name().is_some());
         assert!(package.version().is_some());
