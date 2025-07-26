@@ -45,9 +45,13 @@ pub mod github;
 pub mod gitlab;
 pub mod gpg;
 pub mod graph;
+/// Group compression versioned files implementation
+pub mod groupcompress;
 pub mod hooks;
 pub mod interrepository;
 pub mod intertree;
+/// Knit versioned files implementation
+pub mod knit;
 #[cfg(feature = "launchpad")]
 pub mod launchpad;
 pub mod location;
@@ -71,6 +75,10 @@ pub mod tree;
 pub mod ui;
 pub mod urlutils;
 pub mod version;
+/// Versioned files API for storing file content history
+pub mod versionedfiles;
+/// Weave versioned files implementation
+pub mod weave;
 pub mod workingtree;
 pub mod workspace;
 
