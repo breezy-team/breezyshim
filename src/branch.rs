@@ -444,6 +444,13 @@ pub trait PyBranch: Branch + Send + std::any::Any {
     fn to_object(&self, py: Python<'_>) -> PyObject;
 }
 
+impl dyn PyBranch {
+    /// Get a reference to self as a Branch trait object.
+    pub fn as_branch(&self) -> &dyn Branch {
+        self
+    }
+}
+
 impl<T: PyBranch> Branch for T {
     fn as_any(&self) -> &dyn std::any::Any {
         self

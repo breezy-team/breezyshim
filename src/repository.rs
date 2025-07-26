@@ -306,6 +306,13 @@ pub trait PyRepository: Repository + std::any::Any {
     fn to_object(&self, py: Python) -> PyObject;
 }
 
+impl dyn PyRepository {
+    /// Get a reference to self as a Repository trait object.
+    pub fn as_repository(&self) -> &dyn Repository {
+        self
+    }
+}
+
 /// Generic wrapper for a Python repository object.
 ///
 /// This struct provides a Rust interface to a Breezy repository object.

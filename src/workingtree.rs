@@ -341,7 +341,14 @@ pub trait WorkingTree: MutableTree {
 /// Trait for working trees that wrap Python working tree objects.
 ///
 /// This trait is implemented by working tree types that wrap Python working tree objects.
-pub trait PyWorkingTree: PyMutableTree {}
+pub trait PyWorkingTree: PyMutableTree + WorkingTree {}
+
+impl dyn PyWorkingTree {
+    /// Get a reference to self as a WorkingTree trait object.
+    pub fn as_working_tree(&self) -> &dyn WorkingTree {
+        self
+    }
+}
 
 impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
     fn basedir(&self) -> PathBuf {
