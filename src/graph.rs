@@ -1,13 +1,10 @@
 //! Graph traversal operations on revision graphs.
 use crate::revisionid::RevisionId;
 use pyo3::exceptions::PyStopIteration;
-use pyo3::import_exception;
 use pyo3::prelude::*;
 use pyo3::types::{PyFrozenSet, PyIterator, PyTuple};
 use std::collections::HashMap;
 use std::hash::Hash;
-
-import_exception!(breezy.errors, RevisionNotPresent);
 
 /// Trait for types that can be used as nodes in a graph.
 ///
@@ -64,7 +61,7 @@ impl GraphNode for RevisionId {
 struct NodeIter<T: GraphNode>(PyObject, std::marker::PhantomData<T>);
 
 impl<T: GraphNode> Iterator for NodeIter<T> {
-    type Item = Result<T, Error>;
+    type Item = Result<T, crate::error::Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
         Python::with_gil(|py| match self.0.call_method0(py, "__next__") {
@@ -81,7 +78,7 @@ impl<T: GraphNode> Iterator for NodeIter<T> {
 struct TopoOrderIter<T: GraphNode>(PyObject, std::marker::PhantomData<T>);
 
 impl<T: GraphNode> Iterator for TopoOrderIter<T> {
-    type Item = Result<(usize, T, usize, bool), Error>;
+    type Item = Result<(usize, T, usize, bool), crate::error::Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
         Python::with_gil(|py| match self.0.call_method0(py, "__next__") {
@@ -115,33 +112,6 @@ impl<T: GraphNode> Iterator for TopoOrderIter<T> {
     }
 }
 
-#[derive(Debug)]
-/// Errors that can occur during graph operations.
-pub enum Error {
-    /// Error indicating that a specified revision is not present in the repository.
-    RevisionNotPresent(RevisionId),
-    /// Python errors
-    PyErr(PyErr),
-}
-
-impl From<PyErr> for Error {
-    fn from(e: PyErr) -> Self {
-        Python::with_gil(|py| {
-            if e.is_instance_of::<RevisionNotPresent>(py) {
-                Error::RevisionNotPresent(RevisionId::from(
-                    e.into_value(py)
-                        .getattr(py, "revision_id")
-                        .unwrap()
-                        .extract::<Vec<u8>>(py)
-                        .unwrap(),
-                ))
-            } else {
-                Error::PyErr(e)
-            }
-        })
-    }
-}
-
 impl Graph {
     /// Get the underlying PyObject.
     pub(crate) fn as_pyobject(&self) -> &PyObject {
@@ -158,7 +128,11 @@ impl Graph {
     /// # Returns
     ///
     /// `true` if `node1` is an ancestor of `node2`, `false` otherwise
-    pub fn is_ancestor<T: GraphNode>(&self, node1: &T, node2: &T) -> Result<bool, Error> {
+    pub fn is_ancestor<T: GraphNode>(
+        &self,
+        node1: &T,
+        node2: &T,
+    ) -> Result<bool, crate::error::Error> {
         Python::with_gil(|py| {
             let result = self.0.call_method1(
                 py,
@@ -183,7 +157,7 @@ impl Graph {
         &self,
         node: &T,
         stop_nodes: Option<&[T]>,
-    ) -> Result<impl Iterator<Item = Result<T, Error>>, Error> {
+    ) -> Result<impl Iterator<Item = Result<T, crate::error::Error>>, crate::error::Error> {
         Python::with_gil(|py| {
             let stop_py = if let Some(nodes) = stop_nodes {
                 let py_nodes: Result<Vec<_>, _> = nodes.iter().map(|n| n.to_pyobject(py)).collect();
@@ -210,7 +184,7 @@ impl Graph {
     /// # Returns
     ///
     /// A vector of nodes that are the least common ancestors
-    pub fn find_lca<T: GraphNode>(&self, nodes: &[T]) -> Result<Vec<T>, Error> {
+    pub fn find_lca<T: GraphNode>(&self, nodes: &[T]) -> Result<Vec<T>, crate::error::Error> {
         Python::with_gil(|py| {
             let py_nodes: Result<Vec<_>, _> = nodes.iter().map(|n| n.to_pyobject(py)).collect();
             let result = self.0.call_method1(py, "find_lca", (py_nodes?,))?;
@@ -236,7 +210,7 @@ impl Graph {
     /// # Returns
     ///
     /// A vector of nodes that are heads
-    pub fn heads<T: GraphNode>(&self, nodes: &[T]) -> Result<Vec<T>, Error> {
+    pub fn heads<T: GraphNode>(&self, nodes: &[T]) -> Result<Vec<T>, crate::error::Error> {
         Python::with_gil(|py| {
             let py_nodes: Result<Vec<_>, _> = nodes.iter().map(|n| n.to_pyobject(py)).collect();
             let result = self.0.call_method1(py, "heads", (py_nodes?,))?;
@@ -265,7 +239,7 @@ impl Graph {
         &self,
         nodes: &[T],
         common_nodes: &[T],
-    ) -> Result<Vec<T>, Error> {
+    ) -> Result<Vec<T>, crate::error::Error> {
         Python::with_gil(|py| {
             let py_nodes: Result<Vec<_>, _> = nodes.iter().map(|n| n.to_pyobject(py)).collect();
             let py_common: Result<Vec<_>, _> =
@@ -298,7 +272,7 @@ impl Graph {
         &self,
         left_nodes: &[T],
         right_nodes: &[T],
-    ) -> Result<(Vec<T>, Vec<T>), Error> {
+    ) -> Result<(Vec<T>, Vec<T>), crate::error::Error> {
         Python::with_gil(|py| {
             let py_left: Result<Vec<_>, _> = left_nodes.iter().map(|n| n.to_pyobject(py)).collect();
             let py_right: Result<Vec<_>, _> =
@@ -343,7 +317,7 @@ impl Graph {
     pub fn iter_ancestry<T: GraphNode>(
         &self,
         nodes: &[T],
-    ) -> Result<impl Iterator<Item = Result<T, Error>>, Error> {
+    ) -> Result<impl Iterator<Item = Result<T, crate::error::Error>>, crate::error::Error> {
         Python::with_gil(|py| {
             let py_nodes: Result<Vec<_>, _> = nodes.iter().map(|n| n.to_pyobject(py)).collect();
             let iter = self.0.call_method1(py, "iter_ancestry", (py_nodes?,))?;
@@ -360,7 +334,10 @@ impl Graph {
     /// # Returns
     ///
     /// A map from node to list of parent nodes
-    pub fn get_parent_map<T: GraphNode>(&self, nodes: &[T]) -> Result<HashMap<T, Vec<T>>, Error> {
+    pub fn get_parent_map<T: GraphNode>(
+        &self,
+        nodes: &[T],
+    ) -> Result<HashMap<T, Vec<T>>, crate::error::Error> {
         Python::with_gil(|py| {
             let py_nodes: Result<Vec<_>, _> = nodes.iter().map(|n| n.to_pyobject(py)).collect();
             let result = self.0.call_method1(py, "get_parent_map", (py_nodes?,))?;
@@ -401,7 +378,7 @@ impl Graph {
         candidate: &T,
         ancestor: &T,
         descendant: &T,
-    ) -> Result<bool, Error> {
+    ) -> Result<bool, crate::error::Error> {
         Python::with_gil(|py| {
             let result = self.0.call_method1(
                 py,
@@ -428,7 +405,10 @@ impl Graph {
     pub fn iter_topo_order<T: GraphNode>(
         &self,
         nodes: &[T],
-    ) -> Result<impl Iterator<Item = Result<(usize, T, usize, bool), Error>>, Error> {
+    ) -> Result<
+        impl Iterator<Item = Result<(usize, T, usize, bool), crate::error::Error>>,
+        crate::error::Error,
+    > {
         Python::with_gil(|py| {
             let py_nodes: Result<Vec<_>, _> = nodes.iter().map(|n| n.to_pyobject(py)).collect();
             let iter = self.0.call_method1(py, "iter_topo_order", (py_nodes?,))?;
@@ -445,7 +425,10 @@ impl Graph {
     /// # Returns
     ///
     /// A vector of nodes that are descendants
-    pub fn find_descendants<T: GraphNode>(&self, nodes: &[T]) -> Result<Vec<T>, Error> {
+    pub fn find_descendants<T: GraphNode>(
+        &self,
+        nodes: &[T],
+    ) -> Result<Vec<T>, crate::error::Error> {
         Python::with_gil(|py| {
             let py_nodes: Result<Vec<_>, _> = nodes.iter().map(|n| n.to_pyobject(py)).collect();
             let result = self.0.call_method1(py, "find_descendants", (py_nodes?,))?;
@@ -472,7 +455,7 @@ impl Graph {
     pub fn find_distance_to_null<T: GraphNode>(
         &self,
         nodes: &[T],
-    ) -> Result<HashMap<T, usize>, Error> {
+    ) -> Result<HashMap<T, usize>, crate::error::Error> {
         Python::with_gil(|py| {
             let py_nodes: Result<Vec<_>, _> = nodes.iter().map(|n| n.to_pyobject(py)).collect();
             let result = self
@@ -506,7 +489,7 @@ impl Graph {
         &self,
         nodes: &[T],
         count: Option<usize>,
-    ) -> Result<Option<T>, Error> {
+    ) -> Result<Option<T>, crate::error::Error> {
         Python::with_gil(|py| {
             let py_nodes: Result<Vec<_>, _> = nodes.iter().map(|n| n.to_pyobject(py)).collect();
             let result = if let Some(c) = count {
@@ -532,7 +515,10 @@ impl Graph {
     /// # Returns
     ///
     /// An ordered list of nodes
-    pub fn find_merge_order<T: GraphNode>(&self, nodes: &[T]) -> Result<Vec<T>, Error> {
+    pub fn find_merge_order<T: GraphNode>(
+        &self,
+        nodes: &[T],
+    ) -> Result<Vec<T>, crate::error::Error> {
         Python::with_gil(|py| {
             let py_nodes: Result<Vec<_>, _> = nodes.iter().map(|n| n.to_pyobject(py)).collect();
             let result = self.0.call_method1(py, "find_merge_order", (py_nodes?,))?;
@@ -561,7 +547,7 @@ impl Graph {
         &self,
         node: &T,
         tip: Option<&T>,
-    ) -> Result<Option<T>, Error> {
+    ) -> Result<Option<T>, crate::error::Error> {
         Python::with_gil(|py| {
             let args = if let Some(t) = tip {
                 (node.to_pyobject(py)?, t.to_pyobject(py)?)
@@ -590,7 +576,7 @@ impl Graph {
     pub fn find_lefthand_distances<T: GraphNode>(
         &self,
         nodes: &[T],
-    ) -> Result<HashMap<T, usize>, Error> {
+    ) -> Result<HashMap<T, usize>, crate::error::Error> {
         Python::with_gil(|py| {
             let py_nodes: Result<Vec<_>, _> = nodes.iter().map(|n| n.to_pyobject(py)).collect();
             let result = self
@@ -619,7 +605,10 @@ impl Graph {
     /// # Returns
     ///
     /// A map from node to list of child nodes
-    pub fn get_child_map<T: GraphNode>(&self, nodes: &[T]) -> Result<HashMap<T, Vec<T>>, Error> {
+    pub fn get_child_map<T: GraphNode>(
+        &self,
+        nodes: &[T],
+    ) -> Result<HashMap<T, Vec<T>>, crate::error::Error> {
         Python::with_gil(|py| {
             let py_nodes: Result<Vec<_>, _> = nodes.iter().map(|n| n.to_pyobject(py)).collect();
             let result = self.0.call_method1(py, "get_child_map", (py_nodes?,))?;

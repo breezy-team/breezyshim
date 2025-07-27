@@ -50,6 +50,7 @@ import_exception!(breezy.errors, BadHttpRequest);
 import_exception!(breezy.errors, TransportNotPossible);
 import_exception!(breezy.errors, IncompatibleFormat);
 import_exception!(breezy.errors, NoSuchRevision);
+import_exception!(breezy.errors, RevisionNotPresent);
 import_exception!(breezy.forge, NoSuchProject);
 import_exception!(breezy.errors, ObjectNotLocked);
 import_exception!(breezy.plugins.gitlab.forge, ForkingDisabled);
@@ -198,6 +199,8 @@ pub enum Error {
     IncompatibleFormat(String, String),
     /// The specified revision does not exist.
     NoSuchRevision(crate::RevisionId),
+    /// The specified revision is not present in the repository.
+    RevisionNotPresent(crate::RevisionId),
     /// The specified project does not exist.
     NoSuchProject(String),
     /// Forking is disabled for the specified project.
@@ -362,6 +365,7 @@ impl std::fmt::Display for Error {
                 write!(f, "Incompatible format: {} is not compatible with {}", a, b)
             }
             Self::NoSuchRevision(rev) => write!(f, "No such revision: {}", rev),
+            Self::RevisionNotPresent(rev) => write!(f, "Revision not present: {}", rev),
             Self::NoSuchProject(p) => write!(f, "No such project: {}", p),
             Self::ForkingDisabled(p) => write!(f, "Forking disabled: {}", p),
             Self::ProjectCreationTimeout(p, t) => {
@@ -635,6 +639,8 @@ impl From<PyErr> for Error {
                 )
             } else if err.is_instance_of::<NoSuchRevision>(py) {
                 Error::NoSuchRevision(value.getattr("revision").unwrap().extract().unwrap())
+            } else if err.is_instance_of::<RevisionNotPresent>(py) {
+                Error::RevisionNotPresent(value.getattr("revision_id").unwrap().extract().unwrap())
             } else if err.is_instance_of::<NoSuchProject>(py) {
                 Error::NoSuchProject(value.getattr("project").unwrap().extract().unwrap())
             } else if err.is_instance_of::<ForkingDisabled>(py) {
@@ -820,6 +826,7 @@ impl From<Error> for PyErr {
             Error::NoSuchRevision(rev) => {
                 Python::with_gil(|py| NoSuchRevision::new_err((py.None(), rev.to_string())))
             }
+            Error::RevisionNotPresent(rev) => RevisionNotPresent::new_err((rev.to_string(),)),
             Error::NoSuchProject(p) => NoSuchProject::new_err((p,)),
             Error::ForkingDisabled(p) => ForkingDisabled::new_err((p,)),
             Error::ProjectCreationTimeout(p, t) => ProjectCreationTimeout::new_err((p, t)),
