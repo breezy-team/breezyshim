@@ -479,6 +479,12 @@ impl CredentialStoreRegistry {
     }
 }
 
+impl Default for CredentialStoreRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 lazy_static::lazy_static! {
     /// The global credential store registry.
     ///
