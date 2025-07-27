@@ -141,6 +141,12 @@ impl ReportCommitToLog {
     }
 }
 
+impl Default for ReportCommitToLog {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl From<PyObject> for ReportCommitToLog {
     fn from(obj: PyObject) -> Self {
         ReportCommitToLog(obj)

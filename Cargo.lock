@@ -350,21 +350,21 @@ checksum = "f6336404073bb257d3e15c6af29c380ee78199ed03bc84e359155ef95b98ac67"
 dependencies = [
  "pyo3",
  "regex",
- "rowan 0.16.2",
+ "rowan",
  "serde",
 ]
 
 [[package]]
 name = "debian-changelog"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "98258e2066472d8d04bfe8a3fab2e7be77fe87b913dab2308a59f13061145814"
+checksum = "a6e87a6b3bb320a4b1ee979720c1a531e32cd7ae3615d375759ac66768958bc9"
 dependencies = [
  "chrono",
  "debversion",
  "lazy-regex",
  "log",
- "rowan 0.15.17",
+ "rowan",
  "textwrap",
  "whoami",
 ]
@@ -381,7 +381,7 @@ dependencies = [
  "debversion",
  "pyo3",
  "regex",
- "rowan 0.16.2",
+ "rowan",
  "url",
 ]
 
@@ -1201,9 +1201,9 @@ dependencies = [
 
 [[package]]
 name = "launchpadlib"
-version = "0.4.5"
+version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad3d884424b7c5385c0a2846a013a9253f103051f1389edeb5cf47a408d199b9"
+checksum = "10b57b27892f724318950a4a485dec1f6a6c5035292b64266e53e92ecec9a72e"
 dependencies = [
  "chrono",
  "debversion",
@@ -1989,26 +1989,13 @@ dependencies = [
 
 [[package]]
 name = "rowan"
-version = "0.15.17"
+version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d4f1e4a001f863f41ea8d0e6a0c34b356d5b733db50dadab3efef640bafb779b"
+checksum = "417a3a9f582e349834051b8a10c8d71ca88da4211e4093528e36b9845f6b5f21"
 dependencies = [
  "countme",
  "hashbrown 0.14.5",
- "memoffset",
- "rustc-hash 1.1.0",
- "text-size",
-]
-
-[[package]]
-name = "rowan"
-version = "0.16.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0d723f15c0791a16406373d173881d2798a0c0655a1164cc77411d4c99adfc6"
-dependencies = [
- "countme",
- "hashbrown 0.15.4",
- "rustc-hash 2.1.1",
+ "rustc-hash",
  "text-size",
 ]
 
@@ -2043,12 +2030,6 @@ name = "rustc-hash"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
-
-[[package]]
-name = "rustc-hash"
-version = "2.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "357703d41365b4b27c590e3ed91eabb1b663f07c4c084095e60cbed4362dff0d"
 
 [[package]]
 name = "rustix"
