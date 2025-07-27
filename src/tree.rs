@@ -502,9 +502,16 @@ pub trait Tree {
 /// Trait for Python tree objects that can be converted to and from Python objects.
 ///
 /// This trait is implemented by all tree types that wrap Python objects.
-pub trait PyTree: std::any::Any {
+pub trait PyTree: Tree + std::any::Any {
     /// Get the underlying Python object for this tree.
     fn to_object(&self, py: Python) -> PyObject;
+}
+
+impl dyn PyTree {
+    /// Get a reference to self as a Tree trait object.
+    pub fn as_tree(&self) -> &dyn Tree {
+        self
+    }
 }
 
 impl<T: PyTree + ?Sized> Tree for T {
@@ -1465,7 +1472,14 @@ pub trait MutableTree: Tree {
 }
 
 /// A tree that can be modified.
-pub trait PyMutableTree: PyTree {}
+pub trait PyMutableTree: PyTree + MutableTree {}
+
+impl dyn PyMutableTree {
+    /// Get a reference to self as a MutableTree trait object.
+    pub fn as_mutable_tree(&self) -> &dyn MutableTree {
+        self
+    }
+}
 
 impl<T: PyMutableTree + ?Sized> MutableTree for T {
     fn add(&self, files: &[&Path]) -> Result<(), Error> {
