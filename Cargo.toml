@@ -2,6 +2,7 @@
 name = "breezyshim"
 version = "0.6.2"
 edition = "2021"
+rust-version = "1.86"
 license = "GPL-2.0+"
 description = "Rust shim around the Breezy Python API"
 homepage = "https://www.breezy-vcs.org/"
