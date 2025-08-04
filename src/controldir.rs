@@ -86,6 +86,8 @@ pub trait PyControlDir: std::any::Any + std::fmt::Debug {
 /// like .git or .bzr. This trait defines the interface for accessing and
 /// manipulating control directories.
 pub trait ControlDir: std::fmt::Debug {
+    /// Get a reference to self as Any for downcasting.
+    fn as_any(&self) -> &dyn std::any::Any;
     /// The branch type associated with this control directory.
     type Branch: Branch + ?Sized;
     /// The repository type associated with this control directory.
@@ -385,6 +387,7 @@ pub trait ControlDir: std::fmt::Debug {
     ///
     /// A configuration stack for this control directory.
     fn get_config(&self) -> crate::Result<crate::config::ConfigStack>;
+
 }
 
 /// A generic wrapper for a Python control directory object.
@@ -430,7 +433,10 @@ impl GenericControlDir {
     }
 }
 
-impl<T: PyControlDir + ?Sized> ControlDir for T {
+impl<T: PyControlDir> ControlDir for T {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
     type Branch = GenericBranch;
     type Repository = crate::repository::GenericRepository;
     type WorkingTree = crate::workingtree::GenericWorkingTree;
@@ -1510,6 +1516,32 @@ lazy_static::lazy_static! {
 mod tests {
     use super::*;
     use crate::workingtree::WorkingTree;
+
+    #[test]
+    fn test_controldir_to_pycontroldir_conversion() {
+        // Test the pattern from the issue:
+        // 1. Get a working tree
+        // 2. Get its controldir as Box<dyn ControlDir>
+        // 3. Downcast it to use as &dyn PyControlDir
+        
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
+        
+        // Get controldir as Box<dyn ControlDir>
+        let controldir = wt.controldir();
+        
+        // Now try to downcast it to GenericControlDir using as_any()
+        if let Some(generic_controldir) = controldir.as_any().downcast_ref::<GenericControlDir>() {
+            // Success! We can now use it as &dyn PyControlDir
+            let py_controldir: &dyn PyControlDir = generic_controldir;
+            // Verify we can call PyControlDir methods
+            Python::with_gil(|py| {
+                let _obj = py_controldir.to_object(py);
+            });
+        } else {
+            panic!("Failed to downcast ControlDir to GenericControlDir");
+        }
+    }
 
     #[test]
     fn test_control_dir_format_registry() {
