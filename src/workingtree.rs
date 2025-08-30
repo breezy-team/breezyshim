@@ -1226,6 +1226,45 @@ impl CommitBuilder {
         self
     }
 
+    /// Set a revision property for this commit.
+    ///
+    /// Revision properties are key-value pairs that can be attached to commits
+    /// to store additional metadata beyond the standard commit fields.
+    ///
+    /// # Parameters
+    ///
+    /// * `key` - The property key (name).
+    /// * `value` - The property value as a string.
+    ///
+    /// # Returns
+    ///
+    /// Self for method chaining, or an error if the operation failed.
+    pub fn set_revprop(self, key: &str, value: &str) -> Result<Self, Error> {
+        Python::with_gil(|py| {
+            // Get or create the revprops dictionary
+            if self.1.bind(py).get_item("revprops")?.is_none() {
+                let new_revprops = pyo3::types::PyDict::new(py);
+                self.1.bind(py).set_item("revprops", new_revprops)?;
+            }
+
+            // Now get the revprops dictionary and set the property value
+            let revprops = self.1.bind(py).get_item("revprops")?.ok_or_else(|| {
+                Error::Other(pyo3::PyErr::new::<pyo3::exceptions::PyAssertionError, _>(
+                    "revprops should exist after setting it",
+                ))
+            })?;
+
+            let revprops_dict = revprops.downcast::<pyo3::types::PyDict>().map_err(|_| {
+                Error::Other(pyo3::PyErr::new::<pyo3::exceptions::PyTypeError, _>(
+                    "revprops is not a dictionary",
+                ))
+            })?;
+
+            revprops_dict.set_item(key, value)?;
+            Ok(self)
+        })
+    }
+
     /// Create the commit.
     ///
     /// # Returns

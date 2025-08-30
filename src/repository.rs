@@ -344,6 +344,8 @@ pub struct Revision {
     pub timestamp: f64,
     /// The timezone offset for the timestamp, in seconds east of UTC.
     pub timezone: i32,
+    /// Revision properties as key-value pairs.
+    pub properties: std::collections::HashMap<String, String>,
 }
 
 impl Revision {
@@ -355,6 +357,15 @@ impl Revision {
     pub fn datetime(&self) -> DateTime<chrono::FixedOffset> {
         let tz = chrono::FixedOffset::east_opt(self.timezone).unwrap();
         tz.timestamp_opt(self.timestamp as i64, 0).unwrap()
+    }
+
+    /// Get the revision properties for this revision.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the HashMap containing the revision properties as key-value pairs
+    pub fn get_properties(&self) -> &std::collections::HashMap<String, String> {
+        &self.properties
     }
 }
 
@@ -376,6 +387,16 @@ impl<'py> IntoPyObject<'py> for Revision {
                 self.parent_ids.into_iter().collect::<Vec<_>>(),
             )
             .unwrap();
+
+        // Add properties if they exist
+        if !self.properties.is_empty() {
+            let py_properties = pyo3::types::PyDict::new(py);
+            for (key, value) in self.properties {
+                py_properties.set_item(key, value).unwrap();
+            }
+            kwargs.set_item("properties", py_properties).unwrap();
+        }
+
         Ok(py
             .import("breezy.revision")
             .unwrap()
@@ -388,6 +409,21 @@ impl<'py> IntoPyObject<'py> for Revision {
 
 impl FromPyObject<'_> for Revision {
     fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
+        // Extract properties if they exist
+        let mut properties = std::collections::HashMap::new();
+
+        if let Ok(py_properties) = ob.getattr("properties") {
+            if !py_properties.is_none() {
+                if let Ok(py_dict) = py_properties.downcast::<pyo3::types::PyDict>() {
+                    for (key, value) in py_dict.iter() {
+                        let key_str: String = key.extract()?;
+                        let value_str: String = value.extract()?;
+                        properties.insert(key_str, value_str);
+                    }
+                }
+            }
+        }
+
         Ok(Revision {
             revision_id: ob.getattr("revision_id")?.extract()?,
             parent_ids: ob.getattr("parent_ids")?.extract()?,
@@ -395,6 +431,7 @@ impl FromPyObject<'_> for Revision {
             committer: ob.getattr("committer")?.extract()?,
             timestamp: ob.getattr("timestamp")?.extract()?,
             timezone: ob.getattr("timezone")?.extract()?,
+            properties,
         })
     }
 }
@@ -1018,6 +1055,7 @@ mod repository_tests {
     use crate::controldir::ControlDirFormat;
     use crate::foreign::VcsType;
     use crate::revisionid::RevisionId;
+    use crate::workingtree::WorkingTree;
 
     #[test]
     fn test_simple() {
@@ -1350,5 +1388,106 @@ mod repository_tests {
 
         // Test pack with empty hints
         repo.pack(Some(&[]), true).unwrap();
+    }
+
+    #[test]
+    fn test_commit_with_revision_properties() {
+        let td = tempfile::tempdir().unwrap();
+        let wt = crate::controldir::create_standalone_workingtree(
+            td.path(),
+            &ControlDirFormat::default(),
+        )
+        .unwrap();
+        let repo: GenericRepository = crate::repository::open(td.path()).unwrap();
+
+        // Create a file to commit
+        std::fs::write(td.path().join("test.txt"), "test content").unwrap();
+        wt.smart_add(&[td.path().join("test.txt").as_path()])
+            .unwrap();
+
+        // Test CommitBuilder with revision properties
+        let test_key = "test-property";
+        let test_value = "test-value-data";
+        let test_key2 = "deb-pristine-delta-foo.tar.gz";
+        let test_value2 = "binary-delta-data-here";
+
+        let revision_id = wt
+            .build_commit()
+            .message("Test commit with properties")
+            .committer("Test User <test@example.com>")
+            .set_revprop(test_key, test_value)
+            .unwrap()
+            .set_revprop(test_key2, test_value2)
+            .unwrap()
+            .commit()
+            .unwrap();
+
+        // Retrieve the revision and check properties
+        let revision = repo.get_revision(&revision_id).unwrap();
+        let properties = revision.get_properties();
+
+        // Check that our properties are present with correct values
+        assert!(
+            properties.contains_key(test_key),
+            "Property '{}' not found",
+            test_key
+        );
+        assert!(
+            properties.contains_key(test_key2),
+            "Property '{}' not found",
+            test_key2
+        );
+
+        // Verify the values match what we set
+        let retrieved_value = properties.get(test_key).unwrap();
+        let retrieved_value2 = properties.get(test_key2).unwrap();
+
+        assert_eq!(
+            retrieved_value, test_value,
+            "Property '{}' value mismatch",
+            test_key
+        );
+        assert_eq!(
+            retrieved_value2, test_value2,
+            "Property '{}' value mismatch",
+            test_key2
+        );
+    }
+
+    #[test]
+    fn test_revision_properties_empty() {
+        let td = tempfile::tempdir().unwrap();
+        let wt = crate::controldir::create_standalone_workingtree(
+            td.path(),
+            &ControlDirFormat::default(),
+        )
+        .unwrap();
+        let repo: GenericRepository = crate::repository::open(td.path()).unwrap();
+
+        // Create a file to commit
+        std::fs::write(td.path().join("test.txt"), "test content").unwrap();
+        wt.smart_add(&[td.path().join("test.txt").as_path()])
+            .unwrap();
+
+        // Create a commit without revision properties
+        let revision_id = wt
+            .build_commit()
+            .message("Test commit without properties")
+            .committer("Test User <test@example.com>")
+            .commit()
+            .unwrap();
+
+        // Retrieve the revision and check properties
+        let revision = repo.get_revision(&revision_id).unwrap();
+        let properties = revision.get_properties();
+
+        // Breezy automatically adds a "branch-nick" property
+        // Just check that it exists and no other custom properties are present
+        assert!(
+            properties.contains_key("branch-nick"),
+            "Expected branch-nick property"
+        );
+        assert!(!properties.contains_key("test-property"));
+        assert!(!properties.contains_key("deb-pristine-delta-foo.tar.gz"));
     }
 }
