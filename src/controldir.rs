@@ -387,7 +387,6 @@ pub trait ControlDir: std::fmt::Debug {
     ///
     /// A configuration stack for this control directory.
     fn get_config(&self) -> crate::Result<crate::config::ConfigStack>;
-
 }
 
 /// A generic wrapper for a Python control directory object.
@@ -1523,13 +1522,13 @@ mod tests {
         // 1. Get a working tree
         // 2. Get its controldir as Box<dyn ControlDir>
         // 3. Downcast it to use as &dyn PyControlDir
-        
+
         let tmp_dir = tempfile::tempdir().unwrap();
         let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
-        
+
         // Get controldir as Box<dyn ControlDir>
         let controldir = wt.controldir();
-        
+
         // Now try to downcast it to GenericControlDir using as_any()
         if let Some(generic_controldir) = controldir.as_any().downcast_ref::<GenericControlDir>() {
             // Success! We can now use it as &dyn PyControlDir
