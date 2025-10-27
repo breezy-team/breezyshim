@@ -44,3 +44,27 @@ jobs:
       - name: Run tests
         run: cargo test --verbose
         if: "matrix.os != 'macos-latest'"
+
+  minimal-versions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: |
+          sudo apt -y update
+          sudo apt -y install bzr devscripts libapt-pkg-dev
+      - run: python -m pip install breezy launchpadlib
+      - run: |
+          python -m pip install \
+            "git+https://github.com/breezy-team/breezy-debian" \
+            python_apt@git+https://salsa.debian.org/apt-team/python-apt
+      - name: Install cargo-hack and cargo-minimal-versions
+        run: |
+          cargo install cargo-hack
+          cargo install cargo-minimal-versions
+      - name: Test with minimal versions
+        run: cargo minimal-versions test --verbose --features debian
+        env:
+          RUSTFLAGS: -Dwarnings
