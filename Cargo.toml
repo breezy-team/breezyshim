@@ -55,7 +55,7 @@ workspace = true
 features = [ "serde",]
 
 [workspace.dependencies]
-pyo3 = { version = "0.25", features = ["chrono"] }
+pyo3 = { version = ">=0.25,<0.27", features = ["chrono"] }
 
 [dev-dependencies]
 maplit = "1"
