@@ -147,13 +147,12 @@ mod tests {
     #[serial_test::serial]
     fn test_reset_tree_with_subpath() {
         let env = crate::testing::TestEnv::new();
-        let tmp_dir = tempfile::tempdir().unwrap();
-        let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
+        // Create working tree in the current directory (set by TestEnv)
+        let wt = create_standalone_workingtree(Path::new("."), "2a").unwrap();
 
         // Create a subdir in the working tree
-        let subdir_path = tmp_dir.path().join("subdir");
-        std::fs::create_dir(&subdir_path).unwrap();
-        std::fs::write(subdir_path.join("file.txt"), "content").unwrap();
+        std::fs::create_dir("subdir").unwrap();
+        std::fs::write("subdir/file.txt", "content").unwrap();
         wt.add(&[Path::new("subdir")]).unwrap();
         wt.add(&[Path::new("subdir/file.txt")]).unwrap();
         wt.build_commit().message("Add subdir").commit().unwrap();
@@ -162,6 +161,9 @@ mod tests {
         let subpath = Path::new("subdir");
 
         let result = reset_tree(&wt, Some(&basis_tree), Some(subpath));
+        if let Err(e) = &result {
+            eprintln!("reset_tree failed with error: {:?}", e);
+        }
         assert!(result.is_ok());
         std::mem::drop(env); // Ensure the test environment is cleaned up
     }
