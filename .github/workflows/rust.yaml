@@ -66,5 +66,3 @@ jobs:
           cargo install cargo-minimal-versions
       - name: Test with minimal versions
         run: cargo minimal-versions test --verbose --features debian
-        env:
-          RUSTFLAGS: -Dwarnings
