@@ -33,7 +33,7 @@ jobs:
           python -m pip install \
             "git+https://github.com/breezy-team/breezy-debian" \
             python_apt@git+https://salsa.debian.org/apt-team/python-apt
-        if: "matrix.os == 'ubuntu-latest' && matrix.python-version != '3.9'"
+        if: "matrix.os == 'ubuntu-latest'"
       - name: Build
         run: cargo build --verbose
         env:

@@ -1055,7 +1055,9 @@ mod repository_tests {
     use crate::controldir::ControlDirFormat;
     use crate::foreign::VcsType;
     use crate::revisionid::RevisionId;
+    use crate::tree::MutableTree;
     use crate::workingtree::WorkingTree;
+    use std::path::Path;
 
     #[test]
     fn test_simple() {
@@ -1401,9 +1403,10 @@ mod repository_tests {
         let repo: GenericRepository = crate::repository::open(td.path()).unwrap();
 
         // Create a file to commit
-        std::fs::write(td.path().join("test.txt"), "test content").unwrap();
-        wt.smart_add(&[td.path().join("test.txt").as_path()])
-            .unwrap();
+        let test_file = td.path().join("test.txt");
+        std::fs::write(&test_file, "test content").unwrap();
+        // Use add() with relative path instead of smart_add to avoid path issues
+        wt.add(&[Path::new("test.txt")]).unwrap();
 
         // Test CommitBuilder with revision properties
         let test_key = "test-property";
@@ -1465,9 +1468,10 @@ mod repository_tests {
         let repo: GenericRepository = crate::repository::open(td.path()).unwrap();
 
         // Create a file to commit
-        std::fs::write(td.path().join("test.txt"), "test content").unwrap();
-        wt.smart_add(&[td.path().join("test.txt").as_path()])
-            .unwrap();
+        let test_file = td.path().join("test.txt");
+        std::fs::write(&test_file, "test content").unwrap();
+        // Use add() with relative path instead of smart_add to avoid path issues
+        wt.add(&[Path::new("test.txt")]).unwrap();
 
         // Create a commit without revision properties
         let revision_id = wt

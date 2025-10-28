@@ -120,8 +120,10 @@ mod tests {
         let env = TestEnv::new();
         assert_eq!(env.home_dir, env.temp_dir.path().join("home"));
         assert_eq!(env.working_dir, env.temp_dir.path().join("test"));
+        // On Windows, canonicalize() can add \\?\ prefix and resolve short names differently
+        // So we compare the canonicalized versions of both paths
         assert_eq!(
-            std::env::current_dir().unwrap(),
+            std::env::current_dir().unwrap().canonicalize().unwrap(),
             env.working_dir.canonicalize().unwrap()
         );
         assert_eq!(
@@ -135,11 +137,14 @@ mod tests {
 
         Python::with_gil(|py| {
             let os = py.import("os").unwrap();
+            // On Windows, canonicalize both paths to handle short/long names and \\?\ prefix
+            let py_cwd = os
+                .call_method0("getcwd")
+                .unwrap()
+                .extract::<PathBuf>()
+                .unwrap();
             assert_eq!(
-                os.call_method0("getcwd")
-                    .unwrap()
-                    .extract::<PathBuf>()
-                    .unwrap(),
+                py_cwd.canonicalize().unwrap(),
                 env.working_dir.canonicalize().unwrap(),
             );
             assert_eq!(
