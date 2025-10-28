@@ -147,8 +147,9 @@ mod tests {
     #[serial_test::serial]
     fn test_reset_tree_with_subpath() {
         let env = crate::testing::TestEnv::new();
-        // Create working tree in the current directory (set by TestEnv)
-        let wt = create_standalone_workingtree(Path::new("."), "2a").unwrap();
+        // Create working tree using an absolute path instead of "." to avoid Windows locking issues
+        let working_dir = std::env::current_dir().unwrap();
+        let wt = create_standalone_workingtree(&working_dir, "2a").unwrap();
 
         // Create a subdir in the working tree
         std::fs::create_dir("subdir").unwrap();
