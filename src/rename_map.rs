@@ -38,10 +38,13 @@ mod tests {
     use crate::controldir::create_standalone_workingtree;
     use crate::tree::MutableTree;
     use crate::workingtree::WorkingTree;
+    use serial_test::serial;
     use std::path::Path;
 
     #[test]
+    #[serial]
     fn test_guess_renames() {
+        let env = crate::testing::TestEnv::new();
         let tmp_dir = tempfile::tempdir().unwrap();
         let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
 
@@ -63,5 +66,6 @@ mod tests {
 
         let result = guess_renames(&from_tree, &wt2);
         assert!(result.is_ok());
+        std::mem::drop(env);
     }
 }
