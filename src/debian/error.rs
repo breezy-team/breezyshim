@@ -103,7 +103,7 @@ impl From<debian_changelog::Error> for Error {
 
 impl From<PyErr> for Error {
     fn from(err: PyErr) -> Error {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let brz_error: BrzError = err.into();
             if let BrzError::Other(ref err) = brz_error {
                 if err.is_instance_of::<UpstreamAlreadyImported>(py) {

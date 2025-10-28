@@ -12,13 +12,13 @@ use std::collections::HashMap;
 /// which handles operations between repositories.
 pub trait PyInterRepository: for<'py> IntoPyObject<'py> + std::any::Any + std::fmt::Debug {
     /// Get the underlying Python object for this inter-repository.
-    fn to_object(&self, py: Python<'_>) -> PyObject;
+    fn to_object(&self, py: Python<'_>) -> Py<PyAny>;
 }
 
 /// Generic wrapper for a Python InterRepository object.
 ///
 /// This struct provides a Rust interface to a Breezy InterRepository object.
-pub struct GenericInterRepository(PyObject);
+pub struct GenericInterRepository(Py<PyAny>);
 
 impl<'py> IntoPyObject<'py> for GenericInterRepository {
     type Target = PyAny;
@@ -30,14 +30,16 @@ impl<'py> IntoPyObject<'py> for GenericInterRepository {
     }
 }
 
-impl FromPyObject<'_> for GenericInterRepository {
-    fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(GenericInterRepository(obj.clone().unbind()))
+impl<'a, 'py> FromPyObject<'a, 'py> for GenericInterRepository {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Ok(GenericInterRepository(obj.to_owned().unbind()))
     }
 }
 
 impl PyInterRepository for GenericInterRepository {
-    fn to_object(&self, py: Python<'_>) -> PyObject {
+    fn to_object(&self, py: Python<'_>) -> Py<PyAny> {
         self.0.clone_ref(py)
     }
 }
@@ -52,7 +54,7 @@ impl GenericInterRepository {
     /// # Returns
     ///
     /// A new GenericInterRepository wrapping the provided Python object
-    pub fn new(obj: PyObject) -> Self {
+    pub fn new(obj: Py<PyAny>) -> Self {
         Self(obj)
     }
 }
@@ -81,7 +83,7 @@ pub fn get<S: PyRepository, T: PyRepository>(
     source: &S,
     target: &T,
 ) -> Result<Box<dyn InterRepository>, Error> {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let m = py.import("breezy.repository")?;
         let interrepo = m.getattr("InterRepository")?;
         let inter_repository =
@@ -141,7 +143,7 @@ pub trait InterRepository: std::fmt::Debug {
 
 impl<T: PyInterRepository> InterRepository for T {
     fn get_source(&self) -> GenericRepository {
-        Python::with_gil(|py| -> PyResult<GenericRepository> {
+        Python::attach(|py| -> PyResult<GenericRepository> {
             let source = self.to_object(py).getattr(py, "source")?;
             Ok(GenericRepository::new(source))
         })
@@ -149,7 +151,7 @@ impl<T: PyInterRepository> InterRepository for T {
     }
 
     fn get_target(&self) -> GenericRepository {
-        Python::with_gil(|py| -> PyResult<GenericRepository> {
+        Python::attach(|py| -> PyResult<GenericRepository> {
             let target = self.to_object(py).getattr(py, "target")?;
             Ok(GenericRepository::new(target))
         })
@@ -170,7 +172,7 @@ impl<T: PyInterRepository> InterRepository for T {
         lossy: bool,
         overwrite: bool,
     ) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let get_changed_refs =
                 pyo3::types::PyCFunction::new_closure(py, None, None, move |args, _kwargs| {
                     let refs = args
@@ -184,7 +186,7 @@ impl<T: PyInterRepository> InterRepository for T {
                         refs
                     };
 
-                    Python::with_gil(|py| -> PyResult<PyObject> {
+                    Python::attach(|py| -> PyResult<Py<PyAny>> {
                         let ret = PyDict::new(py);
 
                         for (k, (v, r)) in result {

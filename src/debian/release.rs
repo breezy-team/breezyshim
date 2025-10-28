@@ -45,7 +45,7 @@ pub fn release(
     subpath: &std::path::Path,
 ) -> Result<String, ReleaseError> {
     pyo3::import_exception!(debmutate.reformatting, GeneratedFile);
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let m = py.import("breezy.plugins.debian.release").unwrap();
         let release = m.getattr("release").unwrap();
         match release.call1((local_tree.to_object(py), subpath)) {

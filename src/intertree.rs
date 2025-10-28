@@ -6,7 +6,7 @@ use pyo3::prelude::*;
 ///
 /// InterTree allows comparing and performing operations between two trees,
 /// such as finding differences or applying changes from one tree to another.
-pub struct InterTree(PyObject);
+pub struct InterTree(Py<PyAny>);
 
 /// Get an InterTree for operations between two trees.
 ///
@@ -19,7 +19,7 @@ pub struct InterTree(PyObject);
 ///
 /// An InterTree object that can be used to perform operations between the trees
 pub fn get<S: crate::tree::PyTree, T: crate::tree::PyTree>(source: &S, target: &T) -> InterTree {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let source = source.to_object(py);
         let target = target.to_object(py);
 
@@ -45,7 +45,7 @@ impl InterTree {
     ///
     /// A TreeDelta representing the differences between the source and target trees
     pub fn compare(&self) -> TreeDelta {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.0
                 .call_method0(py, "compare")
                 .unwrap()

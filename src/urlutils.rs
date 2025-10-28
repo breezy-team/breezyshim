@@ -17,7 +17,7 @@ pub fn join_segment_parameters(
     url: &url::Url,
     parameters: std::collections::HashMap<String, String>,
 ) -> url::Url {
-    pyo3::Python::with_gil(|py| {
+    pyo3::Python::attach(|py| {
         let urlutils = py.import("breezy.urlutils").unwrap();
         urlutils
             .call_method1("join_segment_parameters", (url.to_string(), parameters))
@@ -42,7 +42,7 @@ pub fn join_segment_parameters(
 pub fn split_segment_parameters(
     url: &url::Url,
 ) -> (url::Url, std::collections::HashMap<String, String>) {
-    pyo3::Python::with_gil(|py| {
+    pyo3::Python::attach(|py| {
         let urlutils = py.import("breezy.urlutils").unwrap();
         urlutils
             .call_method1("split_segment_parameters", (url.to_string(),))

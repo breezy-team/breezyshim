@@ -66,9 +66,7 @@ impl std::fmt::Display for Version {
 ///
 /// The version of the Breezy library.
 pub fn version() -> Version {
-    pyo3::prepare_freethreaded_python();
-
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let m = py.import("breezy").unwrap();
 
         let version_info = m.getattr("version_info").unwrap();

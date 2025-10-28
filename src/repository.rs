@@ -22,11 +22,11 @@ use std::collections::HashMap;
 ///
 /// Different repository formats have different capabilities, such as
 /// support for content hash keys (CHKs).
-pub struct RepositoryFormat(PyObject);
+pub struct RepositoryFormat(Py<PyAny>);
 
 impl Clone for RepositoryFormat {
     fn clone(&self) -> Self {
-        Python::with_gil(|py| RepositoryFormat(self.0.clone_ref(py)))
+        Python::attach(|py| RepositoryFormat(self.0.clone_ref(py)))
     }
 }
 
@@ -37,7 +37,7 @@ impl RepositoryFormat {
     ///
     /// `true` if the format supports CHKs, `false` otherwise
     pub fn supports_chks(&self) -> bool {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.0
                 .getattr(py, "supports_chks")
                 .and_then(|attr| attr.extract(py))
@@ -303,7 +303,7 @@ pub trait Repository {
 /// and can be converted to Python objects.
 pub trait PyRepository: Repository + std::any::Any {
     /// Get the underlying Python object for this repository.
-    fn to_object(&self, py: Python) -> PyObject;
+    fn to_object(&self, py: Python) -> Py<PyAny>;
 }
 
 impl dyn PyRepository {
@@ -316,11 +316,11 @@ impl dyn PyRepository {
 /// Generic wrapper for a Python repository object.
 ///
 /// This struct provides a Rust interface to a Breezy repository object.
-pub struct GenericRepository(PyObject);
+pub struct GenericRepository(Py<PyAny>);
 
 impl Clone for GenericRepository {
     fn clone(&self) -> Self {
-        Python::with_gil(|py| GenericRepository(self.0.clone_ref(py)))
+        Python::attach(|py| GenericRepository(self.0.clone_ref(py)))
     }
 }
 
@@ -407,14 +407,16 @@ impl<'py> IntoPyObject<'py> for Revision {
     }
 }
 
-impl FromPyObject<'_> for Revision {
-    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Revision {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         // Extract properties if they exist
         let mut properties = std::collections::HashMap::new();
 
         if let Ok(py_properties) = ob.getattr("properties") {
             if !py_properties.is_none() {
-                if let Ok(py_dict) = py_properties.downcast::<pyo3::types::PyDict>() {
+                if let Ok(py_dict) = py_properties.cast::<pyo3::types::PyDict>() {
                     for (key, value) in py_dict.iter() {
                         let key_str: String = key.extract()?;
                         let value_str: String = value.extract()?;
@@ -440,13 +442,13 @@ impl FromPyObject<'_> for Revision {
 ///
 /// This struct provides an iterator interface for accessing revisions
 /// in a repository, returning pairs of revision IDs and revision objects.
-pub struct RevisionIterator(PyObject);
+pub struct RevisionIterator(Py<PyAny>);
 
 impl Iterator for RevisionIterator {
     type Item = (RevisionId, Option<Revision>);
 
     fn next(&mut self) -> Option<Self::Item> {
-        Python::with_gil(
+        Python::attach(
             |py| match self.0.call_method0(py, intern!(py, "__next__")) {
                 Err(e) if e.is_instance_of::<PyStopIteration>(py) => None,
                 Ok(o) => o.extract(py).ok(),
@@ -460,13 +462,13 @@ impl Iterator for RevisionIterator {
 ///
 /// This struct provides an iterator interface for accessing tree deltas
 /// in a repository, which represent changes between revisions.
-pub struct DeltaIterator(PyObject);
+pub struct DeltaIterator(Py<PyAny>);
 
 impl Iterator for DeltaIterator {
     type Item = TreeDelta;
 
     fn next(&mut self) -> Option<Self::Item> {
-        Python::with_gil(
+        Python::attach(
             |py| match self.0.call_method0(py, intern!(py, "__next__")) {
                 Err(e) if e.is_instance_of::<PyStopIteration>(py) => None,
                 Ok(o) => o.extract(py).ok(),
@@ -487,7 +489,7 @@ impl<'py> IntoPyObject<'py> for GenericRepository {
 }
 
 impl PyRepository for GenericRepository {
-    fn to_object(&self, py: Python) -> PyObject {
+    fn to_object(&self, py: Python) -> Py<PyAny> {
         self.0.clone_ref(py)
     }
 }
@@ -502,13 +504,13 @@ impl GenericRepository {
     /// # Returns
     ///
     /// A new GenericRepository wrapping the provided Python object
-    pub fn new(obj: PyObject) -> Self {
+    pub fn new(obj: Py<PyAny>) -> Self {
         GenericRepository(obj)
     }
 }
 
-impl From<PyObject> for GenericRepository {
-    fn from(obj: PyObject) -> Self {
+impl From<Py<PyAny>> for GenericRepository {
+    fn from(obj: Py<PyAny>) -> Self {
         GenericRepository(obj)
     }
 }
@@ -519,7 +521,7 @@ impl<T: PyRepository> Repository for T {
     }
 
     fn vcs_type(&self) -> VcsType {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             if self.to_object(py).getattr(py, "_git").is_ok() {
                 VcsType::Git
             } else {
@@ -529,7 +531,7 @@ impl<T: PyRepository> Repository for T {
     }
 
     fn get_user_url(&self) -> url::Url {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .getattr(py, "user_url")
                 .unwrap()
@@ -541,7 +543,7 @@ impl<T: PyRepository> Repository for T {
     }
 
     fn user_transport(&self) -> crate::transport::Transport {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             crate::transport::Transport::new(
                 self.to_object(py).getattr(py, "user_transport").unwrap(),
             )
@@ -549,7 +551,7 @@ impl<T: PyRepository> Repository for T {
     }
 
     fn control_transport(&self) -> crate::transport::Transport {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             crate::transport::Transport::new(
                 self.to_object(py).getattr(py, "control_transport").unwrap(),
             )
@@ -561,7 +563,7 @@ impl<T: PyRepository> Repository for T {
         other_repository: &dyn Repository,
         stop_revision: Option<&RevisionId>,
     ) -> Result<(), crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             // Try to get the Python object from the other repository
             let other_py = if let Some(py_repo) = other_repository
                 .as_any()
@@ -588,7 +590,7 @@ impl<T: PyRepository> Repository for T {
     }
 
     fn revision_tree(&self, revid: &RevisionId) -> Result<RevisionTree, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let o = self
                 .to_object(py)
                 .call_method1(py, "revision_tree", (revid.clone(),))?;
@@ -597,7 +599,7 @@ impl<T: PyRepository> Repository for T {
     }
 
     fn get_graph(&self) -> Graph {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             Graph::from(self.to_object(py).call_method0(py, "get_graph").unwrap())
         })
     }
@@ -611,7 +613,7 @@ impl<T: PyRepository> Repository for T {
             WorkingTree = crate::workingtree::GenericWorkingTree,
         >,
     > {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             Box::new(GenericControlDir::new(
                 self.to_object(py).getattr(py, "controldir").unwrap(),
             ))
@@ -626,14 +628,14 @@ impl<T: PyRepository> Repository for T {
     }
 
     fn format(&self) -> RepositoryFormat {
-        Python::with_gil(|py| RepositoryFormat(self.to_object(py).getattr(py, "_format").unwrap()))
+        Python::attach(|py| RepositoryFormat(self.to_object(py).getattr(py, "_format").unwrap()))
     }
 
     fn iter_revisions(
         &self,
         revision_ids: Vec<RevisionId>,
     ) -> Box<dyn Iterator<Item = (RevisionId, Option<Revision>)>> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let o = self
                 .to_object(py)
                 .call_method1(py, "iter_revisions", (revision_ids,))
@@ -647,7 +649,7 @@ impl<T: PyRepository> Repository for T {
         revs: &[Revision],
         specific_files: Option<&[&std::path::Path]>,
     ) -> Box<dyn Iterator<Item = TreeDelta>> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let revs = revs
                 .iter()
                 .map(|r| r.clone().into_pyobject(py).unwrap())
@@ -663,12 +665,12 @@ impl<T: PyRepository> Repository for T {
     }
 
     fn get_revision(&self, revision_id: &RevisionId) -> Result<Revision, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method1(py, "get_revision", (revision_id.clone(),))?
                 .extract(py)
         })
-        .map_err(|e| e.into())
+        .map_err(Into::into)
     }
 
     // TODO: This should really be on ForeignRepository
@@ -676,12 +678,12 @@ impl<T: PyRepository> Repository for T {
         &self,
         revision_id: &RevisionId,
     ) -> Result<(Vec<u8>,), crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method1(py, "lookup_bzr_revision_id", (revision_id.clone(),))?
-                .extract::<(Vec<u8>, PyObject)>(py)
+                .extract::<(Vec<u8>, Py<PyAny>)>(py)
         })
-        .map_err(|e| e.into())
+        .map_err(Into::into)
         .map(|(v, _m)| (v,))
     }
 
@@ -689,16 +691,16 @@ impl<T: PyRepository> Repository for T {
         &self,
         foreign_revid: &[u8],
     ) -> Result<RevisionId, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method1(py, "lookup_foreign_revision_id", (foreign_revid,))?
                 .extract(py)
         })
-        .map_err(|e| e.into())
+        .map_err(Into::into)
     }
 
     fn lock_read(&self) -> Result<Lock, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             Ok(Lock::from(
                 self.to_object(py)
                     .call_method0(py, intern!(py, "lock_read"))?,
@@ -707,7 +709,7 @@ impl<T: PyRepository> Repository for T {
     }
 
     fn lock_write(&self) -> Result<Lock, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             Ok(Lock::from(
                 self.to_object(py)
                     .call_method0(py, intern!(py, "lock_write"))?,
@@ -716,38 +718,38 @@ impl<T: PyRepository> Repository for T {
     }
 
     fn has_revision(&self, revision_id: &RevisionId) -> Result<bool, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method1(py, "has_revision", (revision_id.clone(),))?
                 .extract(py)
-                .map_err(|e| e.into())
+                .map_err(Into::into)
         })
     }
 
     fn all_revision_ids(&self) -> Result<Vec<RevisionId>, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method0(py, "all_revision_ids")?
                 .extract(py)
-                .map_err(|e| e.into())
+                .map_err(Into::into)
         })
     }
 
     fn is_shared(&self) -> Result<bool, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method0(py, "is_shared")?
                 .extract(py)
-                .map_err(|e| e.into())
+                .map_err(Into::into)
         })
     }
 
     fn get_signature_text(&self, revision_id: &RevisionId) -> Result<String, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method1(py, "get_signature_text", (revision_id.clone(),))?
                 .extract(py)
-                .map_err(|e| e.into())
+                .map_err(Into::into)
         })
     }
 
@@ -755,11 +757,11 @@ impl<T: PyRepository> Repository for T {
         &self,
         revision_id: &RevisionId,
     ) -> Result<bool, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method1(py, "has_signature_for_revision_id", (revision_id.clone(),))?
                 .extract(py)
-                .map_err(|e| e.into())
+                .map_err(Into::into)
         })
     }
 
@@ -768,7 +770,7 @@ impl<T: PyRepository> Repository for T {
         hint: Option<&[RevisionId]>,
         clean_obsolete_packs: bool,
     ) -> Result<(), crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let hint_py = hint.map(|h| h.to_vec());
             self.to_object(py)
                 .call_method1(py, "pack", (hint_py, clean_obsolete_packs))?;
@@ -777,28 +779,28 @@ impl<T: PyRepository> Repository for T {
     }
 
     fn start_write_group(&self) -> Result<(), crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py).call_method0(py, "start_write_group")?;
             Ok(())
         })
     }
 
     fn commit_write_group(&self) -> Result<(), crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py).call_method0(py, "commit_write_group")?;
             Ok(())
         })
     }
 
     fn abort_write_group(&self) -> Result<(), crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py).call_method0(py, "abort_write_group")?;
             Ok(())
         })
     }
 
     fn is_in_write_group(&self) -> bool {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method0(py, "is_in_write_group")
                 .and_then(|r| r.extract(py))
@@ -810,13 +812,13 @@ impl<T: PyRepository> Repository for T {
         &self,
         revision_ids: &[RevisionId],
     ) -> Result<HashMap<RevisionId, Vec<RevisionId>>, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let result =
                 self.to_object(py)
                     .call_method1(py, "get_parent_map", (revision_ids.to_vec(),))?;
 
             let dict = result
-                .downcast_bound::<pyo3::types::PyDict>(py)
+                .cast_bound::<pyo3::types::PyDict>(py)
                 .expect("get_parent_map should return a dict");
             let mut map = HashMap::new();
 
@@ -835,7 +837,7 @@ impl<T: PyRepository> Repository for T {
         other: &dyn Repository,
         revision_id: Option<&RevisionId>,
     ) -> Result<Vec<RevisionId>, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             // Try to get the Python object from the other repository
             let other_py = if let Some(py_repo) = other.as_any().downcast_ref::<GenericRepository>()
             {
@@ -850,12 +852,12 @@ impl<T: PyRepository> Repository for T {
             self.to_object(py)
                 .call_method1(py, "missing_revision_ids", (other_py, revision_id.cloned()))?
                 .extract(py)
-                .map_err(|e| e.into())
+                .map_err(Into::into)
         })
     }
 
     fn find_branches(&self) -> Result<Vec<GenericBranch>, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let result = self.to_object(py).call_method0(py, "find_branches")?;
 
             // find_branches returns a generator, so we need to convert it to a list
@@ -863,7 +865,7 @@ impl<T: PyRepository> Repository for T {
             let list_result = list_module.call_method1("list", (result,))?;
 
             let list = list_result
-                .downcast::<pyo3::types::PyList>()
+                .cast::<pyo3::types::PyList>()
                 .expect("list() should return a list");
             let mut branches = Vec::new();
 
@@ -876,7 +878,7 @@ impl<T: PyRepository> Repository for T {
     }
 
     fn get_physical_lock_status(&self) -> Result<LockStatus, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let result = self
                 .to_object(py)
                 .call_method0(py, "get_physical_lock_status")?;
@@ -889,14 +891,14 @@ impl<T: PyRepository> Repository for T {
             }
 
             // The result is typically a tuple (is_locked, lock_info)
-            if let Ok(tuple) = result.downcast_bound::<pyo3::types::PyTuple>(py) {
+            if let Ok(tuple) = result.cast_bound::<pyo3::types::PyTuple>(py) {
                 if tuple.len() >= 2 {
                     let is_locked = tuple.get_item(0)?.extract::<bool>()?;
                     let lock_info = tuple.get_item(1)?;
 
                     let lock_holder = if lock_info.is_none() {
                         None
-                    } else if let Ok(info_dict) = lock_info.downcast::<pyo3::types::PyDict>() {
+                    } else if let Ok(info_dict) = lock_info.cast::<pyo3::types::PyDict>() {
                         info_dict
                             .get_item("user")?
                             .and_then(|u| u.extract::<String>().ok())
@@ -924,7 +926,7 @@ impl<T: PyRepository> Repository for T {
         &self,
         repository: &dyn Repository,
     ) -> Result<(), crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             // Try to get the Python object from the repository
             let repo_py =
                 if let Some(py_repo) = repository.as_any().downcast_ref::<GenericRepository>() {
@@ -947,11 +949,11 @@ impl<T: PyRepository> Repository for T {
         revision_ids: &[RevisionId],
         topo_sorted: bool,
     ) -> Result<Vec<RevisionId>, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method1(py, "get_ancestry", (revision_ids.to_vec(), topo_sorted))?
                 .extract(py)
-                .map_err(|e| e.into())
+                .map_err(Into::into)
         })
     }
 
@@ -960,7 +962,7 @@ impl<T: PyRepository> Repository for T {
         committers: Option<bool>,
         log: Option<bool>,
     ) -> Result<RepositoryStats, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let kwargs = PyDict::new(py);
             if let Some(c) = committers {
                 kwargs.set_item("committers", c)?;
@@ -974,7 +976,7 @@ impl<T: PyRepository> Repository for T {
                 .call_method(py, "gather_stats", (), Some(&kwargs))?;
 
             let stats_dict = result
-                .downcast_bound::<pyo3::types::PyDict>(py)
+                .cast_bound::<pyo3::types::PyDict>(py)
                 .expect("gather_stats should return a dict");
 
             let revision_count = stats_dict
@@ -990,7 +992,7 @@ impl<T: PyRepository> Repository for T {
             let committers = if let Some(committers_dict) = stats_dict.get_item("committers")? {
                 if !committers_dict.is_none() {
                     let dict = committers_dict
-                        .downcast::<pyo3::types::PyDict>()
+                        .cast::<pyo3::types::PyDict>()
                         .expect("committers should be a dict");
                     let mut map = HashMap::new();
                     for (key, value) in dict.iter() {
@@ -1015,7 +1017,7 @@ impl<T: PyRepository> Repository for T {
     }
 
     fn get_file_graph(&self) -> Result<Graph, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             Ok(Graph::from(
                 self.to_object(py).call_method0(py, "get_file_graph")?,
             ))
@@ -1040,7 +1042,7 @@ impl<T: PyRepository> Repository for T {
 /// let repo = open("https://code.launchpad.net/brz").unwrap();
 /// ```
 pub fn open(base: impl AsLocation) -> Result<GenericRepository, crate::error::Error> {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let o = py
             .import("breezy.repository")?
             .getattr("Repository")?

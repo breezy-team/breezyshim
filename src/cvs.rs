@@ -6,12 +6,12 @@ use pyo3::exceptions::PyModuleNotFoundError;
 use pyo3::prelude::*;
 
 /// A prober for CVS repositories.
-pub struct CVSProber(PyObject);
+pub struct CVSProber(Py<PyAny>);
 
 impl CVSProber {
     /// Create a new CVS prober instance.
     pub fn new() -> Option<Self> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let m = match py.import("breezy.plugins.cvs") {
                 Ok(m) => m,
                 Err(e) => {
@@ -29,9 +29,11 @@ impl CVSProber {
     }
 }
 
-impl FromPyObject<'_> for CVSProber {
-    fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(Self(obj.clone().unbind()))
+impl<'a, 'py> FromPyObject<'a, 'py> for CVSProber {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Ok(Self(obj.to_owned().unbind()))
     }
 }
 
@@ -52,7 +54,7 @@ impl std::fmt::Debug for CVSProber {
 }
 
 impl crate::controldir::PyProber for CVSProber {
-    fn to_object(&self, py: Python) -> PyObject {
+    fn to_object(&self, py: Python) -> Py<PyAny> {
         self.0.clone_ref(py)
     }
 }

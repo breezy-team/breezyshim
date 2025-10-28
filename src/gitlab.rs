@@ -3,7 +3,7 @@ use pyo3::prelude::*;
 
 /// Login to GitLab using saved credentials.
 pub fn login(url: &url::Url) -> PyResult<()> {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let m = py.import("breezy.plugins.gitlab.cmds").unwrap();
         let cmd = m.getattr("cmd_gitlab_login").unwrap();
 

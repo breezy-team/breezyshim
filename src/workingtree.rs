@@ -239,13 +239,13 @@ pub trait WorkingTree: MutableTree {
     fn get_canonical_paths(&self, paths: &[&Path]) -> Result<Vec<PathBuf>, Error>;
 
     /// Get the configuration stack.
-    fn get_config_stack(&self) -> Result<PyObject, Error>;
+    fn get_config_stack(&self) -> Result<Py<PyAny>, Error>;
 
     /// Get reference information.
     fn get_reference_info(&self, path: &Path) -> Result<Option<(String, PathBuf)>, Error>;
 
     /// Get the shelf manager.
-    fn get_shelf_manager(&self) -> Result<PyObject, Error>;
+    fn get_shelf_manager(&self) -> Result<Py<PyAny>, Error>;
 
     /// Get ignored files.
     fn ignored_files(&self) -> Result<Vec<PathBuf>, Error>;
@@ -352,7 +352,7 @@ impl dyn PyWorkingTree {
 
 impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
     fn basedir(&self) -> PathBuf {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let path: String = self
                 .to_object(py)
                 .getattr(py, "basedir")
@@ -372,7 +372,7 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
             WorkingTree = GenericWorkingTree,
         >,
     > {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let controldir = self.to_object(py).getattr(py, "controldir").unwrap();
             Box::new(GenericControlDir::new(controldir))
                 as Box<
@@ -386,13 +386,13 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
     }
 
     fn branch(&self) -> GenericBranch {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             GenericBranch::from(self.to_object(py).getattr(py, "branch").unwrap())
         })
     }
 
     fn get_user_url(&self) -> url::Url {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let url: String = self
                 .to_object(py)
                 .getattr(py, "user_url")
@@ -404,7 +404,7 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
     }
 
     fn supports_setting_file_ids(&self) -> bool {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method0(py, "supports_setting_file_ids")
                 .unwrap()
@@ -414,7 +414,7 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
     }
 
     fn smart_add(&self, files: &[&Path]) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let file_paths: Vec<String> = files
                 .iter()
                 .map(|p| p.to_string_lossy().to_string())
@@ -426,7 +426,7 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
     }
 
     fn update(&self, revision_id: Option<&RevisionId>) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method1(py, "update", (revision_id.cloned(),))?;
             Ok(())
@@ -434,7 +434,7 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
     }
 
     fn revert(&self, filenames: Option<&[&Path]>) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let file_paths = filenames.map(|files| {
                 files
                     .iter()
@@ -448,18 +448,18 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
     }
 
     fn build_commit(&self) -> CommitBuilder {
-        Python::with_gil(|py| CommitBuilder::from(GenericWorkingTree(self.to_object(py))))
+        Python::attach(|py| CommitBuilder::from(GenericWorkingTree(self.to_object(py))))
     }
 
     fn basis_tree(&self) -> Result<RevisionTree, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let basis_tree = self.to_object(py).call_method0(py, "basis_tree")?;
             Ok(RevisionTree(basis_tree))
         })
     }
 
     fn is_control_filename(&self, path: &Path) -> bool {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method1(
                     py,
@@ -474,7 +474,7 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
 
     /// Get a revision tree for a specific revision.
     fn revision_tree(&self, revision_id: &RevisionId) -> Result<Box<RevisionTree>, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let tree = self.to_object(py).call_method1(
                 py,
                 "revision_tree",
@@ -486,7 +486,7 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
 
     /// Convert a path to an absolute path relative to the working tree.
     fn abspath(&self, path: &Path) -> Result<PathBuf, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             Ok(self
                 .to_object(py)
                 .call_method1(py, "abspath", (path.to_string_lossy().as_ref(),))?
@@ -496,7 +496,7 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
 
     /// Convert an absolute path to a path relative to the working tree.
     fn relpath(&self, path: &Path) -> Result<PathBuf, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             Ok(self
                 .to_object(py)
                 .call_method1(py, "relpath", (path.to_string_lossy().as_ref(),))?
@@ -512,7 +512,7 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
         stop_revision: Option<&RevisionId>,
         local: Option<bool>,
     ) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let kwargs = {
                 let kwargs = pyo3::types::PyDict::new(py);
                 if let Some(overwrite) = overwrite {
@@ -559,7 +559,7 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
         source: &dyn Branch,
         to_revision: Option<&RevisionId>,
     ) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let kwargs = {
                 let kwargs = pyo3::types::PyDict::new(py);
                 if let Some(to_revision) = to_revision {
@@ -599,7 +599,7 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
         canonicalize: bool,
         apply_view: bool,
     ) -> Result<Vec<PathBuf>, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let result = self.to_object(py).call_method1(
                 py,
                 "safe_relpath_files",
@@ -617,8 +617,8 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
     }
 
     fn add_conflicts(&self, conflicts: &[crate::tree::Conflict]) -> Result<(), Error> {
-        Python::with_gil(|py| {
-            let conflicts_py: Vec<PyObject> = conflicts
+        Python::attach(|py| {
+            let conflicts_py: Vec<Py<PyAny>> = conflicts
                 .iter()
                 .map(|c| {
                     let dict = pyo3::types::PyDict::new(py);
@@ -642,7 +642,7 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
         parent_id: &RevisionId,
         parent_tree: &crate::tree::RevisionTree,
     ) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py).call_method1(
                 py,
                 "add_parent_tree",
@@ -656,7 +656,7 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
     }
 
     fn add_parent_tree_id(&self, parent_id: &RevisionId) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py).call_method1(
                 py,
                 "add_parent_tree_id",
@@ -667,7 +667,7 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
     }
 
     fn add_pending_merge(&self, revision_id: &RevisionId) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py).call_method1(
                 py,
                 "add_pending_merge",
@@ -678,21 +678,21 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
     }
 
     fn auto_resolve(&self) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py).call_method0(py, "auto_resolve")?;
             Ok(())
         })
     }
 
     fn check_state(&self) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py).call_method0(py, "check_state")?;
             Ok(())
         })
     }
 
     fn get_canonical_path(&self, path: &Path) -> Result<PathBuf, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             Ok(self
                 .to_object(py)
                 .call_method1(py, "get_canonical_path", (path.to_string_lossy().as_ref(),))?
@@ -701,7 +701,7 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
     }
 
     fn get_canonical_paths(&self, paths: &[&Path]) -> Result<Vec<PathBuf>, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let path_strings: Vec<String> = paths
                 .iter()
                 .map(|p| p.to_string_lossy().to_string())
@@ -713,12 +713,12 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
         })
     }
 
-    fn get_config_stack(&self) -> Result<PyObject, Error> {
-        Python::with_gil(|py| Ok(self.to_object(py).call_method0(py, "get_config_stack")?))
+    fn get_config_stack(&self) -> Result<Py<PyAny>, Error> {
+        Python::attach(|py| Ok(self.to_object(py).call_method0(py, "get_config_stack")?))
     }
 
     fn get_reference_info(&self, path: &Path) -> Result<Option<(String, PathBuf)>, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let result = self.to_object(py).call_method1(
                 py,
                 "get_reference_info",
@@ -733,12 +733,12 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
         })
     }
 
-    fn get_shelf_manager(&self) -> Result<PyObject, Error> {
-        Python::with_gil(|py| Ok(self.to_object(py).call_method0(py, "get_shelf_manager")?))
+    fn get_shelf_manager(&self) -> Result<Py<PyAny>, Error> {
+        Python::attach(|py| Ok(self.to_object(py).call_method0(py, "get_shelf_manager")?))
     }
 
     fn ignored_files(&self) -> Result<Vec<PathBuf>, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             Ok(self
                 .to_object(py)
                 .call_method0(py, "ignored_files")?
@@ -747,7 +747,7 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
     }
 
     fn is_locked(&self) -> bool {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method0(py, "is_locked")
                 .unwrap()
@@ -757,7 +757,7 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
     }
 
     fn merge_modified(&self) -> Result<Vec<PathBuf>, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             Ok(self
                 .to_object(py)
                 .call_method0(py, "merge_modified")?
@@ -766,7 +766,7 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
     }
 
     fn move_files(&self, from_paths: &[&Path], to_dir: &Path) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let from_strings: Vec<String> = from_paths
                 .iter()
                 .map(|p| p.to_string_lossy().to_string())
@@ -781,8 +781,8 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
     }
 
     fn set_conflicts(&self, conflicts: &[crate::tree::Conflict]) -> Result<(), Error> {
-        Python::with_gil(|py| {
-            let conflicts_py: Vec<PyObject> = conflicts
+        Python::attach(|py| {
+            let conflicts_py: Vec<Py<PyAny>> = conflicts
                 .iter()
                 .map(|c| {
                     let dict = pyo3::types::PyDict::new(py);
@@ -802,7 +802,7 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
     }
 
     fn set_last_revision(&self, revision_id: &RevisionId) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py).call_method1(
                 py,
                 "set_last_revision",
@@ -813,7 +813,7 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
     }
 
     fn set_merge_modified(&self, files: &[&Path]) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let file_strings: Vec<String> = files
                 .iter()
                 .map(|p| p.to_string_lossy().to_string())
@@ -825,8 +825,8 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
     }
 
     fn set_pending_merges(&self, revision_ids: &[RevisionId]) -> Result<(), Error> {
-        Python::with_gil(|py| {
-            let revision_ids_py: Vec<PyObject> = revision_ids
+        Python::attach(|py| {
+            let revision_ids_py: Vec<Py<PyAny>> = revision_ids
                 .iter()
                 .map(|id| id.clone().into_pyobject(py).unwrap().unbind())
                 .collect();
@@ -842,7 +842,7 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
         location: &str,
         file_id: Option<&str>,
     ) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let kwargs = pyo3::types::PyDict::new(py);
             if let Some(file_id) = file_id {
                 kwargs.set_item("file_id", file_id)?;
@@ -858,7 +858,7 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
     }
 
     fn subsume(&self, other: &dyn PyWorkingTree) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method1(py, "subsume", (other.to_object(py),))?;
             Ok(())
@@ -866,7 +866,7 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
     }
 
     fn store_uncommitted(&self) -> Result<String, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             Ok(self
                 .to_object(py)
                 .call_method0(py, "store_uncommitted")?
@@ -875,14 +875,14 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
     }
 
     fn restore_uncommitted(&self) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py).call_method0(py, "restore_uncommitted")?;
             Ok(())
         })
     }
 
     fn extract(&self, dest: &Path, format: Option<&str>) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let kwargs = pyo3::types::PyDict::new(py);
             if let Some(format) = format {
                 kwargs.set_item("format", format)?;
@@ -902,7 +902,7 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
         dest: &Path,
         revision_id: Option<&RevisionId>,
     ) -> Result<GenericWorkingTree, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let kwargs = pyo3::types::PyDict::new(py);
             if let Some(revision_id) = revision_id {
                 kwargs.set_item(
@@ -921,14 +921,14 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
     }
 
     fn control_transport(&self) -> Result<crate::transport::Transport, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let transport = self.to_object(py).getattr(py, "control_transport")?;
             Ok(crate::transport::Transport::new(transport))
         })
     }
 
     fn control_url(&self) -> url::Url {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let url: String = self
                 .to_object(py)
                 .getattr(py, "control_url")
@@ -944,7 +944,7 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
         source: &dyn PyTree,
         revision_id: Option<&RevisionId>,
     ) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let kwargs = pyo3::types::PyDict::new(py);
             if let Some(revision_id) = revision_id {
                 kwargs.set_item(
@@ -963,14 +963,14 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
     }
 
     fn flush(&self) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py).call_method0(py, "flush")?;
             Ok(())
         })
     }
 
     fn requires_rich_root(&self) -> bool {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method0(py, "requires_rich_root")
                 .unwrap()
@@ -980,10 +980,10 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
     }
 
     fn reset_state(&self, revision_ids: Option<&[RevisionId]>) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let kwargs = pyo3::types::PyDict::new(py);
             if let Some(revision_ids) = revision_ids {
-                let revision_ids_py: Vec<PyObject> = revision_ids
+                let revision_ids_py: Vec<Py<PyAny>> = revision_ids
                     .iter()
                     .map(|id| id.clone().into_pyobject(py).unwrap().unbind())
                     .collect();
@@ -1001,7 +1001,7 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
         branch: &dyn Branch,
         revision_id: Option<&RevisionId>,
     ) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let kwargs = pyo3::types::PyDict::new(py);
             if let Some(revision_id) = revision_id {
                 kwargs.set_item(
@@ -1034,7 +1034,7 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
     }
 
     fn supports_merge_modified(&self) -> bool {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method0(py, "supports_merge_modified")
                 .unwrap()
@@ -1044,14 +1044,14 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
     }
 
     fn break_lock(&self) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py).call_method0(py, "break_lock")?;
             Ok(())
         })
     }
 
     fn get_physical_lock_status(&self) -> Result<bool, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             Ok(self
                 .to_object(py)
                 .call_method0(py, "get_physical_lock_status")?
@@ -1065,10 +1065,10 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
 /// A working tree is a local directory containing the files of a branch that can
 /// be edited. This struct wraps a Python working tree object and provides access
 /// to its functionality.
-pub struct GenericWorkingTree(pub PyObject);
+pub struct GenericWorkingTree(pub Py<PyAny>);
 
 impl crate::tree::PyTree for GenericWorkingTree {
-    fn to_object(&self, py: Python) -> PyObject {
+    fn to_object(&self, py: Python) -> Py<PyAny> {
         self.0.clone_ref(py)
     }
 }
@@ -1078,7 +1078,7 @@ impl PyWorkingTree for GenericWorkingTree {}
 
 impl Clone for GenericWorkingTree {
     fn clone(&self) -> Self {
-        Python::with_gil(|py| GenericWorkingTree(self.0.clone_ref(py)))
+        Python::attach(|py| GenericWorkingTree(self.0.clone_ref(py)))
     }
 }
 
@@ -1109,7 +1109,7 @@ impl From<GenericWorkingTree> for CommitBuilder {
     ///
     /// A new CommitBuilder instance.
     fn from(wt: GenericWorkingTree) -> Self {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let kwargs = pyo3::types::PyDict::new(py);
             CommitBuilder(wt, kwargs.into())
         })
@@ -1127,7 +1127,7 @@ impl CommitBuilder {
     ///
     /// Self for method chaining.
     pub fn committer(self, committer: &str) -> Self {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.1.bind(py).set_item("committer", committer).unwrap();
         });
         self
@@ -1143,7 +1143,7 @@ impl CommitBuilder {
     ///
     /// Self for method chaining.
     pub fn message(self, message: &str) -> Self {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.1.bind(py).set_item("message", message).unwrap();
         });
         self
@@ -1163,7 +1163,7 @@ impl CommitBuilder {
             .iter()
             .map(|x| x.to_string_lossy().to_string())
             .collect();
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.1
                 .bind(py)
                 .set_item("specific_files", specific_files)
@@ -1182,7 +1182,7 @@ impl CommitBuilder {
     ///
     /// Self for method chaining.
     pub fn allow_pointless(self, allow_pointless: bool) -> Self {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.1
                 .bind(py)
                 .set_item("allow_pointless", allow_pointless)
@@ -1201,7 +1201,7 @@ impl CommitBuilder {
     ///
     /// Self for method chaining.
     pub fn reporter(self, reporter: &dyn crate::commit::PyCommitReporter) -> Self {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.1
                 .bind(py)
                 .set_item("reporter", reporter.to_object(py))
@@ -1220,7 +1220,7 @@ impl CommitBuilder {
     ///
     /// Self for method chaining.
     pub fn timestamp(self, timestamp: f64) -> Self {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.1.bind(py).set_item("timestamp", timestamp).unwrap();
         });
         self
@@ -1240,7 +1240,7 @@ impl CommitBuilder {
     ///
     /// Self for method chaining, or an error if the operation failed.
     pub fn set_revprop(self, key: &str, value: &str) -> Result<Self, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             // Get or create the revprops dictionary
             if self.1.bind(py).get_item("revprops")?.is_none() {
                 let new_revprops = pyo3::types::PyDict::new(py);
@@ -1254,7 +1254,7 @@ impl CommitBuilder {
                 ))
             })?;
 
-            let revprops_dict = revprops.downcast::<pyo3::types::PyDict>().map_err(|_| {
+            let revprops_dict = revprops.cast::<pyo3::types::PyDict>().map_err(|_| {
                 Error::Other(pyo3::PyErr::new::<pyo3::exceptions::PyTypeError, _>(
                     "revprops is not a dictionary",
                 ))
@@ -1271,7 +1271,7 @@ impl CommitBuilder {
     ///
     /// The revision ID of the new commit, or an error if the commit could not be created.
     pub fn commit(self) -> Result<RevisionId, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             Ok(self
                 .0
                 .to_object(py)
@@ -1371,7 +1371,7 @@ impl GenericWorkingTree {
 ///
 /// The working tree, or an error if it could not be opened.
 pub fn open(path: &Path) -> Result<GenericWorkingTree, Error> {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let m = py.import("breezy.workingtree")?;
         let c = m.getattr("WorkingTree")?;
         let wt = c.call_method1("open", (path.to_string_lossy().to_string(),))?;
@@ -1393,7 +1393,7 @@ pub fn open(path: &Path) -> Result<GenericWorkingTree, Error> {
 /// A tuple containing the working tree and the relative path, or an error
 /// if no containing working tree could be found.
 pub fn open_containing(path: &Path) -> Result<(GenericWorkingTree, PathBuf), Error> {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let m = py.import("breezy.workingtree")?;
         let c = m.getattr("WorkingTree")?;
         let (wt, p): (Bound<PyAny>, String) = c
@@ -1403,8 +1403,8 @@ pub fn open_containing(path: &Path) -> Result<(GenericWorkingTree, PathBuf), Err
     })
 }
 
-/// Implementation of From<PyObject> for GenericWorkingTree.
-impl From<PyObject> for GenericWorkingTree {
+/// Implementation of From<Py<PyAny>> for GenericWorkingTree.
+impl From<Py<PyAny>> for GenericWorkingTree {
     /// Create a new WorkingTree from a Python object.
     ///
     /// # Parameters
@@ -1414,7 +1414,7 @@ impl From<PyObject> for GenericWorkingTree {
     /// # Returns
     ///
     /// A new WorkingTree instance.
-    fn from(obj: PyObject) -> Self {
+    fn from(obj: Py<PyAny>) -> Self {
         GenericWorkingTree(obj)
     }
 }

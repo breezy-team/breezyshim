@@ -61,11 +61,11 @@ impl ConfigValue for bool {}
 ///
 /// This struct wraps a Python branch configuration object and provides methods for
 /// accessing and modifying branch-specific configuration options.
-pub struct BranchConfig(PyObject);
+pub struct BranchConfig(Py<PyAny>);
 
 impl Clone for BranchConfig {
     fn clone(&self) -> Self {
-        Python::with_gil(|py| -> Self { Self(self.0.clone_ref(py)) })
+        Python::attach(|py| -> Self { Self(self.0.clone_ref(py)) })
     }
 }
 
@@ -89,7 +89,7 @@ impl BranchConfig {
     /// # Returns
     ///
     /// A new BranchConfig instance.
-    pub fn new(o: PyObject) -> Self {
+    pub fn new(o: Py<PyAny>) -> Self {
         Self(o)
     }
 
@@ -104,7 +104,7 @@ impl BranchConfig {
     ///
     /// `Ok(())` on success, or an error if the option could not be set.
     pub fn set_user_option<T: ConfigValue>(&self, key: &str, value: T) -> Result<()> {
-        Python::with_gil(|py| -> Result<()> {
+        Python::attach(|py| -> Result<()> {
             let py_value = value
                 .into_pyobject(py)
                 .map_err(|_| {
@@ -128,7 +128,7 @@ impl BranchConfig {
 /// This struct represents a stack of configuration sources, where more specific
 /// sources (like branch-specific configuration) override more general sources
 /// (like global configuration).
-pub struct ConfigStack(PyObject);
+pub struct ConfigStack(Py<PyAny>);
 
 impl ConfigStack {
     /// Create a new ConfigStack from a Python object.
@@ -140,7 +140,7 @@ impl ConfigStack {
     /// # Returns
     ///
     /// A new ConfigStack instance.
-    pub fn new(o: PyObject) -> Self {
+    pub fn new(o: Py<PyAny>) -> Self {
         Self(o)
     }
 
@@ -153,8 +153,8 @@ impl ConfigStack {
     /// # Returns
     ///
     /// The configuration value, or None if the key is not present.
-    pub fn get(&self, key: &str) -> Result<Option<PyObject>> {
-        Python::with_gil(|py| -> Result<Option<PyObject>> {
+    pub fn get(&self, key: &str) -> Result<Option<Py<PyAny>>> {
+        Python::attach(|py| -> Result<Option<Py<PyAny>>> {
             let value = self.0.call_method1(py, "get", (key,))?;
             if value.is_none(py) {
                 Ok(None)
@@ -175,7 +175,7 @@ impl ConfigStack {
     ///
     /// `Ok(())` on success, or an error if the configuration could not be set.
     pub fn set<T: ConfigValue>(&self, key: &str, value: T) -> Result<()> {
-        Python::with_gil(|py| -> Result<()> {
+        Python::attach(|py| -> Result<()> {
             let py_value = value
                 .into_pyobject(py)
                 .map_err(|_| {
@@ -199,7 +199,7 @@ impl ConfigStack {
 ///
 /// The global configuration stack, or an error if it could not be retrieved.
 pub fn global_stack() -> Result<ConfigStack> {
-    Python::with_gil(|py| -> Result<ConfigStack> {
+    Python::attach(|py| -> Result<ConfigStack> {
         let m = py.import("breezy.config")?;
         let stack = m.call_method0("GlobalStack")?;
         Ok(ConfigStack::new(stack.unbind()))
@@ -229,8 +229,10 @@ pub struct Credentials {
     pub verify_certificates: Option<bool>,
 }
 
-impl FromPyObject<'_> for Credentials {
-    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Credentials {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         let scheme = ob.get_item("scheme")?.extract()?;
         let username = ob.get_item("username")?.extract()?;
         let password = ob.get_item("password")?.extract()?;
@@ -308,7 +310,7 @@ pub trait CredentialStore: Send + Sync {
     ) -> Result<Credentials>;
 }
 
-struct PyCredentialStore(PyObject);
+struct PyCredentialStore(Py<PyAny>);
 
 impl CredentialStore for PyCredentialStore {
     fn get_credentials(
@@ -320,7 +322,7 @@ impl CredentialStore for PyCredentialStore {
         path: Option<&str>,
         realm: Option<&str>,
     ) -> Result<Credentials> {
-        Python::with_gil(|py| -> Result<Credentials> {
+        Python::attach(|py| -> Result<Credentials> {
             let creds = self.0.call_method1(
                 py,
                 "get_credentials",
@@ -360,7 +362,7 @@ impl CredentialStoreWrapper {
 ///
 /// This struct wraps a Python credential store registry, which can be used to
 /// register and retrieve credential stores.
-pub struct CredentialStoreRegistry(PyObject);
+pub struct CredentialStoreRegistry(Py<PyAny>);
 
 impl CredentialStoreRegistry {
     /// Create a new `CredentialStoreRegistry`.
@@ -369,7 +371,7 @@ impl CredentialStoreRegistry {
     ///
     /// A new `CredentialStoreRegistry` instance.
     pub fn new() -> Self {
-        Python::with_gil(|py| -> Self {
+        Python::attach(|py| -> Self {
             let m = py.import("breezy.config").unwrap();
             let registry = m.call_method0("CredentialStoreRegistry").unwrap();
             Self(registry.unbind())
@@ -389,7 +391,7 @@ impl CredentialStoreRegistry {
         &self,
         encoding: Option<&str>,
     ) -> Result<Option<Box<dyn CredentialStore>>> {
-        Python::with_gil(|py| -> Result<Option<Box<dyn CredentialStore>>> {
+        Python::attach(|py| -> Result<Option<Box<dyn CredentialStore>>> {
             let store = match self.0.call_method1(py, "get_credential_store", (encoding,)) {
                 Ok(store) => store,
                 Err(e) if e.is_instance_of::<pyo3::exceptions::PyKeyError>(py) => {
@@ -425,7 +427,7 @@ impl CredentialStoreRegistry {
         path: Option<&str>,
         realm: Option<&str>,
     ) -> Result<Credentials> {
-        Python::with_gil(|py| -> Result<Credentials> {
+        Python::attach(|py| -> Result<Credentials> {
             let creds = self.0.call_method1(
                 py,
                 "get_fallback_credentials",
@@ -446,7 +448,7 @@ impl CredentialStoreRegistry {
     ///
     /// `Ok(())` on success, or an error if the store could not be registered.
     pub fn register(&self, key: &str, store: Box<dyn CredentialStore>) -> Result<()> {
-        Python::with_gil(|py| -> Result<()> {
+        Python::attach(|py| -> Result<()> {
             self.0
                 .call_method1(py, "register", (key, CredentialStoreWrapper(store)))?;
             Ok(())
@@ -464,7 +466,7 @@ impl CredentialStoreRegistry {
     ///
     /// `Ok(())` on success, or an error if the store could not be registered.
     pub fn register_fallback(&self, store: Box<dyn CredentialStore>) -> Result<()> {
-        Python::with_gil(|py| -> Result<()> {
+        Python::attach(|py| -> Result<()> {
             let kwargs = pyo3::types::PyDict::new(py);
             kwargs.set_item("fallback", true)?;
             self.0.call_method(

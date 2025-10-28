@@ -16,10 +16,10 @@ use std::path::{Path, PathBuf};
 ///
 /// This struct represents a source for pristine tarballs stored
 /// in a pristine-tar branch.
-pub struct PristineTarSource(PyObject);
+pub struct PristineTarSource(Py<PyAny>);
 
-impl From<PyObject> for PristineTarSource {
-    fn from(obj: PyObject) -> Self {
+impl From<Py<PyAny>> for PristineTarSource {
+    fn from(obj: Py<PyAny>) -> Self {
         PristineTarSource(obj)
     }
 }
@@ -35,10 +35,10 @@ impl<'py> IntoPyObject<'py> for PristineTarSource {
 }
 
 /// A source for upstream versions (uscan, debian/rules, etc).
-pub struct UpstreamBranchSource(PyObject);
+pub struct UpstreamBranchSource(Py<PyAny>);
 
-impl From<PyObject> for UpstreamBranchSource {
-    fn from(obj: PyObject) -> Self {
+impl From<Py<PyAny>> for UpstreamBranchSource {
+    fn from(obj: Py<PyAny>) -> Self {
         UpstreamBranchSource(obj)
     }
 }
@@ -69,8 +69,10 @@ pub struct Tarball {
 /// A collection of tarballs.
 pub type Tarballs = Vec<Tarball>;
 
-impl FromPyObject<'_> for Tarball {
-    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Tarball {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         Ok(Tarball {
             filename: ob.get_item(0)?.extract()?,
             component: ob.get_item(1)?.extract()?,
@@ -94,8 +96,8 @@ impl<'py> IntoPyObject<'py> for Tarball {
 ///
 /// This trait is implemented by wrappers around Python upstream source objects.
 pub trait PyUpstreamSource: std::any::Any + std::fmt::Debug {
-    /// Get the underlying PyObject
-    fn as_pyobject(&self) -> &PyObject;
+    /// Get the underlying Py<PyAny>
+    fn as_pyobject(&self) -> &Py<PyAny>;
 }
 
 /// Trait for upstream sources.
@@ -181,7 +183,7 @@ impl<T: PyUpstreamSource> UpstreamSource for T {
         package: Option<&str>,
         current_version: Option<&str>,
     ) -> Result<Option<(String, String)>, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             Ok(self
                 .as_pyobject()
                 .call_method1(py, "get_latest_version", (package, current_version))?
@@ -195,7 +197,7 @@ impl<T: PyUpstreamSource> UpstreamSource for T {
         since_version: Option<&str>,
     ) -> Box<dyn Iterator<Item = (String, String)>> {
         let mut ret = vec![];
-        Python::with_gil(|py| -> PyResult<()> {
+        Python::attach(|py| -> PyResult<()> {
             let recent_versions = self.as_pyobject().call_method1(
                 py,
                 "get_recent_versions",
@@ -219,7 +221,7 @@ impl<T: PyUpstreamSource> UpstreamSource for T {
         version: &str,
         tarballs: Option<Tarballs>,
     ) -> Result<HashMap<TarballKind, (RevisionId, PathBuf)>, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             Ok(self
                 .as_pyobject()
                 .call_method1(py, "version_as_revisions", (package, version, tarballs))?
@@ -233,7 +235,7 @@ impl<T: PyUpstreamSource> UpstreamSource for T {
         version: &str,
         tarballs: Option<Tarballs>,
     ) -> Result<bool, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             Ok(self
                 .as_pyobject()
                 .call_method1(py, "has_version", (package, version, tarballs))?
@@ -248,7 +250,7 @@ impl<T: PyUpstreamSource> UpstreamSource for T {
         target_dir: &Path,
         components: Option<&[TarballKind]>,
     ) -> Result<Vec<PathBuf>, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             Ok(self
                 .as_pyobject()
                 .call_method1(
@@ -265,7 +267,7 @@ impl<T: PyUpstreamSource> UpstreamSource for T {
 ///
 /// This struct provides a way to interact with any upstream source
 /// from Python code, regardless of its specific implementation.
-pub struct GenericUpstreamSource(PyObject);
+pub struct GenericUpstreamSource(Py<PyAny>);
 
 impl<'py> IntoPyObject<'py> for GenericUpstreamSource {
     type Target = PyAny;
@@ -277,14 +279,16 @@ impl<'py> IntoPyObject<'py> for GenericUpstreamSource {
     }
 }
 
-impl FromPyObject<'_> for GenericUpstreamSource {
-    fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(GenericUpstreamSource(obj.clone().unbind()))
+impl<'a, 'py> FromPyObject<'a, 'py> for GenericUpstreamSource {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Ok(GenericUpstreamSource(obj.to_owned().unbind()))
     }
 }
 
 impl PyUpstreamSource for GenericUpstreamSource {
-    fn as_pyobject(&self) -> &PyObject {
+    fn as_pyobject(&self) -> &Py<PyAny> {
         &self.0
     }
 }
@@ -294,7 +298,7 @@ impl GenericUpstreamSource {
     ///
     /// # Arguments
     /// * `obj` - The Python object representing an upstream source.
-    pub fn new(obj: PyObject) -> Self {
+    pub fn new(obj: Py<PyAny>) -> Self {
         Self(obj)
     }
 }
@@ -306,7 +310,7 @@ impl std::fmt::Debug for GenericUpstreamSource {
 }
 
 impl PyUpstreamSource for UpstreamBranchSource {
-    fn as_pyobject(&self) -> &PyObject {
+    fn as_pyobject(&self) -> &Py<PyAny> {
         &self.0
     }
 }
@@ -323,7 +327,7 @@ impl UpstreamBranchSource {
     /// # Returns
     /// A branch object representing the upstream branch.
     pub fn upstream_branch(&self) -> Box<dyn PyBranch> {
-        let o = Python::with_gil(|py| self.as_pyobject().getattr(py, "upstream_branch").unwrap());
+        let o = Python::attach(|py| self.as_pyobject().getattr(py, "upstream_branch").unwrap());
         Box::new(crate::branch::GenericBranch::from(o))
     }
 
@@ -340,7 +344,7 @@ impl UpstreamBranchSource {
         source_name: Option<&str>,
         mangled_upstream_version: &str,
     ) -> Result<crate::tree::RevisionTree, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             Ok(crate::tree::RevisionTree(self.as_pyobject().call_method1(
                 py,
                 "revision_tree",
@@ -364,7 +368,7 @@ impl UpstreamBranchSource {
         version: &str,
         tarballs: Option<Tarballs>,
     ) -> Result<(RevisionId, PathBuf), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             Ok(self
                 .as_pyobject()
                 .call_method1(py, "version_as_revision", (package, version, tarballs))?
@@ -393,7 +397,7 @@ impl UpstreamBranchSource {
                 + 'static,
         >,
     ) -> Result<Self, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let m = py.import("breezy.plugins.debian.upstream.branch").unwrap();
             let cls = m.getattr("UpstreamBranchSource").unwrap();
             let upstream_branch = upstream_branch.to_object(py);
@@ -404,7 +408,7 @@ impl UpstreamBranchSource {
                 let create_dist = move |args: &Bound<'_, PyTuple>,
                                         _kwargs: Option<&Bound<'_, PyDict>>|
                       -> PyResult<_> {
-                    let args = args.extract::<(PyObject, String, String, PathBuf, PathBuf)>()?;
+                    let args = args.extract::<(Py<PyAny>, String, String, PathBuf, PathBuf)>()?;
                     create_dist(
                         &crate::tree::RevisionTree(args.0),
                         &args.1,
@@ -427,7 +431,7 @@ impl UpstreamBranchSource {
 }
 
 impl PyUpstreamSource for PristineTarSource {
-    fn as_pyobject(&self) -> &PyObject {
+    fn as_pyobject(&self) -> &Py<PyAny> {
         &self.0
     }
 }
@@ -452,7 +456,7 @@ impl PristineTarSource {
         tarballs: Option<Tarballs>,
         try_hard: bool,
     ) -> Result<bool, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             Ok(self
                 .as_pyobject()
                 .call_method1(py, "has_version", (package, version, tarballs, try_hard))?
@@ -475,7 +479,7 @@ pub fn upstream_version_add_revision(
     sep: Option<&str>,
 ) -> Result<String, Error> {
     let sep = sep.unwrap_or("+");
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let m = py.import("breezy.plugins.debian.upstream.branch").unwrap();
         let upstream_version_add_revision = m.getattr("upstream_version_add_revision").unwrap();
         Ok(upstream_version_add_revision
@@ -504,7 +508,7 @@ pub fn get_pristine_tar_source(
     packaging_tree: &dyn PyTree,
     packaging_branch: &dyn PyBranch,
 ) -> Result<PristineTarSource, Error> {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let m = py.import("breezy.plugins.debian.upstream").unwrap();
         let cls = m.getattr("get_pristine_tar_source").unwrap();
         Ok(PristineTarSource(
@@ -536,7 +540,7 @@ pub fn run_dist_command(
     include_controldir: bool,
     subpath: &Path,
 ) -> Result<bool, Error> {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let m = py.import("breezy.plugins.debian.upstream").unwrap();
         let run_dist_command = m.getattr("run_dist_command").unwrap();
         let kwargs = PyDict::new(py);

@@ -17,7 +17,7 @@ pub fn export<T: crate::tree::PyTree>(
     target: &std::path::Path,
     subdir: Option<&std::path::Path>,
 ) -> Result<(), crate::error::Error> {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let m = py.import("breezy.export").unwrap();
         let export = m.getattr("export").unwrap();
         let kwargs = PyDict::new(py);

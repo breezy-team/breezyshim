@@ -31,7 +31,7 @@ pub fn clean_tree(
     dry_run: bool,
     no_prompt: bool,
 ) -> Result<(), Error> {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let m = py.import("breezy.clean_tree")?;
         let f = m.getattr("clean_tree")?;
         let kwargs = PyDict::new(py);

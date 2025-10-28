@@ -21,7 +21,7 @@ pub enum Error {
 
 impl From<PyErr> for Error {
     fn from(e: PyErr) -> Self {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             if e.is_instance_of::<UnrelatedBranches>(py) {
                 Error::UnrelatedBranches
             } else {
@@ -35,7 +35,7 @@ impl From<PyErr> for Error {
 ///
 /// This struct provides methods to configure and perform merges between branches,
 /// including finding the base revision, setting merge parameters, and executing the merge.
-pub struct Merger(PyObject);
+pub struct Merger(Py<PyAny>);
 
 /// Types of merge algorithms that can be used.
 pub enum MergeType {
@@ -46,8 +46,8 @@ pub enum MergeType {
     Merge3,
 }
 
-impl From<PyObject> for Merger {
-    fn from(obj: PyObject) -> Self {
+impl From<Py<PyAny>> for Merger {
+    fn from(obj: Py<PyAny>) -> Self {
         Merger(obj)
     }
 }
@@ -65,7 +65,7 @@ impl Merger {
     ///
     /// A new Merger object
     pub fn new<T: PyTree>(branch: &dyn PyBranch, this_tree: &T, revision_graph: &Graph) -> Self {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let m = py.import("breezy.merge").unwrap();
             let cls = m.getattr("Merger").unwrap();
             let kwargs = PyDict::new(py);
@@ -86,7 +86,7 @@ impl Merger {
     ///
     /// The base revision ID if found, or None if the branches are unrelated
     pub fn find_base(&self) -> Result<Option<RevisionId>, crate::error::Error> {
-        Python::with_gil(|py| match self.0.call_method0(py, "find_base") {
+        Python::attach(|py| match self.0.call_method0(py, "find_base") {
             Ok(_py_obj) => Ok(self
                 .0
                 .getattr(py, "base_rev_id")
@@ -119,7 +119,7 @@ impl Merger {
         other_revision: &RevisionId,
         other_branch: &dyn PyBranch,
     ) -> Result<(), crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.0.call_method1(
                 py,
                 "set_other_revision",
@@ -144,7 +144,7 @@ impl Merger {
         base_revision: &RevisionId,
         base_branch: &dyn PyBranch,
     ) -> Result<(), crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.0.call_method1(
                 py,
                 "set_base_revision",
@@ -160,7 +160,7 @@ impl Merger {
     ///
     /// * `merge_type` - The merge algorithm to use
     pub fn set_merge_type(&mut self, merge_type: MergeType) {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let m = py.import("breezy.merge").unwrap();
             let merge_type = match merge_type {
                 MergeType::Merge3 => m.getattr("Merge3Merger").unwrap(),
@@ -175,7 +175,7 @@ impl Merger {
     ///
     /// A Submerger object that can perform the actual merge
     pub fn make_merger(&self) -> Result<Submerger, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let merger = self.0.call_method0(py, "make_merger")?;
             Ok(Submerger(merger))
         })
@@ -199,7 +199,7 @@ impl Merger {
         other: &RevisionId,
         tree_branch: &dyn PyBranch,
     ) -> Result<Self, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let m = py.import("breezy.merge").unwrap();
             let cls = m.getattr("Merger").unwrap();
             let kwargs = PyDict::new(py);
@@ -224,7 +224,7 @@ impl Merger {
 ///
 /// This struct is created by the Merger.make_merger() method and provides
 /// methods to execute the merge and create transformations.
-pub struct Submerger(PyObject);
+pub struct Submerger(Py<PyAny>);
 
 impl Submerger {
     /// Create a preview transformation of the merge.
@@ -236,7 +236,7 @@ impl Submerger {
     ///
     /// A TreeTransform object representing the merge changes
     pub fn make_preview_transform(&self) -> Result<TreeTransform, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let transform = self.0.call_method0(py, "make_preview_transform")?;
             Ok(TreeTransform::from(transform))
         })

@@ -61,8 +61,10 @@ impl TreeDelta {
             || !self.modified.is_empty()
     }
 }
-impl FromPyObject<'_> for TreeDelta {
-    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for TreeDelta {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         let added = ob.getattr("added")?.extract()?;
         let removed = ob.getattr("removed")?.extract()?;
         let renamed = ob.getattr("renamed")?.extract()?;

@@ -7,17 +7,17 @@ use crate::graph::Key;
 use crate::versionedfiles::PyVersionedFiles;
 use pyo3::prelude::*;
 
-pub struct GroupCompressVersionedFiles(PyObject);
+pub struct GroupCompressVersionedFiles(Py<PyAny>);
 
 impl GroupCompressVersionedFiles {
-    pub fn new(py_obj: PyObject) -> Self {
+    pub fn new(py_obj: Py<PyAny>) -> Self {
         Self(py_obj)
     }
 
     pub fn from_transport(
         py: Python,
         transport: &crate::transport::Transport,
-        index: Option<PyObject>,
+        index: Option<Py<PyAny>>,
         delta: bool,
         _is_locked: impl Fn() -> bool + 'static,
         track_external_parent_refs: bool,
@@ -50,24 +50,24 @@ impl GroupCompressVersionedFiles {
     }
 
     pub fn without_fallbacks(&self) -> Result<Self, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let obj = self.0.call_method0(py, "without_fallbacks")?;
             Ok(GroupCompressVersionedFiles(obj))
         })
     }
 
     pub fn get_missing_compression_parent_keys(&self) -> Result<Vec<Key>, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let result = self
                 .0
                 .call_method0(py, "get_missing_compression_parent_keys")?;
             let keys_iter = result
-                .downcast_bound::<pyo3::types::PyIterator>(py)
+                .cast_bound::<pyo3::types::PyIterator>(py)
                 .map_err(|_| pyo3::exceptions::PyTypeError::new_err("Expected iterator"))?;
 
             let mut keys = Vec::new();
             for key_py in keys_iter {
-                let key = Key::extract_bound(&key_py?)?;
+                let key = key_py?.extract::<Key>()?;
                 keys.push(key);
             }
             Ok(keys)
@@ -77,12 +77,12 @@ impl GroupCompressVersionedFiles {
 
 impl Clone for GroupCompressVersionedFiles {
     fn clone(&self) -> Self {
-        Python::with_gil(|py| GroupCompressVersionedFiles(self.0.clone_ref(py)))
+        Python::attach(|py| GroupCompressVersionedFiles(self.0.clone_ref(py)))
     }
 }
 
 impl PyVersionedFiles for GroupCompressVersionedFiles {
-    fn to_object(&self, py: Python) -> PyObject {
+    fn to_object(&self, py: Python) -> Py<PyAny> {
         self.0.clone_ref(py)
     }
 }
@@ -97,13 +97,15 @@ impl<'py> IntoPyObject<'py> for GroupCompressVersionedFiles {
     }
 }
 
-impl<'py> FromPyObject<'py> for GroupCompressVersionedFiles {
-    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
-        Ok(GroupCompressVersionedFiles(ob.clone().unbind()))
+impl<'a, 'py> FromPyObject<'a, 'py> for GroupCompressVersionedFiles {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Ok(GroupCompressVersionedFiles(ob.to_owned().unbind()))
     }
 }
 
-pub struct GroupCompressor(PyObject);
+pub struct GroupCompressor(Py<PyAny>);
 
 impl GroupCompressor {
     pub fn new(py: Python) -> PyResult<Self> {
@@ -126,7 +128,7 @@ impl GroupCompressor {
         expected_sha: Option<&str>,
         soft: bool,
     ) -> Result<(Option<String>, usize, Option<CompressorRecord>), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             // Convert lines to bytes as GroupCompressor expects bytes
             let lines_bytes: Vec<_> = lines
                 .iter()
@@ -137,7 +139,7 @@ impl GroupCompressor {
             // Calculate total length
             let length: usize = lines.iter().map(|l| l.len()).sum();
 
-            let expected_sha_arg: PyObject = if let Some(sha) = expected_sha {
+            let expected_sha_arg: Py<PyAny> = if let Some(sha) = expected_sha {
                 pyo3::types::PyBytes::new(py, sha.as_bytes())
                     .unbind()
                     .into()
@@ -158,7 +160,7 @@ impl GroupCompressor {
             )?;
 
             let tuple = result
-                .downcast_bound::<pyo3::types::PyTuple>(py)
+                .cast_bound::<pyo3::types::PyTuple>(py)
                 .map_err(|_| pyo3::exceptions::PyTypeError::new_err("Expected tuple"))?;
 
             // compress returns (sha1, start_offset, end_offset, type)
@@ -167,7 +169,7 @@ impl GroupCompressor {
             } else {
                 let item0 = tuple.get_item(0)?;
                 let sha_bytes = item0
-                    .downcast::<pyo3::types::PyBytes>()
+                    .cast::<pyo3::types::PyBytes>()
                     .map_err(|_| pyo3::exceptions::PyTypeError::new_err("Expected bytes"))?;
                 Some(
                     std::str::from_utf8(sha_bytes.as_bytes())
@@ -189,7 +191,7 @@ impl GroupCompressor {
     }
 
     pub fn flush(&self) -> Result<CompressorRecord, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let record = self.0.call_method0(py, "flush")?;
             Ok(CompressorRecord(record))
         })
@@ -198,30 +200,30 @@ impl GroupCompressor {
 
 impl Clone for GroupCompressor {
     fn clone(&self) -> Self {
-        Python::with_gil(|py| GroupCompressor(self.0.clone_ref(py)))
+        Python::attach(|py| GroupCompressor(self.0.clone_ref(py)))
     }
 }
 
-pub struct CompressorRecord(PyObject);
+pub struct CompressorRecord(Py<PyAny>);
 
 impl CompressorRecord {
     pub fn to_chunks(&self) -> Result<(usize, Vec<Vec<u8>>), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let result = self.0.call_method0(py, "to_chunks")?;
             let tuple = result
-                .downcast_bound::<pyo3::types::PyTuple>(py)
+                .cast_bound::<pyo3::types::PyTuple>(py)
                 .map_err(|_| pyo3::exceptions::PyTypeError::new_err("Expected tuple"))?;
 
             let total_bytes = tuple.get_item(0)?.extract::<usize>()?;
             let chunks_item = tuple.get_item(1)?;
             let chunks_list = chunks_item
-                .downcast::<pyo3::types::PyList>()
+                .cast::<pyo3::types::PyList>()
                 .map_err(|_| pyo3::exceptions::PyTypeError::new_err("Expected list"))?;
 
             let mut chunks = Vec::new();
             for chunk_py in chunks_list {
                 let chunk_bytes = chunk_py
-                    .downcast::<pyo3::types::PyBytes>()
+                    .cast::<pyo3::types::PyBytes>()
                     .map_err(|_| pyo3::exceptions::PyTypeError::new_err("Expected bytes"))?;
                 chunks.push(chunk_bytes.as_bytes().to_vec());
             }
@@ -230,10 +232,10 @@ impl CompressorRecord {
     }
 
     pub fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let result = self.0.call_method0(py, "to_bytes")?;
             let bytes = result
-                .downcast_bound::<pyo3::types::PyBytes>(py)
+                .cast_bound::<pyo3::types::PyBytes>(py)
                 .map_err(|_| pyo3::exceptions::PyTypeError::new_err("Expected bytes"))?;
             Ok(bytes.as_bytes().to_vec())
         })
@@ -242,7 +244,7 @@ impl CompressorRecord {
 
 impl Clone for CompressorRecord {
     fn clone(&self) -> Self {
-        Python::with_gil(|py| CompressorRecord(self.0.clone_ref(py)))
+        Python::attach(|py| CompressorRecord(self.0.clone_ref(py)))
     }
 }
 
@@ -255,7 +257,7 @@ mod tests {
         crate::init();
         crate::init_bzr();
 
-        pyo3::Python::with_gil(|py| {
+        pyo3::Python::attach(|py| {
             let compressor = GroupCompressor::new_for_testing(py).unwrap();
 
             let key = Key::from(vec!["file1".to_string()]);
@@ -275,7 +277,7 @@ mod tests {
         crate::init();
         crate::init_bzr();
 
-        pyo3::Python::with_gil(|py| {
+        pyo3::Python::attach(|py| {
             let compressor = GroupCompressor::new_for_testing(py).unwrap();
 
             let key = Key::from(vec!["file2".to_string()]);

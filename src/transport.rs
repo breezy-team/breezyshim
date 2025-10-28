@@ -5,22 +5,22 @@ use pyo3::types::PyDict;
 use std::path::{Path, PathBuf};
 
 /// A transport represents a way to access content in a branch.
-pub struct Transport(PyObject);
+pub struct Transport(Py<PyAny>);
 
 impl Transport {
     /// Create a new transport from a Python object.
-    pub fn new(obj: PyObject) -> Self {
+    pub fn new(obj: Py<PyAny>) -> Self {
         Transport(obj)
     }
 
-    /// Get the underlying PyObject.
-    pub(crate) fn as_pyobject(&self) -> &PyObject {
+    /// Get the underlying Py<PyAny>.
+    pub(crate) fn as_pyobject(&self) -> &Py<PyAny> {
         &self.0
     }
 
     /// Get the base URL of this transport.
     pub fn base(&self) -> url::Url {
-        pyo3::Python::with_gil(|py| {
+        pyo3::Python::attach(|py| {
             self.as_pyobject()
                 .getattr(py, "base")
                 .unwrap()
@@ -34,7 +34,7 @@ impl Transport {
     /// Check if this is a local transport.
     pub fn is_local(&self) -> bool {
         pyo3::import_exception!(breezy.errors, NotLocalUrl);
-        pyo3::Python::with_gil(|py| {
+        pyo3::Python::attach(|py| {
             self.0
                 .call_method1(py, "local_abspath", (".",))
                 .map(|_| true)
@@ -51,7 +51,7 @@ impl Transport {
 
     /// Get the local absolute path for a path within this transport.
     pub fn local_abspath(&self, path: &Path) -> Result<PathBuf, Error> {
-        pyo3::Python::with_gil(|py| {
+        pyo3::Python::attach(|py| {
             Ok(self
                 .0
                 .call_method1(py, "local_abspath", (path.to_string_lossy().as_ref(),))?
@@ -61,7 +61,7 @@ impl Transport {
 
     /// Check if a path exists in this transport.
     pub fn has(&self, path: &str) -> Result<bool, Error> {
-        pyo3::Python::with_gil(|py| {
+        pyo3::Python::attach(|py| {
             Ok(self
                 .0
                 .call_method1(py, "has", (path,))?
@@ -72,7 +72,7 @@ impl Transport {
 
     /// Ensure the base directory exists.
     pub fn ensure_base(&self) -> Result<(), Error> {
-        pyo3::Python::with_gil(|py| {
+        pyo3::Python::attach(|py| {
             self.0.call_method0(py, "ensure_base")?;
             Ok(())
         })
@@ -80,7 +80,7 @@ impl Transport {
 
     /// Create all the directories leading up to the final path component.
     pub fn create_prefix(&self) -> Result<(), Error> {
-        pyo3::Python::with_gil(|py| {
+        pyo3::Python::attach(|py| {
             self.0.call_method0(py, "create_prefix")?;
             Ok(())
         })
@@ -88,16 +88,18 @@ impl Transport {
 
     /// Create a new transport with a different path.
     pub fn clone(&self, path: &str) -> Result<Transport, Error> {
-        pyo3::Python::with_gil(|py| {
+        pyo3::Python::attach(|py| {
             let o = self.0.call_method1(py, "clone", (path,))?;
             Ok(Transport(o))
         })
     }
 }
 
-impl FromPyObject<'_> for Transport {
-    fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(Transport(obj.clone().unbind()))
+impl<'a, 'py> FromPyObject<'a, 'py> for Transport {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Ok(Transport(obj.to_owned().unbind()))
     }
 }
 
@@ -120,7 +122,7 @@ pub fn get_transport(
     url: &url::Url,
     possible_transports: Option<&mut Vec<Transport>>,
 ) -> Result<Transport, Error> {
-    pyo3::Python::with_gil(|py| {
+    pyo3::Python::attach(|py| {
         let urlutils = py.import("breezy.transport").unwrap();
         let kwargs = PyDict::new(py);
         kwargs.set_item(
@@ -128,7 +130,7 @@ pub fn get_transport(
             possible_transports.map(|t| {
                 t.iter()
                     .map(|t| t.0.clone_ref(py))
-                    .collect::<Vec<PyObject>>()
+                    .collect::<Vec<Py<PyAny>>>()
             }),
         )?;
         let o = urlutils.call_method("get_transport", (url.to_string(),), Some(&kwargs))?;
@@ -220,7 +222,7 @@ mod tests {
         let url = url::Url::from_file_path(td.path()).unwrap();
         let transport = get_transport(&url, None).unwrap();
 
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let _pyobj = transport.into_pyobject(py).unwrap();
         });
     }

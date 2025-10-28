@@ -6,30 +6,32 @@ use pyo3::types::PyTuple;
 use pyo3::types::PyTupleMethods;
 
 /// A tree transform is used to apply a set of changes to a tree.
-pub struct TreeTransform(PyObject);
+pub struct TreeTransform(Py<PyAny>);
 
 #[derive(Clone)]
 /// Represents a change to a file or directory in a tree transformation.
 pub struct TreeChange {}
 
-impl From<PyObject> for TreeChange {
-    fn from(_ob: PyObject) -> Self {
+impl From<Py<PyAny>> for TreeChange {
+    fn from(_ob: Py<PyAny>) -> Self {
         TreeChange {}
     }
 }
 
-impl FromPyObject<'_> for TreeChange {
-    fn extract_bound(_ob: &Bound<PyAny>) -> PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for TreeChange {
+    type Error = PyErr;
+
+    fn extract(_ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         Ok(TreeChange {})
     }
 }
 
 /// Represents a conflict that occurs during a tree transformation.
-pub struct Conflict(PyObject);
+pub struct Conflict(Py<PyAny>);
 
 impl Clone for Conflict {
     fn clone(&self) -> Self {
-        Python::with_gil(|py| Conflict(self.0.clone_ref(py)))
+        Python::attach(|py| Conflict(self.0.clone_ref(py)))
     }
 }
 
@@ -38,7 +40,7 @@ impl Conflict {
     pub fn associated_filenames(&self) -> Result<Vec<PathBuf>, crate::error::Error> {
         let mut v: Vec<PathBuf> = vec![];
 
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let ret = self.0.getattr(py, "associated_filenames")?;
 
             for item in ret.bind(py).try_iter()? {
@@ -51,7 +53,7 @@ impl Conflict {
 
     /// Get a human-readable description of this conflict.
     pub fn describe(&self) -> Result<String, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let ret = self.0.call_method0(py, "describe")?;
             Ok(ret.extract(py)?)
         })
@@ -59,7 +61,7 @@ impl Conflict {
 
     /// Clean up any temporary files created by this conflict.
     pub fn cleanup<T: PyTree>(&self, tree: &T) -> Result<(), crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.0.call_method1(py, "cleanup", (tree.to_object(py),))?;
             Ok(())
         })
@@ -67,7 +69,7 @@ impl Conflict {
 }
 
 /// A tree that shows what a tree would look like after applying a transform.
-pub struct PreviewTree(PyObject);
+pub struct PreviewTree(Py<PyAny>);
 
 impl<'py> IntoPyObject<'py> for PreviewTree {
     type Target = PyAny;
@@ -79,24 +81,24 @@ impl<'py> IntoPyObject<'py> for PreviewTree {
     }
 }
 
-impl From<PyObject> for PreviewTree {
-    fn from(ob: PyObject) -> Self {
+impl From<Py<PyAny>> for PreviewTree {
+    fn from(ob: Py<PyAny>) -> Self {
         PreviewTree(ob)
     }
 }
 
 impl TreeTransform {
-    fn to_object(&self) -> &PyObject {
+    fn to_object(&self) -> &Py<PyAny> {
         &self.0
     }
 
-    /// Get the underlying PyObject.
-    pub(crate) fn as_pyobject(&self) -> &PyObject {
+    /// Get the underlying Py<PyAny>.
+    pub(crate) fn as_pyobject(&self) -> &Py<PyAny> {
         &self.0
     }
     /// Apply the transform to the tree.
     pub fn finalize(&self) -> Result<(), crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object().call_method0(py, "finalize")?;
             Ok(())
         })
@@ -108,7 +110,7 @@ impl TreeTransform {
     ) -> Result<Box<dyn Iterator<Item = TreeChange>>, crate::error::Error> {
         let mut v: Vec<TreeChange> = vec![];
 
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let ret = self.to_object().call_method0(py, "iter_changes")?;
 
             for item in ret.bind(py).try_iter()? {
@@ -123,7 +125,7 @@ impl TreeTransform {
     pub fn cooked_conflicts(&self) -> Result<Vec<Conflict>, crate::error::Error> {
         let mut v: Vec<Conflict> = vec![];
 
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let ret = self.to_object().getattr(py, "cooked_conflicts")?;
 
             for item in ret.bind(py).try_iter()? {
@@ -136,15 +138,15 @@ impl TreeTransform {
 
     /// Get a preview tree showing what would happen if this transform was applied.
     pub fn get_preview_tree(&self) -> Result<PreviewTree, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let ret = self.to_object().getattr(py, "preview_tree")?;
             Ok(PreviewTree(ret))
         })
     }
 }
 
-impl From<PyObject> for TreeTransform {
-    fn from(ob: PyObject) -> Self {
+impl From<Py<PyAny>> for TreeTransform {
+    fn from(ob: Py<PyAny>) -> Self {
         TreeTransform(ob)
     }
 }
@@ -159,9 +161,11 @@ impl<'py> IntoPyObject<'py> for TreeTransform {
     }
 }
 
-impl FromPyObject<'_> for TreeTransform {
-    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(TreeTransform(ob.clone().unbind()))
+impl<'a, 'py> FromPyObject<'a, 'py> for TreeTransform {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Ok(TreeTransform(ob.to_owned().unbind()))
     }
 }
 
@@ -169,8 +173,10 @@ impl FromPyObject<'_> for TreeTransform {
 /// An identifier for a transformation operation.
 pub struct TransId(String);
 
-impl FromPyObject<'_> for TransId {
-    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for TransId {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         Ok(TransId(ob.extract::<String>()?))
     }
 }
@@ -259,8 +265,10 @@ impl<'py> IntoPyObject<'py> for RawConflict {
     }
 }
 
-impl FromPyObject<'_> for RawConflict {
-    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for RawConflict {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         let tuple = ob.extract::<Bound<PyTuple>>()?;
 
         match tuple.get_item(0)?.extract::<String>()?.as_str() {
