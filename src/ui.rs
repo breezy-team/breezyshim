@@ -5,7 +5,7 @@ use pyo3::prelude::*;
 /// Python UI factory trait.
 pub trait PyUIFactory: std::any::Any + std::fmt::Debug {
     /// Get the underlying Python object for this UI factory.
-    fn to_object(&self, py: Python) -> PyObject;
+    fn to_object(&self, py: Python) -> Py<PyAny>;
 }
 
 /// UI factory trait.
@@ -14,12 +14,12 @@ pub trait UIFactory: std::fmt::Debug {}
 impl<T: PyUIFactory> UIFactory for T {}
 
 /// UI factory that does not output anything.
-pub struct SilentUIFactory(PyObject);
+pub struct SilentUIFactory(Py<PyAny>);
 
 impl SilentUIFactory {
     /// Create a new silent UI factory.
     pub fn new() -> Self {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             SilentUIFactory(
                 py.import("breezy.ui")
                     .unwrap()
@@ -40,7 +40,7 @@ impl Default for SilentUIFactory {
 }
 
 /// Generic wrapper for a Python UI factory.
-pub struct GenericUIFactory(PyObject);
+pub struct GenericUIFactory(Py<PyAny>);
 
 impl<'py> IntoPyObject<'py> for GenericUIFactory {
     type Target = PyAny;
@@ -62,13 +62,13 @@ impl<'a, 'py> FromPyObject<'a, 'py> for GenericUIFactory {
 
 impl GenericUIFactory {
     /// Create a new generic UI factory from a Python object.
-    pub fn new(obj: PyObject) -> Self {
+    pub fn new(obj: Py<PyAny>) -> Self {
         Self(obj)
     }
 }
 
 impl PyUIFactory for GenericUIFactory {
-    fn to_object(&self, py: Python) -> PyObject {
+    fn to_object(&self, py: Python) -> Py<PyAny> {
         self.0.clone_ref(py)
     }
 }
@@ -90,7 +90,7 @@ impl<'py> IntoPyObject<'py> for SilentUIFactory {
 }
 
 impl PyUIFactory for SilentUIFactory {
-    fn to_object(&self, py: Python) -> PyObject {
+    fn to_object(&self, py: Python) -> Py<PyAny> {
         self.0.clone_ref(py)
     }
 }
@@ -103,7 +103,7 @@ impl std::fmt::Debug for SilentUIFactory {
 
 /// Install a UI factory globally.
 pub fn install_ui_factory(factory: &dyn PyUIFactory) {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let m = py.import("breezy.ui").unwrap();
         m.setattr("ui_factory", factory.to_object(py)).unwrap();
     });
@@ -111,7 +111,7 @@ pub fn install_ui_factory(factory: &dyn PyUIFactory) {
 
 /// Get the current global UI factory.
 pub fn get_ui_factory() -> Box<dyn PyUIFactory> {
-    Box::new(GenericUIFactory::new(Python::with_gil(|py| {
+    Box::new(GenericUIFactory::new(Python::attach(|py| {
         let m = py.import("breezy.ui").unwrap();
         m.getattr("ui_factory").unwrap().unbind()
     }))) as Box<dyn PyUIFactory>

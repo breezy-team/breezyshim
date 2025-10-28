@@ -7,10 +7,10 @@ use pyo3::prelude::*;
 /// providing RAII (Resource Acquisition Is Initialization) style locking.
 ///
 /// This ensures that locked resources are properly released even if an error occurs.
-pub struct Lock(PyObject);
+pub struct Lock(Py<PyAny>);
 
-impl From<PyObject> for Lock {
-    fn from(obj: PyObject) -> Self {
+impl From<Py<PyAny>> for Lock {
+    fn from(obj: Py<PyAny>) -> Self {
         Lock(obj)
     }
 }
@@ -27,7 +27,7 @@ impl<'py> IntoPyObject<'py> for Lock {
 
 impl Drop for Lock {
     fn drop(&mut self) {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.0.call_method0(py, "unlock").unwrap();
         });
     }

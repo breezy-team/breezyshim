@@ -9,10 +9,10 @@ use std::collections::{HashMap, HashSet};
 ///
 /// Tags allow associating human-readable names with specific revision IDs.
 /// This struct provides methods to manage and query these tags.
-pub struct Tags(PyObject);
+pub struct Tags(Py<PyAny>);
 
-impl From<PyObject> for Tags {
-    fn from(obj: PyObject) -> Self {
+impl From<Py<PyAny>> for Tags {
+    fn from(obj: Py<PyAny>) -> Self {
         Tags(obj)
     }
 }
@@ -27,7 +27,7 @@ impl Tags {
     pub fn get_reverse_tag_dict(
         &self,
     ) -> Result<HashMap<RevisionId, HashSet<String>>, crate::error::Error> {
-        Python::with_gil(|py| self.0.call_method0(py, "get_reverse_tag_dict")?.extract(py))
+        Python::attach(|py| self.0.call_method0(py, "get_reverse_tag_dict")?.extract(py))
             .map_err(Into::into)
     }
 
@@ -38,7 +38,7 @@ impl Tags {
     /// A HashMap mapping each tag name to the revision ID it points to,
     /// or an error if the operation fails
     pub fn get_tag_dict(&self) -> Result<HashMap<String, RevisionId>, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.0
                 .call_method0(py, intern!(py, "get_tag_dict"))?
                 .extract(py)
@@ -56,7 +56,7 @@ impl Tags {
     ///
     /// The revision ID the tag points to, or an error if the tag doesn't exist
     pub fn lookup_tag(&self, tag: &str) -> Result<RevisionId, Error> {
-        Ok(Python::with_gil(|py| {
+        Ok(Python::attach(|py| {
             self.0.call_method1(py, "lookup_tag", (tag,))?.extract(py)
         })?)
     }
@@ -71,7 +71,7 @@ impl Tags {
     ///
     /// `true` if the tag exists, `false` otherwise
     pub fn has_tag(&self, tag: &str) -> bool {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.0
                 .call_method1(py, "has_tag", (tag,))
                 .unwrap()
@@ -91,7 +91,7 @@ impl Tags {
     ///
     /// `Ok(())` on success, or an error if the operation fails
     pub fn set_tag(&self, tag: &str, revision_id: &RevisionId) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.0
                 .call_method1(py, "set_tag", (tag, revision_id.clone()))
         })?;
@@ -108,7 +108,7 @@ impl Tags {
     ///
     /// `Ok(())` on success, or an error if the operation fails
     pub fn delete_tag(&self, tag: &str) -> Result<(), Error> {
-        Python::with_gil(|py| self.0.call_method1(py, "delete_tag", (tag,)))?;
+        Python::attach(|py| self.0.call_method1(py, "delete_tag", (tag,)))?;
         Ok(())
     }
 }

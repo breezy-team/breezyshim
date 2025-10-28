@@ -10,7 +10,7 @@ use pyo3::prelude::*;
 /// This struct can detect Mercurial repositories but does not provide
 /// functionality to interact with them directly. It requires the Breezy
 /// Mercurial plugin to be installed.
-pub struct SmartHgProber(PyObject);
+pub struct SmartHgProber(Py<PyAny>);
 
 impl SmartHgProber {
     /// Create a new SmartHgProber instance.
@@ -20,7 +20,7 @@ impl SmartHgProber {
     /// Some(SmartHgProber) if the Mercurial plugin is installed,
     /// None otherwise.
     pub fn new() -> Option<Self> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let m = match py.import("breezy.plugins.hg") {
                 Ok(m) => m,
                 Err(e) => {
@@ -65,7 +65,7 @@ impl std::fmt::Debug for SmartHgProber {
 }
 
 impl crate::controldir::PyProber for SmartHgProber {
-    fn to_object(&self, py: Python) -> PyObject {
+    fn to_object(&self, py: Python) -> Py<PyAny> {
         self.0.clone_ref(py)
     }
 }

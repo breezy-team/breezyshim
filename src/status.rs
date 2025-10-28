@@ -15,7 +15,7 @@ use pyo3::prelude::*;
 ///
 /// `Ok(())` on success, or an error if the operation fails
 pub fn show_tree_status(wt: &dyn PyWorkingTree) -> crate::Result<()> {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let m = py.import("breezy.status")?;
         let f = m.getattr("show_tree_status")?;
         f.call1((&wt.to_object(py),))?;

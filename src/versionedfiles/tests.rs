@@ -36,7 +36,7 @@ mod tests {
     #[test]
     fn test_weave_basic_operations() {
         init();
-        pyo3::Python::with_gil(|py| {
+        pyo3::Python::attach(|py| {
             // Import the weave module
             py.import("breezy.bzr.weave").ok();
             let weave = crate::weave::Weave::new_empty(py).unwrap();

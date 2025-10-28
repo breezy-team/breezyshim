@@ -9,7 +9,7 @@ use pyo3::prelude::*;
 ///
 /// This struct can detect Subversion repositories but requires the Breezy
 /// Subversion plugin to be installed.
-pub struct SvnRepositoryProber(PyObject);
+pub struct SvnRepositoryProber(Py<PyAny>);
 
 impl SvnRepositoryProber {
     /// Create a new SvnRepositoryProber instance.
@@ -19,7 +19,7 @@ impl SvnRepositoryProber {
     /// Some(SvnRepositoryProber) if the Subversion plugin is installed,
     /// None otherwise.
     pub fn new() -> Option<Self> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let m = match py.import("breezy.plugins.svn") {
                 Ok(m) => m,
                 Err(e) => {
@@ -64,7 +64,7 @@ impl std::fmt::Debug for SvnRepositoryProber {
 }
 
 impl crate::controldir::PyProber for SvnRepositoryProber {
-    fn to_object(&self, py: Python) -> PyObject {
+    fn to_object(&self, py: Python) -> Py<PyAny> {
         self.0.clone_ref(py)
     }
 }

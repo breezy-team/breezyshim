@@ -8,16 +8,16 @@ use pyo3::types::PyDict;
 use std::hash::Hash;
 
 /// Represents a code forge (hosting service) like GitHub, GitLab, etc.
-pub struct Forge(PyObject);
+pub struct Forge(Py<PyAny>);
 
 impl Clone for Forge {
     fn clone(&self) -> Self {
-        Forge(Python::with_gil(|py| self.0.clone_ref(py)))
+        Forge(Python::attach(|py| self.0.clone_ref(py)))
     }
 }
 
-impl From<PyObject> for Forge {
-    fn from(obj: PyObject) -> Self {
+impl From<Py<PyAny>> for Forge {
+    fn from(obj: Py<PyAny>) -> Self {
         Forge(obj)
     }
 }
@@ -114,16 +114,16 @@ impl<'a, 'py> FromPyObject<'a, 'py> for MergeProposalStatus {
 }
 
 /// A merge proposal (pull request) on a code hosting service.
-pub struct MergeProposal(PyObject);
+pub struct MergeProposal(Py<PyAny>);
 
 impl Clone for MergeProposal {
     fn clone(&self) -> Self {
-        MergeProposal(Python::with_gil(|py| self.0.clone_ref(py)))
+        MergeProposal(Python::attach(|py| self.0.clone_ref(py)))
     }
 }
 
-impl From<PyObject> for MergeProposal {
-    fn from(obj: PyObject) -> Self {
+impl From<Py<PyAny>> for MergeProposal {
+    fn from(obj: Py<PyAny>) -> Self {
         MergeProposal(obj)
     }
 }
@@ -136,7 +136,7 @@ impl MergeProposal {
 
     /// Reopens a previously closed merge proposal.
     pub fn reopen(&self) -> Result<(), crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.0.call_method0(py, "reopen")?;
             Ok(())
         })
@@ -144,7 +144,7 @@ impl MergeProposal {
 
     /// Closes an open merge proposal without merging it.
     pub fn close(&self) -> Result<(), crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.0.call_method0(py, "close")?;
             Ok(())
         })
@@ -152,7 +152,7 @@ impl MergeProposal {
 
     /// Returns the URL of the merge proposal.
     pub fn url(&self) -> Result<url::Url, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let url = self.0.getattr(py, "url")?;
             Ok(url.extract::<String>(py)?.parse().unwrap())
         })
@@ -160,7 +160,7 @@ impl MergeProposal {
 
     /// Checks if the merge proposal has been merged.
     pub fn is_merged(&self) -> Result<bool, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let is_merged = self.0.call_method0(py, "is_merged")?;
             is_merged.extract(py).map_err(Into::into)
         })
@@ -168,7 +168,7 @@ impl MergeProposal {
 
     /// Checks if the merge proposal has been closed without being merged.
     pub fn is_closed(&self) -> Result<bool, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let is_closed = self.0.call_method0(py, "is_closed")?;
             is_closed.extract(py).map_err(Into::into)
         })
@@ -176,7 +176,7 @@ impl MergeProposal {
 
     /// Retrieves the title of the merge proposal.
     pub fn get_title(&self) -> Result<Option<String>, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let title = self.0.call_method0(py, "get_title")?;
             title.extract(py).map_err(Into::into)
         })
@@ -184,7 +184,7 @@ impl MergeProposal {
 
     /// Sets the title of the merge proposal.
     pub fn set_title(&self, title: Option<&str>) -> Result<(), crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.0.call_method1(py, "set_title", (title,))?;
             Ok(())
         })
@@ -192,7 +192,7 @@ impl MergeProposal {
 
     /// Retrieves the commit message associated with the merge proposal.
     pub fn get_commit_message(&self) -> Result<Option<String>, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let commit_message = self.0.call_method0(py, "get_commit_message")?;
             commit_message.extract(py).map_err(Into::into)
         })
@@ -203,7 +203,7 @@ impl MergeProposal {
         &self,
         commit_message: Option<&str>,
     ) -> Result<(), crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.0
                 .call_method1(py, "set_commit_message", (commit_message,))?;
             Ok(())
@@ -212,7 +212,7 @@ impl MergeProposal {
 
     /// Returns the URL of the target branch for this merge proposal.
     pub fn get_target_branch_url(&self) -> Result<Option<url::Url>, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let target_branch_url = self.0.call_method0(py, "get_target_branch_url")?;
             target_branch_url
                 .extract::<String>(py)?
@@ -224,7 +224,7 @@ impl MergeProposal {
 
     /// Returns the URL of the source branch for this merge proposal.
     pub fn get_source_branch_url(&self) -> Result<Option<url::Url>, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let source_branch_url = self.0.call_method0(py, "get_source_branch_url")?;
             source_branch_url
                 .extract::<String>(py)?
@@ -236,7 +236,7 @@ impl MergeProposal {
 
     /// Retrieves the description of the merge proposal.
     pub fn get_description(&self) -> Result<Option<String>, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let description = self.0.call_method0(py, "get_description")?;
             description.extract(py).map_err(Into::into)
         })
@@ -244,7 +244,7 @@ impl MergeProposal {
 
     /// Sets the description of the merge proposal.
     pub fn set_description(&self, description: Option<&str>) -> Result<(), crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.0.call_method1(py, "set_description", (description,))?;
             Ok(())
         })
@@ -252,7 +252,7 @@ impl MergeProposal {
 
     /// Checks if the merge proposal can currently be merged.
     pub fn can_be_merged(&self) -> Result<bool, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let can_be_merged = self.0.call_method0(py, "can_be_merged")?;
             can_be_merged.extract(py).map_err(Into::into)
         })
@@ -260,7 +260,7 @@ impl MergeProposal {
 
     /// Checks if the merge proposal supports automatic merging.
     pub fn supports_auto_merge(&self) -> bool {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.0
                 .getattr(py, "supports_auto_merge")
                 .unwrap()
@@ -273,7 +273,7 @@ impl MergeProposal {
     ///
     /// The `auto` parameter determines whether to use automatic merging.
     pub fn merge(&self, auto: bool) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.0.call_method1(py, "merge", (auto,))?;
             Ok(())
         })
@@ -281,7 +281,7 @@ impl MergeProposal {
 
     /// Returns the web URL for viewing the merge proposal in a browser.
     pub fn get_web_url(&self) -> Result<url::Url, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let web_url = self.0.call_method0(py, "get_web_url")?;
             web_url
                 .extract::<String>(py)?
@@ -292,7 +292,7 @@ impl MergeProposal {
 
     /// Returns the username of the person who merged this proposal, if it has been merged.
     pub fn get_merged_by(&self) -> Result<Option<String>, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let merged_by = self.0.call_method0(py, "get_merged_by")?;
             merged_by.extract(py).map_err(Into::into)
         })
@@ -302,7 +302,7 @@ impl MergeProposal {
     pub fn get_merged_at(
         &self,
     ) -> Result<Option<chrono::DateTime<chrono::Utc>>, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let merged_at = self.0.call_method0(py, "get_merged_at")?;
             merged_at
                 .extract::<Option<chrono::DateTime<chrono::Utc>>>(py)
@@ -313,12 +313,12 @@ impl MergeProposal {
 
 #[pyclass]
 /// Builder for creating merge proposals.
-pub struct ProposalBuilder(PyObject, Py<PyDict>);
+pub struct ProposalBuilder(Py<PyAny>, Py<PyDict>);
 
 impl ProposalBuilder {
     /// Sets the description for the merge proposal being built.
     pub fn description(self, description: &str) -> Self {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.1
                 .bind(py)
                 .set_item("description", description)
@@ -329,7 +329,7 @@ impl ProposalBuilder {
 
     /// Sets the labels for the merge proposal being built.
     pub fn labels(self, labels: &[&str]) -> Self {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.1.bind(py).set_item("labels", labels).unwrap();
         });
         self
@@ -337,7 +337,7 @@ impl ProposalBuilder {
 
     /// Sets the reviewers for the merge proposal being built.
     pub fn reviewers(self, reviewers: &[&str]) -> Self {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.1.bind(py).set_item("reviewers", reviewers).unwrap();
         });
         self
@@ -345,7 +345,7 @@ impl ProposalBuilder {
 
     /// Sets whether to allow collaboration for the merge proposal being built.
     pub fn allow_collaboration(self, allow_collaboration: bool) -> Self {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.1
                 .bind(py)
                 .set_item("allow_collaboration", allow_collaboration)
@@ -356,7 +356,7 @@ impl ProposalBuilder {
 
     /// Sets the title for the merge proposal being built.
     pub fn title(self, title: &str) -> Self {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.1.bind(py).set_item("title", title).unwrap();
         });
         self
@@ -364,7 +364,7 @@ impl ProposalBuilder {
 
     /// Sets the commit message for the merge proposal being built.
     pub fn commit_message(self, commit_message: &str) -> Self {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.1
                 .bind(py)
                 .set_item("commit_message", commit_message)
@@ -375,7 +375,7 @@ impl ProposalBuilder {
 
     /// Sets whether the merge proposal is a work in progress.
     pub fn work_in_progress(self, work_in_progress: bool) -> Self {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.1
                 .bind(py)
                 .set_item("work_in_progress", work_in_progress)
@@ -386,7 +386,7 @@ impl ProposalBuilder {
 
     /// Creates the merge proposal with all configured properties.
     pub fn build(self) -> Result<MergeProposal, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let kwargs = self.1;
             let proposal = self
                 .0
@@ -397,7 +397,7 @@ impl ProposalBuilder {
 }
 
 impl Forge {
-    fn to_object(&self) -> &PyObject {
+    fn to_object(&self) -> &Py<PyAny> {
         &self.0
     }
     /// Retrieves a merge proposal by its URL.
@@ -405,7 +405,7 @@ impl Forge {
         &self,
         url: &url::Url,
     ) -> Result<MergeProposal, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let proposal = self
                 .0
                 .call_method1(py, "get_proposal_by_url", (url.as_str(),))?;
@@ -415,7 +415,7 @@ impl Forge {
 
     /// Returns the web URL for a given branch on this forge.
     pub fn get_web_url(&self, branch: &dyn PyBranch) -> Result<url::Url, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let forge_obj = self.to_object();
             let branch_obj = branch.to_object(py);
             let url = forge_obj
@@ -428,7 +428,7 @@ impl Forge {
 
     /// Returns the base URL of this forge.
     pub fn base_url(&self) -> url::Url {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let base_url = self.0.getattr(py, "base_url").unwrap();
             base_url.extract::<String>(py).unwrap().parse().unwrap()
         })
@@ -436,17 +436,17 @@ impl Forge {
 
     /// Returns the kind of forge (e.g., GitHub, GitLab).
     pub fn forge_kind(&self) -> String {
-        Python::with_gil(|py| self.0.bind(py).get_type().name().unwrap().to_string())
+        Python::attach(|py| self.0.bind(py).get_type().name().unwrap().to_string())
     }
 
     /// Returns the name of the forge.
     pub fn forge_name(&self) -> String {
-        Python::with_gil(|py| self.0.bind(py).get_type().name().unwrap().to_string())
+        Python::attach(|py| self.0.bind(py).get_type().name().unwrap().to_string())
     }
 
     /// Returns the format used for merge proposal descriptions on this forge.
     pub fn merge_proposal_description_format(&self) -> String {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let merge_proposal_description_format = self
                 .to_object()
                 .getattr(py, "merge_proposal_description_format")
@@ -457,7 +457,7 @@ impl Forge {
 
     /// Checks if this forge supports setting commit messages for merge proposals.
     pub fn supports_merge_proposal_commit_message(&self) -> bool {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let supports_merge_proposal_commit_message = self
                 .to_object()
                 .getattr(py, "supports_merge_proposal_commit_message")
@@ -468,7 +468,7 @@ impl Forge {
 
     /// Checks if this forge supports setting titles for merge proposals.
     pub fn supports_merge_proposal_title(&self) -> bool {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let supports_merge_proposal_title = self
                 .to_object()
                 .getattr(py, "supports_merge_proposal_title")
@@ -479,7 +479,7 @@ impl Forge {
 
     /// Checks if this forge supports adding labels to merge proposals.
     pub fn supports_merge_proposal_labels(&self) -> bool {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let supports_merge_proposal_labels = self
                 .to_object()
                 .getattr(py, "supports_merge_proposal_labels")
@@ -494,7 +494,7 @@ impl Forge {
         from_branch: &dyn PyBranch,
         to_branch: &dyn PyBranch,
     ) -> Result<ProposalBuilder, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let from_branch_obj = from_branch.to_object(py);
             let to_branch_obj = to_branch.to_object(py);
             Ok(ProposalBuilder(
@@ -512,7 +512,7 @@ impl Forge {
         author: Option<String>,
     ) -> Result<impl Iterator<Item = MergeProposal>, Error> {
         let ret: Vec<MergeProposal> =
-            Python::with_gil(|py| -> Result<Vec<MergeProposal>, Error> {
+            Python::attach(|py| -> Result<Vec<MergeProposal>, Error> {
                 Ok(self
                     .0
                     .call_method(py, "iter_my_proposals", (status, author), None)?
@@ -533,7 +533,7 @@ impl Forge {
         owner: Option<&str>,
         preferred_schemes: Option<&[&str]>,
     ) -> Result<Box<dyn Branch>, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let kwargs = PyDict::new(py);
             if let Some(owner) = owner {
                 kwargs.set_item("owner", owner)?;
@@ -558,12 +558,12 @@ impl Forge {
         target_branch: &dyn PyBranch,
         status: MergeProposalStatus,
     ) -> Result<impl Iterator<Item = MergeProposal>, crate::error::Error> {
-        Python::with_gil(move |py| {
+        Python::attach(move |py| {
             let kwargs = PyDict::new(py);
             let source_branch_obj = source_branch.to_object(py);
             let target_branch_obj = target_branch.to_object(py);
             kwargs.set_item("status", status.to_string())?;
-            let proposal_iter: PyObject = self
+            let proposal_iter: Py<PyAny> = self
                 .0
                 .call_method(
                     py,
@@ -602,7 +602,7 @@ impl Forge {
         revision_id: Option<&RevisionId>,
         tag_selector: Option<Box<dyn Fn(String) -> bool>>,
     ) -> Result<(Box<dyn Branch>, url::Url), crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let kwargs = PyDict::new(py);
             let local_branch_obj = local_branch.to_object(py);
             let base_branch_obj = base_branch.to_object(py);
@@ -623,7 +623,7 @@ impl Forge {
             if let Some(tag_selector) = tag_selector {
                 kwargs.set_item("tag_selector", py_tag_selector(py, tag_selector)?)?;
             }
-            let (b, u): (PyObject, String) = forge_obj
+            let (b, u): (Py<PyAny>, String) = forge_obj
                 .call_method(py, "publish_derived", (), Some(&kwargs))?
                 .extract(py)?;
             Ok((
@@ -635,7 +635,7 @@ impl Forge {
 
     /// Returns the URL for pushing to a branch on this forge.
     pub fn get_push_url(&self, branch: &dyn PyBranch) -> url::Url {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let forge_obj = self.to_object();
             let branch_obj = branch.to_object(py);
             let url = forge_obj
@@ -649,7 +649,7 @@ impl Forge {
 
     /// Returns the URL for a user's profile on this forge.
     pub fn get_user_url(&self, user: &str) -> Result<url::Url, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let url = self
                 .to_object()
                 .call_method1(py, "get_user_url", (user,))
@@ -662,7 +662,7 @@ impl Forge {
 
     /// Returns the username of the currently authenticated user.
     pub fn get_current_user(&self) -> Result<Option<String>, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let user = self
                 .to_object()
                 .call_method0(py, "get_current_user")
@@ -711,7 +711,7 @@ impl<'py> IntoPyObject<'py> for Forge {
 
 /// Returns the forge associated with the given branch.
 pub fn get_forge(branch: &dyn PyBranch) -> Result<Forge, Error> {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let m = py.import("breezy.forge").unwrap();
         let forge = m.call_method1("get_forge", (branch.to_object(py),))?;
         Ok(Forge(forge.unbind()))
@@ -720,7 +720,7 @@ pub fn get_forge(branch: &dyn PyBranch) -> Result<Forge, Error> {
 
 /// Returns a forge instance for the given hostname.
 pub fn get_forge_by_hostname(hostname: &str) -> Result<Forge, Error> {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let m = py.import("breezy.forge").unwrap();
         let forge = m.call_method1("get_forge_by_hostname", (hostname,))?;
         Ok(Forge(forge.unbind()))
@@ -729,7 +729,7 @@ pub fn get_forge_by_hostname(hostname: &str) -> Result<Forge, Error> {
 
 /// Extracts a title from a description text.
 pub fn determine_title(description: &str) -> Result<String, String> {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let m = py.import("breezy.forge").unwrap();
         let title = match m.call_method1("determine_title", (description,)) {
             Ok(title) => title,
@@ -744,7 +744,7 @@ pub fn determine_title(description: &str) -> Result<String, String> {
 
 /// Returns an iterator over all available forge instances.
 pub fn iter_forge_instances() -> impl Iterator<Item = Forge> {
-    let ret = Python::with_gil(|py| {
+    let ret = Python::attach(|py| {
         let m = py.import("breezy.forge").unwrap();
         let f = m.getattr("iter_forge_instances").unwrap();
         let instances = f.call0().unwrap();
@@ -759,7 +759,7 @@ pub fn iter_forge_instances() -> impl Iterator<Item = Forge> {
 
 /// Creates a new project on a forge with the given name and optional summary.
 pub fn create_project(name: &str, summary: Option<&str>) -> Result<(), Error> {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let m = py.import("breezy.forge").unwrap();
         m.call_method1("create_project", (name, summary))?;
         Ok(())
@@ -768,7 +768,7 @@ pub fn create_project(name: &str, summary: Option<&str>) -> Result<(), Error> {
 
 /// Retrieves a merge proposal by its URL.
 pub fn get_proposal_by_url(url: &url::Url) -> Result<MergeProposal, Error> {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let m = py.import("breezy.forge").unwrap();
         let proposal = m.call_method1("get_proposal_by_url", (url.to_string(),))?;
         Ok(MergeProposal::from(proposal.unbind()))

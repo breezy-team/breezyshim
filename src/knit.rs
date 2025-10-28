@@ -6,10 +6,10 @@ use crate::graph::Key;
 use crate::versionedfiles::PyVersionedFiles;
 use pyo3::prelude::*;
 
-pub struct KnitVersionedFiles(PyObject);
+pub struct KnitVersionedFiles(Py<PyAny>);
 
 impl KnitVersionedFiles {
-    pub fn new(py_obj: PyObject) -> Self {
+    pub fn new(py_obj: Py<PyAny>) -> Self {
         Self(py_obj)
     }
 
@@ -41,12 +41,12 @@ impl KnitVersionedFiles {
 
 impl Clone for KnitVersionedFiles {
     fn clone(&self) -> Self {
-        Python::with_gil(|py| KnitVersionedFiles(self.0.clone_ref(py)))
+        Python::attach(|py| KnitVersionedFiles(self.0.clone_ref(py)))
     }
 }
 
 impl PyVersionedFiles for KnitVersionedFiles {
-    fn to_object(&self, py: Python) -> PyObject {
+    fn to_object(&self, py: Python) -> Py<PyAny> {
         self.0.clone_ref(py)
     }
 }
@@ -186,7 +186,7 @@ mod tests {
         crate::init();
         crate::init_bzr();
 
-        pyo3::Python::with_gil(|py| {
+        pyo3::Python::attach(|py| {
             let key = Key::from(vec!["file1".to_string()]);
             let parents = vec![Key::from(vec!["parent1".to_string()])];
             let factory = KnitPlainFactory::new(
@@ -196,7 +196,7 @@ mod tests {
                 Some(b"delta content".to_vec()),
             );
 
-            // Test conversion to PyObject
+            // Test conversion to Py<PyAny>
             let _py_obj = factory.into_pyobject(py).unwrap();
         });
     }
@@ -206,7 +206,7 @@ mod tests {
         crate::init();
         crate::init_bzr();
 
-        pyo3::Python::with_gil(|py| {
+        pyo3::Python::attach(|py| {
             let key = Key::from(vec!["file1".to_string()]);
             let parents = vec![];
             let annotated_lines = vec![
@@ -221,7 +221,7 @@ mod tests {
             ];
             let factory = KnitAnnotateFactory::new(key, parents, annotated_lines);
 
-            // Test conversion to PyObject
+            // Test conversion to Py<PyAny>
             let _py_obj = factory.into_pyobject(py).unwrap();
         });
     }

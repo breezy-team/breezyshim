@@ -5,10 +5,10 @@
 use crate::error::Error;
 use pyo3::prelude::*;
 
-pub struct WeaveFile(PyObject);
+pub struct WeaveFile(Py<PyAny>);
 
 impl WeaveFile {
-    pub fn new(py_obj: PyObject) -> Self {
+    pub fn new(py_obj: Py<PyAny>) -> Self {
         Self(py_obj)
     }
 
@@ -41,7 +41,7 @@ impl WeaveFile {
         parents: Vec<&str>,
         lines: Vec<&str>,
     ) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let parents_list = pyo3::types::PyList::new(py, parents)?;
             let lines_list = pyo3::types::PyList::new(py, lines)?;
 
@@ -52,10 +52,10 @@ impl WeaveFile {
     }
 
     pub fn get_lines(&self, version_id: &str) -> Result<Vec<String>, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let result = self.0.call_method1(py, "get_lines", (version_id,))?;
             let lines_list = result
-                .downcast_bound::<pyo3::types::PyList>(py)
+                .cast_bound::<pyo3::types::PyList>(py)
                 .map_err(|_| pyo3::exceptions::PyTypeError::new_err("Expected list"))?;
 
             let mut lines = Vec::new();
@@ -67,11 +67,11 @@ impl WeaveFile {
     }
 
     pub fn get_ancestry(&self, version_ids: Vec<&str>) -> Result<Vec<String>, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let ids_list = pyo3::types::PyList::new(py, version_ids)?;
             let result = self.0.call_method1(py, "get_ancestry", (ids_list,))?;
             let ancestry_list = result
-                .downcast_bound::<pyo3::types::PyList>(py)
+                .cast_bound::<pyo3::types::PyList>(py)
                 .map_err(|_| pyo3::exceptions::PyTypeError::new_err("Expected list"))?;
 
             let mut ancestry = Vec::new();
@@ -86,8 +86,8 @@ impl WeaveFile {
         &self,
         version_ids: Option<Vec<&str>>,
     ) -> Result<std::collections::HashMap<String, Vec<String>>, Error> {
-        Python::with_gil(|py| {
-            let ids_arg: PyObject = if let Some(ids) = version_ids {
+        Python::attach(|py| {
+            let ids_arg: Py<PyAny> = if let Some(ids) = version_ids {
                 pyo3::types::PyList::new(py, ids)?.unbind().into()
             } else {
                 py.None()
@@ -95,14 +95,14 @@ impl WeaveFile {
 
             let result = self.0.call_method1(py, "get_parent_map", (ids_arg,))?;
             let parent_dict = result
-                .downcast_bound::<pyo3::types::PyDict>(py)
+                .cast_bound::<pyo3::types::PyDict>(py)
                 .map_err(|_| pyo3::exceptions::PyTypeError::new_err("Expected dict"))?;
 
             let mut parent_map = std::collections::HashMap::new();
             for (key, value) in parent_dict {
                 let version_id = key.extract::<String>()?;
                 let parents_list = value
-                    .downcast::<pyo3::types::PyList>()
+                    .cast::<pyo3::types::PyList>()
                     .map_err(|_| pyo3::exceptions::PyTypeError::new_err("Expected list"))?;
 
                 let mut parents = Vec::new();
@@ -118,7 +118,7 @@ impl WeaveFile {
 
 impl Clone for WeaveFile {
     fn clone(&self) -> Self {
-        Python::with_gil(|py| WeaveFile(self.0.clone_ref(py)))
+        Python::attach(|py| WeaveFile(self.0.clone_ref(py)))
     }
 }
 
@@ -140,10 +140,10 @@ impl<'a, 'py> FromPyObject<'a, 'py> for WeaveFile {
     }
 }
 
-pub struct Weave(PyObject);
+pub struct Weave(Py<PyAny>);
 
 impl Weave {
-    pub fn new(py_obj: PyObject) -> Self {
+    pub fn new(py_obj: Py<PyAny>) -> Self {
         Self(py_obj)
     }
 
@@ -155,7 +155,7 @@ impl Weave {
     }
 
     pub fn add_lines(&self, name: &str, parents: Vec<&str>, text: Vec<&str>) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let parents_list = pyo3::types::PyList::new(py, parents)?;
             // Convert text to bytes as required by weave
             let text_bytes: Vec<_> = text
@@ -171,10 +171,10 @@ impl Weave {
     }
 
     pub fn get_text(&self, name: &str) -> Result<Vec<String>, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let result = self.0.call_method1(py, "get_text", (name,))?;
             let bytes_result = result
-                .downcast_bound::<pyo3::types::PyBytes>(py)
+                .cast_bound::<pyo3::types::PyBytes>(py)
                 .map_err(|_| pyo3::exceptions::PyTypeError::new_err("Expected bytes"))?;
 
             let text = std::str::from_utf8(bytes_result.as_bytes())
@@ -187,11 +187,11 @@ impl Weave {
     }
 
     pub fn get_ancestry(&self, names: Vec<&str>) -> Result<Vec<String>, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let names_list = pyo3::types::PyList::new(py, names)?;
             let result = self.0.call_method1(py, "get_ancestry", (names_list,))?;
             let ancestry_set = result
-                .downcast_bound::<pyo3::types::PySet>(py)
+                .cast_bound::<pyo3::types::PySet>(py)
                 .map_err(|_| pyo3::exceptions::PyTypeError::new_err("Expected set"))?;
 
             let mut ancestry = Vec::new();
@@ -203,7 +203,7 @@ impl Weave {
     }
 
     pub fn numversions(&self) -> Result<usize, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let result = self.0.call_method0(py, "num_versions")?;
             Ok(result.extract::<usize>(py)?)
         })
@@ -212,7 +212,7 @@ impl Weave {
 
 impl Clone for Weave {
     fn clone(&self) -> Self {
-        Python::with_gil(|py| Weave(self.0.clone_ref(py)))
+        Python::attach(|py| Weave(self.0.clone_ref(py)))
     }
 }
 

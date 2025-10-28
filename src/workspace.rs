@@ -60,11 +60,11 @@ pub fn reset_tree(
     // Lock the tree before resetting
     let lock = local_tree.lock_write()?;
 
-    let result = Python::with_gil(|py| {
+    let result = Python::attach(|py| {
         let workspace_m = py.import("breezy.workspace")?;
         let reset_tree = workspace_m.getattr("reset_tree")?;
-        let local_tree: PyObject = local_tree.to_object(py);
-        let basis_tree: Option<PyObject> = basis_tree.map(|o| o.to_object(py));
+        let local_tree: Py<PyAny> = local_tree.to_object(py);
+        let basis_tree: Option<Py<PyAny>> = basis_tree.map(|o| o.to_object(py));
         reset_tree.call1((
             local_tree,
             basis_tree,
@@ -99,11 +99,11 @@ pub fn check_clean_tree(
     // Lock the tree before checking
     let lock = local_tree.lock_read()?;
 
-    let result = Python::with_gil(|py| {
+    let result = Python::attach(|py| {
         let workspace_m = py.import("breezy.workspace")?;
         let check_clean_tree = workspace_m.getattr("check_clean_tree")?;
-        let local_tree: PyObject = local_tree.to_object(py).clone_ref(py);
-        let basis_tree: PyObject = basis_tree.to_object(py).clone_ref(py);
+        let local_tree: Py<PyAny> = local_tree.to_object(py).clone_ref(py);
+        let basis_tree: Py<PyAny> = basis_tree.to_object(py).clone_ref(py);
         check_clean_tree.call1((
             local_tree,
             basis_tree,

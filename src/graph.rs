@@ -22,7 +22,7 @@ pub trait GraphNode: Eq + Hash + Clone {
 ///
 /// This struct provides methods for traversing and querying relationships
 /// between revisions in a version control repository.
-pub struct Graph(PyObject);
+pub struct Graph(Py<PyAny>);
 
 impl<'py> IntoPyObject<'py> for Graph {
     type Target = PyAny;
@@ -42,8 +42,8 @@ impl<'a, 'py> FromPyObject<'a, 'py> for Graph {
     }
 }
 
-impl From<PyObject> for Graph {
-    fn from(ob: PyObject) -> Self {
+impl From<Py<PyAny>> for Graph {
+    fn from(ob: Py<PyAny>) -> Self {
         Graph(ob)
     }
 }
@@ -60,13 +60,13 @@ impl GraphNode for RevisionId {
     }
 }
 
-struct NodeIter<T: GraphNode>(PyObject, std::marker::PhantomData<T>);
+struct NodeIter<T: GraphNode>(Py<PyAny>, std::marker::PhantomData<T>);
 
 impl<T: GraphNode> Iterator for NodeIter<T> {
     type Item = Result<T, crate::error::Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        Python::with_gil(|py| match self.0.call_method0(py, "__next__") {
+        Python::attach(|py| match self.0.call_method0(py, "__next__") {
             Ok(item) => match T::from_pyobject(item.bind(py)) {
                 Ok(node) => Some(Ok(node)),
                 Err(e) => Some(Err(e.into())),
@@ -77,15 +77,15 @@ impl<T: GraphNode> Iterator for NodeIter<T> {
     }
 }
 
-struct TopoOrderIter<T: GraphNode>(PyObject, std::marker::PhantomData<T>);
+struct TopoOrderIter<T: GraphNode>(Py<PyAny>, std::marker::PhantomData<T>);
 
 impl<T: GraphNode> Iterator for TopoOrderIter<T> {
     type Item = Result<(usize, T, usize, bool), crate::error::Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        Python::with_gil(|py| match self.0.call_method0(py, "__next__") {
+        Python::attach(|py| match self.0.call_method0(py, "__next__") {
             Ok(item) => {
-                let tuple = match item.bind(py).downcast::<PyTuple>() {
+                let tuple = match item.bind(py).cast::<PyTuple>() {
                     Ok(t) => t,
                     Err(e) => return Some(Err(PyErr::from(e).into())),
                 };
@@ -115,8 +115,8 @@ impl<T: GraphNode> Iterator for TopoOrderIter<T> {
 }
 
 impl Graph {
-    /// Get the underlying PyObject.
-    pub(crate) fn as_pyobject(&self) -> &PyObject {
+    /// Get the underlying Py<PyAny>.
+    pub(crate) fn as_pyobject(&self) -> &Py<PyAny> {
         &self.0
     }
 
@@ -135,7 +135,7 @@ impl Graph {
         node1: &T,
         node2: &T,
     ) -> Result<bool, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let result = self.0.call_method1(
                 py,
                 "is_ancestor",
@@ -160,7 +160,7 @@ impl Graph {
         node: &T,
         stop_nodes: Option<&[T]>,
     ) -> Result<impl Iterator<Item = Result<T, crate::error::Error>>, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let stop_py = if let Some(nodes) = stop_nodes {
                 let py_nodes: Result<Vec<_>, _> = nodes.iter().map(|n| n.to_pyobject(py)).collect();
                 Some(py_nodes?)
@@ -187,11 +187,11 @@ impl Graph {
     ///
     /// A vector of nodes that are the least common ancestors
     pub fn find_lca<T: GraphNode>(&self, nodes: &[T]) -> Result<Vec<T>, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let py_nodes: Result<Vec<_>, _> = nodes.iter().map(|n| n.to_pyobject(py)).collect();
             let result = self.0.call_method1(py, "find_lca", (py_nodes?,))?;
             let py_set = result
-                .downcast_bound::<pyo3::types::PySet>(py)
+                .cast_bound::<pyo3::types::PySet>(py)
                 .map_err(PyErr::from)?;
             let mut lca_nodes = Vec::new();
             for item in py_set {
@@ -213,11 +213,11 @@ impl Graph {
     ///
     /// A vector of nodes that are heads
     pub fn heads<T: GraphNode>(&self, nodes: &[T]) -> Result<Vec<T>, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let py_nodes: Result<Vec<_>, _> = nodes.iter().map(|n| n.to_pyobject(py)).collect();
             let result = self.0.call_method1(py, "heads", (py_nodes?,))?;
             let py_set = result
-                .downcast_bound::<pyo3::types::PySet>(py)
+                .cast_bound::<pyo3::types::PySet>(py)
                 .map_err(PyErr::from)?;
             let mut head_nodes = Vec::new();
             for item in py_set {
@@ -242,7 +242,7 @@ impl Graph {
         nodes: &[T],
         common_nodes: &[T],
     ) -> Result<Vec<T>, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let py_nodes: Result<Vec<_>, _> = nodes.iter().map(|n| n.to_pyobject(py)).collect();
             let py_common: Result<Vec<_>, _> =
                 common_nodes.iter().map(|n| n.to_pyobject(py)).collect();
@@ -250,7 +250,7 @@ impl Graph {
                 self.0
                     .call_method1(py, "find_unique_ancestors", (py_nodes?, py_common?))?;
             let py_list = result
-                .downcast_bound::<pyo3::types::PyList>(py)
+                .cast_bound::<pyo3::types::PyList>(py)
                 .map_err(PyErr::from)?;
             let mut unique_ancestors = Vec::new();
             for item in py_list {
@@ -275,21 +275,21 @@ impl Graph {
         left_nodes: &[T],
         right_nodes: &[T],
     ) -> Result<(Vec<T>, Vec<T>), crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let py_left: Result<Vec<_>, _> = left_nodes.iter().map(|n| n.to_pyobject(py)).collect();
             let py_right: Result<Vec<_>, _> =
                 right_nodes.iter().map(|n| n.to_pyobject(py)).collect();
             let result = self
                 .0
                 .call_method1(py, "find_difference", (py_left?, py_right?))?;
-            let tuple = result.downcast_bound::<PyTuple>(py).map_err(PyErr::from)?;
+            let tuple = result.cast_bound::<PyTuple>(py).map_err(PyErr::from)?;
 
             let left_only = tuple.get_item(0)?;
             let right_only = tuple.get_item(1)?;
 
             let mut left_result = Vec::new();
             for item in left_only
-                .downcast::<pyo3::types::PySet>()
+                .cast::<pyo3::types::PySet>()
                 .map_err(PyErr::from)?
             {
                 left_result.push(T::from_pyobject(&item)?);
@@ -297,7 +297,7 @@ impl Graph {
 
             let mut right_result = Vec::new();
             for item in right_only
-                .downcast::<pyo3::types::PySet>()
+                .cast::<pyo3::types::PySet>()
                 .map_err(PyErr::from)?
             {
                 right_result.push(T::from_pyobject(&item)?);
@@ -320,7 +320,7 @@ impl Graph {
         &self,
         nodes: &[T],
     ) -> Result<impl Iterator<Item = Result<T, crate::error::Error>>, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let py_nodes: Result<Vec<_>, _> = nodes.iter().map(|n| n.to_pyobject(py)).collect();
             let iter = self.0.call_method1(py, "iter_ancestry", (py_nodes?,))?;
             Ok(NodeIter(iter, std::marker::PhantomData))
@@ -340,11 +340,11 @@ impl Graph {
         &self,
         nodes: &[T],
     ) -> Result<HashMap<T, Vec<T>>, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let py_nodes: Result<Vec<_>, _> = nodes.iter().map(|n| n.to_pyobject(py)).collect();
             let result = self.0.call_method1(py, "get_parent_map", (py_nodes?,))?;
             let py_dict = result
-                .downcast_bound::<pyo3::types::PyDict>(py)
+                .cast_bound::<pyo3::types::PyDict>(py)
                 .map_err(PyErr::from)?;
 
             let mut parent_map = HashMap::new();
@@ -353,7 +353,7 @@ impl Graph {
 
                 let mut parents = Vec::new();
                 for parent in value
-                    .downcast::<pyo3::types::PyTuple>()
+                    .cast::<pyo3::types::PyTuple>()
                     .map_err(PyErr::from)?
                 {
                     parents.push(T::from_pyobject(&parent)?);
@@ -381,7 +381,7 @@ impl Graph {
         ancestor: &T,
         descendant: &T,
     ) -> Result<bool, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let result = self.0.call_method1(
                 py,
                 "is_between",
@@ -411,7 +411,7 @@ impl Graph {
         impl Iterator<Item = Result<(usize, T, usize, bool), crate::error::Error>>,
         crate::error::Error,
     > {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let py_nodes: Result<Vec<_>, _> = nodes.iter().map(|n| n.to_pyobject(py)).collect();
             let iter = self.0.call_method1(py, "iter_topo_order", (py_nodes?,))?;
             Ok(TopoOrderIter(iter, std::marker::PhantomData))
@@ -431,11 +431,11 @@ impl Graph {
         &self,
         nodes: &[T],
     ) -> Result<Vec<T>, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let py_nodes: Result<Vec<_>, _> = nodes.iter().map(|n| n.to_pyobject(py)).collect();
             let result = self.0.call_method1(py, "find_descendants", (py_nodes?,))?;
             let py_set = result
-                .downcast_bound::<pyo3::types::PySet>(py)
+                .cast_bound::<pyo3::types::PySet>(py)
                 .map_err(PyErr::from)?;
             let mut descendants = Vec::new();
             for item in py_set {
@@ -458,13 +458,13 @@ impl Graph {
         &self,
         nodes: &[T],
     ) -> Result<HashMap<T, usize>, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let py_nodes: Result<Vec<_>, _> = nodes.iter().map(|n| n.to_pyobject(py)).collect();
             let result = self
                 .0
                 .call_method1(py, "find_distance_to_null", (py_nodes?,))?;
             let py_dict = result
-                .downcast_bound::<pyo3::types::PyDict>(py)
+                .cast_bound::<pyo3::types::PyDict>(py)
                 .map_err(PyErr::from)?;
 
             let mut distance_map = HashMap::new();
@@ -492,7 +492,7 @@ impl Graph {
         nodes: &[T],
         count: Option<usize>,
     ) -> Result<Option<T>, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let py_nodes: Result<Vec<_>, _> = nodes.iter().map(|n| n.to_pyobject(py)).collect();
             let result = if let Some(c) = count {
                 self.0.call_method1(py, "find_unique_lca", (py_nodes?, c))?
@@ -521,11 +521,11 @@ impl Graph {
         &self,
         nodes: &[T],
     ) -> Result<Vec<T>, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let py_nodes: Result<Vec<_>, _> = nodes.iter().map(|n| n.to_pyobject(py)).collect();
             let result = self.0.call_method1(py, "find_merge_order", (py_nodes?,))?;
             let py_list = result
-                .downcast_bound::<pyo3::types::PyList>(py)
+                .cast_bound::<pyo3::types::PyList>(py)
                 .map_err(PyErr::from)?;
             let mut merge_order = Vec::new();
             for item in py_list {
@@ -550,7 +550,7 @@ impl Graph {
         node: &T,
         tip: Option<&T>,
     ) -> Result<Option<T>, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let args = if let Some(t) = tip {
                 (node.to_pyobject(py)?, t.to_pyobject(py)?)
             } else {
@@ -579,13 +579,13 @@ impl Graph {
         &self,
         nodes: &[T],
     ) -> Result<HashMap<T, usize>, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let py_nodes: Result<Vec<_>, _> = nodes.iter().map(|n| n.to_pyobject(py)).collect();
             let result = self
                 .0
                 .call_method1(py, "find_lefthand_distances", (py_nodes?,))?;
             let py_dict = result
-                .downcast_bound::<pyo3::types::PyDict>(py)
+                .cast_bound::<pyo3::types::PyDict>(py)
                 .map_err(PyErr::from)?;
 
             let mut distance_map = HashMap::new();
@@ -611,11 +611,11 @@ impl Graph {
         &self,
         nodes: &[T],
     ) -> Result<HashMap<T, Vec<T>>, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let py_nodes: Result<Vec<_>, _> = nodes.iter().map(|n| n.to_pyobject(py)).collect();
             let result = self.0.call_method1(py, "get_child_map", (py_nodes?,))?;
             let py_dict = result
-                .downcast_bound::<pyo3::types::PyDict>(py)
+                .cast_bound::<pyo3::types::PyDict>(py)
                 .map_err(PyErr::from)?;
 
             let mut child_map = HashMap::new();
@@ -624,7 +624,7 @@ impl Graph {
 
                 let mut children = Vec::new();
                 for child in value
-                    .downcast::<pyo3::types::PyList>()
+                    .cast::<pyo3::types::PyList>()
                     .map_err(PyErr::from)?
                 {
                     children.push(T::from_pyobject(&child)?);
@@ -666,9 +666,9 @@ impl<'a, 'py> FromPyObject<'a, 'py> for Key {
     type Error = PyErr;
 
     fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
-        let tuple = ob.downcast::<PyTuple>()?;
+        let tuple = ob.cast::<PyTuple>()?;
         let mut items = Vec::new();
-        for item in tuple {
+        for item in tuple.iter() {
             items.push(item.extract::<String>()?);
         }
         Ok(Key(items))
@@ -687,17 +687,17 @@ impl GraphNode for Key {
 }
 
 /// A known graph of file versions
-pub struct KnownGraph(PyObject);
+pub struct KnownGraph(Py<PyAny>);
 
 impl KnownGraph {
     /// Create a new KnownGraph from a Python object
-    pub fn new(py_obj: PyObject) -> Self {
+    pub fn new(py_obj: Py<PyAny>) -> Self {
         Self(py_obj)
     }
 
     /// Get the heads of the given nodes
     pub fn heads<T: GraphNode>(&self, nodes: Vec<T>) -> Result<Vec<T>, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let nodes_py: Vec<_> = nodes
                 .into_iter()
                 .map(|n| n.to_pyobject(py))
@@ -708,7 +708,7 @@ impl KnownGraph {
 
             let mut heads = Vec::new();
             for head_py in result
-                .downcast_bound::<PyIterator>(py)
+                .cast_bound::<PyIterator>(py)
                 .map_err(|_| pyo3::exceptions::PyTypeError::new_err("Expected iterator"))?
             {
                 let head = T::from_pyobject(&head_py?)?;
@@ -722,7 +722,7 @@ impl KnownGraph {
 
 impl Clone for KnownGraph {
     fn clone(&self) -> Self {
-        Python::with_gil(|py| KnownGraph(self.0.clone_ref(py)))
+        Python::attach(|py| KnownGraph(self.0.clone_ref(py)))
     }
 }
 

@@ -12,7 +12,7 @@ use url::Url;
 ///
 /// A URL representing the CVS repository location
 pub fn cvs_to_url(cvsroot: &str) -> Url {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let breezy_location = py.import("breezy.location").unwrap();
 
         breezy_location
@@ -46,7 +46,7 @@ fn test_cvs_to_url() {
 ///
 /// A Result containing the converted URL or an error string
 pub fn rcp_location_to_url(rcp_location: &str) -> Result<Url, String> {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let breezy_location = py.import("breezy.location").unwrap();
 
         Ok(breezy_location
@@ -77,12 +77,12 @@ pub trait AsLocation {
     /// # Returns
     ///
     /// A Python object (string) representing the location
-    fn as_location(&self) -> PyObject;
+    fn as_location(&self) -> Py<PyAny>;
 }
 
 impl AsLocation for &url::Url {
-    fn as_location(&self) -> PyObject {
-        Python::with_gil(|py| {
+    fn as_location(&self) -> Py<PyAny> {
+        Python::attach(|py| {
             pyo3::types::PyString::new(py, self.as_ref())
                 .unbind()
                 .into()
@@ -92,7 +92,7 @@ impl AsLocation for &url::Url {
 
 #[test]
 fn test_as_location_url() {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert_eq!(
             Url::parse("ssh://user@host/path/to/repo")
                 .unwrap()
@@ -106,14 +106,14 @@ fn test_as_location_url() {
 }
 
 impl AsLocation for &str {
-    fn as_location(&self) -> PyObject {
-        Python::with_gil(|py| pyo3::types::PyString::new(py, self).unbind().into())
+    fn as_location(&self) -> Py<PyAny> {
+        Python::attach(|py| pyo3::types::PyString::new(py, self).unbind().into())
     }
 }
 
 #[test]
 fn test_as_location_str() {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert_eq!(
             "ssh://user@host/path/to/repo"
                 .as_location()
@@ -125,8 +125,8 @@ fn test_as_location_str() {
 }
 
 impl AsLocation for &std::path::Path {
-    fn as_location(&self) -> PyObject {
-        Python::with_gil(|py| {
+    fn as_location(&self) -> Py<PyAny> {
+        Python::attach(|py| {
             pyo3::types::PyString::new(py, self.to_str().unwrap())
                 .unbind()
                 .into()
@@ -136,7 +136,7 @@ impl AsLocation for &std::path::Path {
 
 #[test]
 fn test_as_location_path() {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert_eq!(
             std::path::Path::new("/path/to/repo")
                 .as_location()

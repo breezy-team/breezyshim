@@ -21,7 +21,7 @@ pub fn show_diff_trees(
     old_label: Option<&str>,
     new_label: Option<&str>,
 ) -> Result<(), crate::error::Error> {
-    Python::with_gil(|py| -> PyResult<()> {
+    Python::attach(|py| -> PyResult<()> {
         let m = py.import("breezy.diff")?;
         let f = m.getattr("show_diff_trees")?;
 

@@ -5,8 +5,8 @@ use pyo3::intern;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyList};
 
-fn py_patches(iter_patches: impl Iterator<Item = UnifiedPatch>) -> PyResult<PyObject> {
-    Python::with_gil(|py| {
+fn py_patches(iter_patches: impl Iterator<Item = UnifiedPatch>) -> PyResult<Py<PyAny>> {
+    Python::attach(|py| {
         let m = py.import("breezy.patches")?;
         let patchc = m.getattr("Patch")?;
         let hunkc = m.getattr("Hunk")?;
@@ -69,7 +69,7 @@ pub fn apply_patches(
     patches: impl Iterator<Item = UnifiedPatch>,
     prefix: Option<usize>,
 ) -> crate::Result<()> {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let patches = py_patches(patches)?;
         let m = py.import("breezy.tree")?;
         let apply_patches = m.getattr("apply_patches")?;
@@ -82,7 +82,7 @@ pub fn apply_patches(
 ///
 /// This struct provides a way to temporarily apply patches to a tree
 /// and automatically revert them when the object is dropped.
-pub struct AppliedPatches(PyObject, PyObject);
+pub struct AppliedPatches(Py<PyAny>, Py<PyAny>);
 
 impl AppliedPatches {
     /// Create a new AppliedPatches instance.
@@ -101,7 +101,7 @@ impl AppliedPatches {
         patches: Vec<UnifiedPatch>,
         prefix: Option<usize>,
     ) -> crate::Result<Self> {
-        let (ap, tree) = Python::with_gil(|py| -> Result<_, PyErr> {
+        let (ap, tree) = Python::attach(|py| -> Result<_, PyErr> {
             let patches = py_patches(patches.into_iter())?;
             let m = py.import("breezy.patches")?;
             let c = m.getattr("AppliedPatches")?;
@@ -115,7 +115,7 @@ impl AppliedPatches {
 
 impl Drop for AppliedPatches {
     fn drop(&mut self) {
-        Python::with_gil(|py| -> Result<(), PyErr> {
+        Python::attach(|py| -> Result<(), PyErr> {
             self.1.call_method1(
                 py,
                 intern!(py, "__exit__"),
@@ -138,7 +138,7 @@ impl<'py> IntoPyObject<'py> for AppliedPatches {
 }
 
 impl crate::tree::PyTree for AppliedPatches {
-    fn to_object(&self, py: Python) -> PyObject {
+    fn to_object(&self, py: Python) -> Py<PyAny> {
         self.0.clone_ref(py)
     }
 }

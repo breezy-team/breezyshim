@@ -145,7 +145,7 @@ pub trait VersionedFiles: Clone + Send + Sync {
 }
 
 pub trait PyVersionedFiles: VersionedFiles {
-    fn to_object(&self, py: Python) -> PyObject;
+    fn to_object(&self, py: Python) -> Py<PyAny>;
 }
 
 impl<T: PyVersionedFiles> VersionedFiles for T {
@@ -160,7 +160,7 @@ impl<T: PyVersionedFiles> VersionedFiles for T {
         random_id: bool,
         check_content: bool,
     ) -> Result<(String, usize), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let parents_py: Vec<_> = parents
                 .iter()
                 .map(|p| p.clone().into_pyobject(py))
@@ -200,11 +200,11 @@ impl<T: PyVersionedFiles> VersionedFiles for T {
             )?;
 
             let tuple = result
-                .downcast_bound::<PyTuple>(py)
+                .cast_bound::<PyTuple>(py)
                 .map_err(|_| PyValueError::new_err("Expected tuple"))?;
             let item0 = tuple.get_item(0)?;
             let sha1_bytes = item0
-                .downcast::<PyBytes>()
+                .cast::<PyBytes>()
                 .map_err(|_| PyValueError::new_err("Expected bytes"))?;
             let sha1 = std::str::from_utf8(sha1_bytes.as_bytes())
                 .map_err(|_| PyValueError::new_err("Invalid UTF-8 in SHA1"))?
@@ -221,7 +221,7 @@ impl<T: PyVersionedFiles> VersionedFiles for T {
         ordering: RecordOrdering,
         include_delta_closure: bool,
     ) -> Result<RecordStream, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let keys_py: Vec<_> = keys
                 .into_iter()
                 .map(|k| k.into_pyobject(py))
@@ -245,7 +245,7 @@ impl<T: PyVersionedFiles> VersionedFiles for T {
     }
 
     fn get_sha1s(&self, keys: Vec<Key>) -> Result<HashMap<Key, String>, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let keys_py: Vec<_> = keys
                 .into_iter()
                 .map(|k| k.into_pyobject(py))
@@ -257,14 +257,14 @@ impl<T: PyVersionedFiles> VersionedFiles for T {
                 .call_method1(py, "get_sha1s", (keys_list,))?;
 
             let dict = result_dict
-                .downcast_bound::<PyDict>(py)
+                .cast_bound::<PyDict>(py)
                 .map_err(|_| PyValueError::new_err("Expected dict"))?;
             let mut sha1s = HashMap::new();
 
             for (key_py, sha_py) in dict {
                 let key = key_py.extract::<Key>()?;
                 let sha_bytes = sha_py
-                    .downcast::<PyBytes>()
+                    .cast::<PyBytes>()
                     .map_err(|_| PyValueError::new_err("Expected bytes"))?;
                 let sha = std::str::from_utf8(sha_bytes.as_bytes())
                     .map_err(|_| PyValueError::new_err("Invalid UTF-8 in SHA1"))?
@@ -277,7 +277,7 @@ impl<T: PyVersionedFiles> VersionedFiles for T {
     }
 
     fn insert_record_stream(&self, stream: RecordStream) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method1(py, "insert_record_stream", (stream.0,))?;
             Ok(())
@@ -285,12 +285,12 @@ impl<T: PyVersionedFiles> VersionedFiles for T {
     }
 
     fn keys(&self) -> Result<Vec<Key>, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let keys_iter = self.to_object(py).call_method0(py, "keys")?;
 
             let mut keys = Vec::new();
             for key_py in keys_iter
-                .downcast_bound::<PyIterator>(py)
+                .cast_bound::<PyIterator>(py)
                 .map_err(|_| PyValueError::new_err("Expected iterator"))?
             {
                 let key = key_py?.extract::<Key>()?;
@@ -302,7 +302,7 @@ impl<T: PyVersionedFiles> VersionedFiles for T {
     }
 
     fn make_mpdiffs(&self, keys: Vec<Key>) -> Result<Vec<MultiParentDiff>, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let keys_py: Vec<_> = keys
                 .into_iter()
                 .map(|k| k.into_pyobject(py))
@@ -315,7 +315,7 @@ impl<T: PyVersionedFiles> VersionedFiles for T {
 
             let mut diffs = Vec::new();
             for diff_py in result
-                .downcast_bound::<PyIterator>(py)
+                .cast_bound::<PyIterator>(py)
                 .map_err(|_| PyValueError::new_err("Expected iterator"))?
             {
                 let diff = diff_py?.extract::<MultiParentDiff>()?;
@@ -327,7 +327,7 @@ impl<T: PyVersionedFiles> VersionedFiles for T {
     }
 
     fn get_parent_map(&self, keys: Vec<Key>) -> Result<HashMap<Key, Vec<Key>>, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let keys_py: Vec<_> = keys
                 .into_iter()
                 .map(|k| k.into_pyobject(py))
@@ -339,7 +339,7 @@ impl<T: PyVersionedFiles> VersionedFiles for T {
                     .call_method1(py, "get_parent_map", (keys_list,))?;
 
             let dict = result_dict
-                .downcast_bound::<PyDict>(py)
+                .cast_bound::<PyDict>(py)
                 .map_err(|_| PyValueError::new_err("Expected dict"))?;
             let mut parent_map = HashMap::new();
 
@@ -347,7 +347,7 @@ impl<T: PyVersionedFiles> VersionedFiles for T {
                 let key = key_py.extract::<Key>()?;
                 let mut parents = Vec::new();
                 for parent_py in parents_py
-                    .downcast::<PyTuple>()
+                    .cast::<PyTuple>()
                     .map_err(|_| PyValueError::new_err("Expected tuple"))?
                 {
                     let parent = parent_py.extract::<Key>()?;
@@ -361,7 +361,7 @@ impl<T: PyVersionedFiles> VersionedFiles for T {
     }
 
     fn get_known_graph_ancestry(&self, keys: Vec<Key>) -> Result<KnownGraph, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let keys_py: Vec<_> = keys
                 .into_iter()
                 .map(|k| k.into_pyobject(py))
@@ -384,24 +384,24 @@ pub enum RecordOrdering {
     GroupedByKey,
 }
 
-pub struct RecordStream(PyObject);
+pub struct RecordStream(Py<PyAny>);
 
 impl RecordStream {
     pub fn iter(&self) -> Result<RecordStreamIterator, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let iter = self.0.call_method0(py, "__iter__")?;
             Ok(RecordStreamIterator(iter))
         })
     }
 }
 
-pub struct RecordStreamIterator(PyObject);
+pub struct RecordStreamIterator(Py<PyAny>);
 
 impl Iterator for RecordStreamIterator {
     type Item = Result<Record, Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        Python::with_gil(|py| match self.0.call_method0(py, "__next__") {
+        Python::attach(|py| match self.0.call_method0(py, "__next__") {
             Ok(record_py) => Some(record_py.bind(py).extract::<Record>().map_err(Into::into)),
             Err(e) if e.is_instance_of::<pyo3::exceptions::PyStopIteration>(py) => None,
             Err(e) => Some(Err(e.into())),
@@ -427,7 +427,7 @@ impl<'a, 'py> FromPyObject<'a, 'py> for Record {
         let sha1 = if let Ok(sha_bytes) = ob.getattr("sha1") {
             if !sha_bytes.is_none() {
                 let bytes = sha_bytes
-                    .downcast::<PyBytes>()
+                    .cast::<PyBytes>()
                     .map_err(|_| PyValueError::new_err("Expected bytes"))?;
                 Some(
                     std::str::from_utf8(bytes.as_bytes())
@@ -464,7 +464,7 @@ impl<'a, 'py> FromPyObject<'a, 'py> for MultiParentDiff {
 
     fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         let tuple = ob
-            .downcast::<PyTuple>()
+            .cast::<PyTuple>()
             .map_err(|_| PyValueError::new_err("Expected tuple"))?;
         let key = tuple.get_item(0)?.extract::<Key>()?;
         let parents = tuple.get_item(1)?.extract::<Vec<Key>>()?;
@@ -472,7 +472,7 @@ impl<'a, 'py> FromPyObject<'a, 'py> for MultiParentDiff {
         let hunks_py = tuple.get_item(2)?;
         let mut hunks = Vec::new();
         for hunk_py in hunks_py
-            .downcast::<PyList>()
+            .cast::<PyList>()
             .map_err(|_| PyValueError::new_err("Expected list"))?
         {
             hunks.push(hunk_py.extract::<DiffHunk>()?);
@@ -501,7 +501,7 @@ impl<'a, 'py> FromPyObject<'a, 'py> for DiffHunk {
 
     fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         let tuple = ob
-            .downcast::<PyTuple>()
+            .cast::<PyTuple>()
             .map_err(|_| PyValueError::new_err("Expected tuple"))?;
         let hunk_type = tuple.get_item(0)?.extract::<String>()?;
 
@@ -524,22 +524,22 @@ impl<'a, 'py> FromPyObject<'a, 'py> for DiffHunk {
     }
 }
 
-pub struct GenericVersionedFiles(PyObject);
+pub struct GenericVersionedFiles(Py<PyAny>);
 
 impl GenericVersionedFiles {
-    pub fn new(py_obj: PyObject) -> Self {
+    pub fn new(py_obj: Py<PyAny>) -> Self {
         Self(py_obj)
     }
 }
 
 impl Clone for GenericVersionedFiles {
     fn clone(&self) -> Self {
-        Python::with_gil(|py| GenericVersionedFiles(self.0.clone_ref(py)))
+        Python::attach(|py| GenericVersionedFiles(self.0.clone_ref(py)))
     }
 }
 
 impl PyVersionedFiles for GenericVersionedFiles {
-    fn to_object(&self, py: Python) -> PyObject {
+    fn to_object(&self, py: Python) -> Py<PyAny> {
         self.0.clone_ref(py)
     }
 }

@@ -67,7 +67,7 @@ lazy_static::lazy_static! {
     /// Static reference to the BreezyConnectionError class, if it exists.
     ///
     /// This is only present in Breezy versions before 4.0.
-    pub static ref BreezyConnectionError: Option<PyObject> = { Python::with_gil(|py| {
+    pub static ref BreezyConnectionError: Option<Py<PyAny>> = { Python::attach(|py| {
         let m = py.import("breezy.errors").unwrap();
         m.getattr("ConnectionError").ok().map(|x| x.unbind())
     })
@@ -399,7 +399,7 @@ impl std::error::Error for Error {}
 impl From<PyErr> for Error {
     fn from(err: PyErr) -> Self {
         pyo3::import_exception!(socket, error);
-        pyo3::Python::with_gil(|py| {
+        pyo3::Python::attach(|py| {
             let value = err.value(py);
             if err.is_instance_of::<UnknownFormatError>(py) {
                 Error::UnknownFormat(value.getattr("format").unwrap().extract().unwrap())
@@ -659,7 +659,7 @@ impl From<PyErr> for Error {
             } else if BreezyConnectionError
                 .as_ref()
                 .and_then(|cls| {
-                    Python::with_gil(|py| {
+                    Python::attach(|py| {
                         Some(
                             err.is_instance_of::<PyAny>(py)
                                 && err.value(py).is_instance(cls.bind(py)).unwrap(),
@@ -725,7 +725,7 @@ impl From<Error> for PyErr {
             Error::UnknownFormat(s) => UnknownFormatError::new_err((s,)),
             Error::NotBranchError(path, details) => NotBranchError::new_err((path, details)),
             Error::NoColocatedBranchSupport => {
-                Python::with_gil(|py| NoColocatedBranchSupport::new_err((py.None(),)))
+                Python::attach(|py| NoColocatedBranchSupport::new_err((py.None(),)))
             }
             Error::DependencyNotPresent(library, error) => {
                 DependencyNotPresent::new_err((library, error))
@@ -741,7 +741,7 @@ impl From<Error> for PyErr {
             Error::UnsupportedFormat(s) => UnsupportedFormatError::new_err((s,)),
             Error::UnsupportedVcs(s) => UnsupportedVcs::new_err((s,)),
             Error::RemoteGitError(e) => RemoteGitError::new_err((e,)),
-            Error::IncompleteRead(partial, expected) => Python::with_gil(|py| {
+            Error::IncompleteRead(partial, expected) => Python::attach(|py| {
                 let bytes = pyo3::types::PyBytes::new(py, partial.as_slice());
                 IncompleteRead::new_err((bytes.unbind(), expected))
             }),
@@ -756,7 +756,7 @@ impl From<Error> for PyErr {
                 AlreadyBranchError::new_err((path.to_string_lossy().to_string(),))
             }
             Error::DivergedBranches => {
-                Python::with_gil(|py| DivergedBranches::new_err((py.None(), py.None())))
+                Python::attach(|py| DivergedBranches::new_err((py.None(), py.None())))
             }
             Error::WorkspaceDirty(p) => WorkspaceDirty::new_err((p.to_string_lossy().to_string(),)),
             Error::NoSuchFile(p) => NoSuchFile::new_err(p.to_string_lossy().to_string()),
@@ -769,37 +769,37 @@ impl From<Error> for PyErr {
                 error::new_err((e.raw_os_error().unwrap(),))
             }
             Error::ForgeLoginRequired => {
-                Python::with_gil(|py| ForgeLoginRequired::new_err((py.None(),)))
+                Python::attach(|py| ForgeLoginRequired::new_err((py.None(),)))
             }
             Error::UnsupportedForge(url) => UnsupportedForge::new_err((url.to_string(),)),
             Error::ForgeProjectExists(name) => AlreadyControlDirError::new_err((name.to_string(),)),
             Error::MergeProposalExists(source, _target) => {
-                Python::with_gil(|py| MergeProposalExists::new_err((source.to_string(), py.None())))
+                Python::attach(|py| MergeProposalExists::new_err((source.to_string(), py.None())))
             }
             Error::UnsupportedOperation(mname, tname) => {
                 UnsupportedOperation::new_err((mname, tname))
             }
             Error::ProtectedBranchHookDeclined(msg) => ProtectedBranchHookDeclined::new_err((msg,)),
             Error::NoRepositoryPresent => {
-                Python::with_gil(|py| NoRepositoryPresent::new_err((py.None(),)))
+                Python::attach(|py| NoRepositoryPresent::new_err((py.None(),)))
             }
-            Error::LockFailed(why) => Python::with_gil(|py| LockFailed::new_err((py.None(), why))),
+            Error::LockFailed(why) => Python::attach(|py| LockFailed::new_err((py.None(), why))),
             Error::FileExists(p, extra) => {
                 FileExists::new_err((p.to_string_lossy().to_string(), extra))
             }
             Error::LockContention(_lock, msg) => {
-                Python::with_gil(|py| LockContention::new_err((py.None(), msg)))
+                Python::attach(|py| LockContention::new_err((py.None(), msg)))
             }
             Error::NotImplemented => pyo3::exceptions::PyNotImplementedError::new_err(()),
             Error::NoSuchRevisionInTree(rev) => {
-                Python::with_gil(|py| NoSuchRevisionInTree::new_err((py.None(), rev.to_string())))
+                Python::attach(|py| NoSuchRevisionInTree::new_err((py.None(), rev.to_string())))
             }
             Error::MissingNestedTree(p) => {
                 MissingNestedTree::new_err((p.to_string_lossy().to_string(),))
             }
             Error::ImmortalLimbo(p) => ImmortalLimbo::new_err((p.to_string_lossy().to_string(),)),
             Error::MalformedTransform(conflicts) => {
-                MalformedTransform::new_err((Python::with_gil(|py| {
+                MalformedTransform::new_err((Python::attach(|py| {
                     conflicts.into_pyobject(py).unwrap().unbind()
                 }),))
             }
@@ -824,7 +824,7 @@ impl From<Error> for PyErr {
             Error::TransportNotPossible(e) => TransportNotPossible::new_err((e,)),
             Error::IncompatibleFormat(a, b) => IncompatibleFormat::new_err((a, b)),
             Error::NoSuchRevision(rev) => {
-                Python::with_gil(|py| NoSuchRevision::new_err((py.None(), rev.to_string())))
+                Python::attach(|py| NoSuchRevision::new_err((py.None(), rev.to_string())))
             }
             Error::RevisionNotPresent(rev) => RevisionNotPresent::new_err((rev.to_string(),)),
             Error::NoSuchProject(p) => NoSuchProject::new_err((p,)),
@@ -834,7 +834,7 @@ impl From<Error> for PyErr {
             Error::ConflictsInTree => ConflictsInTree::new_err(()),
             Error::SourceNotDerivedFromTarget => SourceNotDerivedFromTarget::new_err(()),
             Error::BranchReferenceLoop => BranchReferenceLoop::new_err(()),
-            Error::ReadOnly => Python::with_gil(|py| ReadOnlyError::new_err((py.None(),))),
+            Error::ReadOnly => Python::attach(|py| ReadOnlyError::new_err((py.None(),))),
             Error::ObjectNotLocked(msg) => ObjectNotLocked::new_err((msg,)),
             Error::RedirectRequested {
                 source,
@@ -842,10 +842,10 @@ impl From<Error> for PyErr {
                 is_permanent,
             } => RedirectRequested::new_err((source.to_string(), target.to_string(), is_permanent)),
             Error::NoRoundtrippingSupport => {
-                Python::with_gil(|py| NoRoundtrippingSupport::new_err((py.None(), py.None())))
+                Python::attach(|py| NoRoundtrippingSupport::new_err((py.None(), py.None())))
             }
             Error::NoCompatibleInter => {
-                Python::with_gil(|py| NoCompatibleInter::new_err((py.None(), py.None())))
+                Python::attach(|py| NoCompatibleInter::new_err((py.None(), py.None())))
             }
         }
     }
@@ -856,7 +856,7 @@ fn test_error_unknownformat() {
     let e = Error::UnknownFormat("foo".to_string());
     let p: PyErr = e.into();
     // Verify that p is an instance of UnknownFormatError
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<UnknownFormatError>(py));
     });
 }
@@ -866,7 +866,7 @@ fn test_error_notbrancherror() {
     let e = Error::NotBranchError("foo".to_string(), Some("bar".to_string()));
     let p: PyErr = e.into();
     // Verify that p is an instance of NotBranchError
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<NotBranchError>(py));
     });
 }
@@ -876,7 +876,7 @@ fn test_error_nocolocatedbranchsupport() {
     let e = Error::NoColocatedBranchSupport;
     let p: PyErr = e.into();
     // Verify that p is an instance of NoColocatedBranchSupport
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<NoColocatedBranchSupport>(py), "{}", p);
     });
 }
@@ -886,7 +886,7 @@ fn test_error_dependencynotpresent() {
     let e = Error::DependencyNotPresent("foo".to_string(), "bar".to_string());
     let p: PyErr = e.into();
     // Verify that p is an instance of DependencyNotPresent
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<DependencyNotPresent>(py));
     });
 }
@@ -896,7 +896,7 @@ fn test_error_permissiondenied() {
     let e = Error::PermissionDenied(std::path::PathBuf::from("foo"), Some("bar".to_string()));
     let p: PyErr = e.into();
     // Verify that p is an instance of PermissionDenied
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<PermissionDenied>(py));
     });
 }
@@ -906,7 +906,7 @@ fn test_error_unsupportedprotocol() {
     let e = Error::UnsupportedProtocol("foo".to_string(), Some("bar".to_string()));
     let p: PyErr = e.into();
     // Verify that p is an instance of UnsupportedProtocol
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<UnsupportedProtocol>(py));
     });
 }
@@ -916,7 +916,7 @@ fn test_error_unusableredirect() {
     let e = Error::UnusableRedirect("foo".to_string(), "bar".to_string(), "baz".to_string());
     let p: PyErr = e.into();
     // Verify that p is an instance of UnusableRedirect
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<UnusableRedirect>(py));
     });
 }
@@ -926,7 +926,7 @@ fn test_error_connectionerror() {
     let e = Error::ConnectionError("foo".to_string());
     let p: PyErr = e.into();
     // Verify that p is an instance of PyConnectionError
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<pyo3::exceptions::PyConnectionError>(py));
     });
 }
@@ -936,7 +936,7 @@ fn test_error_invalidurl() {
     let e = Error::InvalidURL("foo".to_string(), Some("bar".to_string()));
     let p: PyErr = e.into();
     // Verify that p is an instance of InvalidURL
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<InvalidURL>(py));
     });
 }
@@ -946,7 +946,7 @@ fn test_error_transporterror() {
     let e = Error::TransportError("foo".to_string());
     let p: PyErr = e.into();
     // Verify that p is an instance of TransportError
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<TransportError>(py));
     });
 }
@@ -956,7 +956,7 @@ fn test_error_unsupportedformat() {
     let e = Error::UnsupportedFormat("foo".to_string());
     let p: PyErr = e.into();
     // Verify that p is an instance of UnsupportedFormatError
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<UnsupportedFormatError>(py));
     });
 }
@@ -966,7 +966,7 @@ fn test_error_unsupportedvcs() {
     let e = Error::UnsupportedVcs("foo".to_string());
     let p: PyErr = e.into();
     // Verify that p is an instance of UnsupportedVcs
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<UnsupportedVcs>(py));
     });
 }
@@ -976,7 +976,7 @@ fn test_error_remotegiterror() {
     let e = Error::RemoteGitError("foo".to_string());
     let p: PyErr = e.into();
     // Verify that p is an instance of RemoteGitError
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<RemoteGitError>(py));
     });
 }
@@ -986,7 +986,7 @@ fn test_error_incompleteread() {
     let e = Error::IncompleteRead(vec![1, 2, 3], Some(4));
     let p: PyErr = e.into();
     // Verify that p is an instance of IncompleteRead
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<IncompleteRead>(py), "{}", p);
     });
 }
@@ -996,7 +996,7 @@ fn test_error_lineendingerror() {
     let e = Error::LineEndingError("foo".to_string());
     let p: PyErr = e.into();
     // Verify that p is an instance of LineEndingError
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<LineEndingError>(py));
     });
 }
@@ -1011,7 +1011,7 @@ fn test_error_invalidhttpresponse() {
     );
     let p: PyErr = e.into();
     // Verify that p is an instance of InvalidHttpResponse
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<InvalidHttpResponse>(py));
     });
 }
@@ -1021,7 +1021,7 @@ fn test_error_alreadyexists() {
     let e = Error::AlreadyControlDir(std::path::PathBuf::from("foo"));
     let p: PyErr = e.into();
     // Verify that p is an instance of AlreadyControlDirError
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<AlreadyControlDirError>(py), "{}", p);
     });
 }
@@ -1031,7 +1031,7 @@ fn test_error_divergedbranches() {
     let e = Error::DivergedBranches;
     let p: PyErr = e.into();
     // Verify that p is an instance of DivergedBranches
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<DivergedBranches>(py), "{}", p);
     });
 }
@@ -1042,7 +1042,7 @@ fn test_error_workspacedirty() {
     let e = Error::WorkspaceDirty(std::path::PathBuf::from("foo"));
     let p: PyErr = e.into();
     // Verify that p is an instance of WorkspaceDirty
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<WorkspaceDirty>(py), "{}", p);
     });
 }
@@ -1052,7 +1052,7 @@ fn test_error_nosuchfile() {
     let e = Error::NoSuchFile(std::path::PathBuf::from("foo"));
     let p: PyErr = e.into();
     // Verify that p is an instance of NoSuchFile
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<NoSuchFile>(py));
     });
 }
@@ -1062,7 +1062,7 @@ fn test_error_pointlesscommit() {
     let e = Error::PointlessCommit;
     let p: PyErr = e.into();
     // Verify that p is an instance of PointlessCommit
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<PointlessCommit>(py));
     });
 }
@@ -1072,7 +1072,7 @@ fn test_error_nowhoami() {
     let e = Error::NoWhoami;
     let p: PyErr = e.into();
     // Verify that p is an instance of NoWhoami
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<NoWhoami>(py), "{}", p);
     });
 }
@@ -1082,7 +1082,7 @@ fn test_error_nosuchtag() {
     let e = Error::NoSuchTag("foo".to_string());
     let p: PyErr = e.into();
     // Verify that p is an instance of NoSuchTag
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<NoSuchTag>(py));
     });
 }
@@ -1092,7 +1092,7 @@ fn test_error_tagalreadyexists() {
     let e = Error::TagAlreadyExists("foo".to_string());
     let p: PyErr = e.into();
     // Verify that p is an instance of TagAlreadyExists
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<TagAlreadyExists>(py));
     });
 }
@@ -1102,7 +1102,7 @@ fn test_error_socket() {
     let e = Error::Socket(std::io::Error::from_raw_os_error(0));
     let p: PyErr = e.into();
     // Verify that p is an instance of error
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<pyo3::exceptions::PyOSError>(py));
     });
 }
@@ -1112,7 +1112,7 @@ fn test_error_other() {
     let e = Error::Other(PyErr::new::<UnknownFormatError, _>((("foo",),)));
     let p: PyErr = e.into();
     // Verify that p is an instance of error
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<pyo3::exceptions::PyException>(py));
     });
 }
@@ -1122,7 +1122,7 @@ fn test_error_forge_login_required() {
     let e = Error::ForgeLoginRequired;
     let p: PyErr = e.into();
     // Verify that p is an instance of ForgeLoginRequired
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<ForgeLoginRequired>(py));
     });
 }
@@ -1132,7 +1132,7 @@ fn test_error_unsupported_forge() {
     let e = Error::UnsupportedForge("http://example.com".parse().unwrap());
     let p: PyErr = e.into();
     // Verify that p is an instance of UnsupportedForge
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<UnsupportedForge>(py));
     });
 }
@@ -1142,7 +1142,7 @@ fn test_error_forge_project_exists() {
     let e = Error::ForgeProjectExists("foo".to_string());
     let p: PyErr = e.into();
     // Verify that p is an instance of AlreadyControlDirError
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<AlreadyControlDirError>(py), "{}", p);
     });
 }
@@ -1155,7 +1155,7 @@ fn test_error_merge_proposal_exists() {
     );
     let p: PyErr = e.into();
     // Verify that p is an instance of MergeProposalExists
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<MergeProposalExists>(py), "{}", p);
     });
 }
@@ -1166,7 +1166,7 @@ fn test_error_unsupported_operation() {
     let e = Error::UnsupportedOperation("foo".to_string(), "bar".to_string());
     let p: PyErr = e.into();
     // Verify that p is an instance of UnsupportedOperation
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<UnsupportedOperation>(py), "{}", p);
     });
 }
@@ -1176,7 +1176,7 @@ fn test_error_protected_branch_hook_declined() {
     let e = Error::ProtectedBranchHookDeclined("foo".to_string());
     let p: PyErr = e.into();
     // Verify that p is an instance of ProtectedBranchHookDeclined
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<ProtectedBranchHookDeclined>(py), "{}", p);
     });
 }
@@ -1187,7 +1187,7 @@ fn test_error_no_repository_present() {
     let e = Error::NoRepositoryPresent;
     let p: PyErr = e.into();
     // Verify that p is an instance of NoRepositoryPresent
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<NoRepositoryPresent>(py), "{}", p);
     });
 }
@@ -1198,7 +1198,7 @@ fn test_error_lock_failed() {
     let e = Error::LockFailed("bar".to_string());
     let p: PyErr = e.into();
     // Verify that p is an instance of LockFailed
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<LockFailed>(py), "{}", p);
     });
 }
@@ -1208,7 +1208,7 @@ fn test_error_file_exists() {
     let e = Error::FileExists(std::path::PathBuf::from("foo"), Some("bar".to_string()));
     let p: PyErr = e.into();
     // Verify that p is an instance of FileExists
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<FileExists>(py), "{}", p);
     });
 }
@@ -1218,7 +1218,7 @@ fn test_error_lock_contention() {
     let e = Error::LockContention("foo".to_string(), "bar".to_string());
     let p: PyErr = e.into();
     // Verify that p is an instance of LockContention
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<LockContention>(py), "{}", p);
     });
 }
@@ -1228,7 +1228,7 @@ fn test_error_notimplementederror() {
     let e = Error::NotImplemented;
     let p: PyErr = e.into();
     // Verify that p is an instance of PyNotImplementedError
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<pyo3::exceptions::PyNotImplementedError>(py));
     });
 }
@@ -1238,7 +1238,7 @@ fn test_missing_nested_tree() {
     let e = Error::MissingNestedTree(std::path::PathBuf::from("foo"));
     let p: PyErr = e.into();
     // Verify that p is an instance of MissingNestedTree
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<MissingNestedTree>(py), "{}", p);
     });
 }
@@ -1248,7 +1248,7 @@ fn test_immortal_limbo() {
     let e = Error::ImmortalLimbo(std::path::PathBuf::from("foo"));
     let p: PyErr = e.into();
     // Verify that p is an instance of ImmortalLimbo
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<ImmortalLimbo>(py), "{}", p);
     });
 }
@@ -1259,7 +1259,7 @@ fn test_malformed_transform() {
 
     let p: PyErr = e.into();
     // Verify that p is an instance of MalformedTransform
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<MalformedTransform>(py), "{}", p);
     });
 }
@@ -1274,7 +1274,7 @@ fn test_transform_rename_failed() {
     );
     let p: PyErr = e.into();
     // Verify that p is an instance of TransformRenameFailed
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<TransformRenameFailed>(py), "{}", p,);
     });
 }
@@ -1289,7 +1289,7 @@ fn test_unexpected_http_status() {
     };
     let p: PyErr = e.into();
     // Verify that p is an instance of UnexpectedHttpStatus
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<UnexpectedHttpStatus>(py), "{}", p);
     });
 }
@@ -1299,7 +1299,7 @@ fn test_timeout() {
     let e = Error::Timeout;
     let p: PyErr = e.into();
     // Verify that p is an instance of PyTimeoutError
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<pyo3::exceptions::PyTimeoutError>(py));
     });
 }
@@ -1309,7 +1309,7 @@ fn test_bad_http_request() {
     let e = Error::BadHttpRequest("http://example.com".parse().unwrap(), "foo".to_string());
     let p: PyErr = e.into();
     // Verify that p is an instance of BadHttpRequest
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<BadHttpRequest>(py), "{}", p);
     });
 }
@@ -1319,7 +1319,7 @@ fn test_transport_not_possible() {
     let e = Error::TransportNotPossible("foo".to_string());
     let p: PyErr = e.into();
     // Verify that p is an instance of TransportNotPossible
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<TransportNotPossible>(py), "{}", p);
     });
 }
@@ -1329,7 +1329,7 @@ fn test_incompatible_format() {
     let e = Error::IncompatibleFormat("foo".to_string(), "bar".to_string());
     let p: PyErr = e.into();
     // Verify that p is an instance of IncompatibleFormat
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<IncompatibleFormat>(py), "{}", p);
     });
 }
@@ -1339,7 +1339,7 @@ fn test_no_such_project() {
     let e = Error::NoSuchProject("foo".to_string());
     let p: PyErr = e.into();
     // Verify that p is an instance of NoSuchProject
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<NoSuchProject>(py), "{}", p);
     });
 }
@@ -1349,7 +1349,7 @@ fn test_forking_disabled() {
     let e = Error::ForkingDisabled("foo".to_string());
     let p: PyErr = e.into();
     // Verify that p is an instance of ForkingDisabled
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<ForkingDisabled>(py), "{}", p);
     });
 }
@@ -1359,7 +1359,7 @@ fn test_gitlab_conflict() {
     let e = Error::GitLabConflict("foo".to_string());
     let p: PyErr = e.into();
     // Verify that p is an instance of GitLabConflict
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<GitLabConflict>(py), "{}", p);
     });
 }
@@ -1369,7 +1369,7 @@ fn test_conflicts_in_tree() {
     let e = Error::ConflictsInTree;
     let p: PyErr = e.into();
     // Verify that p is an instance of ConflictsInTree
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<ConflictsInTree>(py), "{}", p);
     });
 }
@@ -1379,7 +1379,7 @@ fn test_project_creation_timeout() {
     let e = Error::ProjectCreationTimeout("foo".to_string(), chrono::Duration::seconds(0));
     let p: PyErr = e.into();
     // Verify that p is an instance of ProjectCreationTimeout
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<ProjectCreationTimeout>(py), "{}", p);
     });
 }
@@ -1389,7 +1389,7 @@ fn test_already_branch() {
     let e = Error::AlreadyBranch(std::path::PathBuf::from("foo"));
     let p: PyErr = e.into();
     // Verify that p is an instance of AlreadyBranchError
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<AlreadyBranchError>(py), "{}", p);
     });
 }
@@ -1403,7 +1403,7 @@ fn test_redirect_requested() {
     };
     let p: PyErr = e.into();
     // Verify that p is an instance of RedirectRequested
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         assert!(p.is_instance_of::<RedirectRequested>(py), "{}", p);
     });
 }

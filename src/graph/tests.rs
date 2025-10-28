@@ -4,7 +4,7 @@ use pyo3::prelude::*;
 
 #[test]
 fn test_graph_node_trait_for_revision_id() {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         // Test RevisionId GraphNode implementation
         let rev_id = RevisionId::from(b"test-revision-id".to_vec());
         let py_obj = rev_id.to_pyobject(py).unwrap();
@@ -20,7 +20,7 @@ fn test_graph_node_trait_for_revision_id() {
 
 #[test]
 fn test_graph_node_trait_for_key() {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         // Test Key GraphNode implementation
         let key = Key::from(vec!["file.txt".to_string(), "rev1".to_string()]);
         let py_obj = key.to_pyobject(py).unwrap();
@@ -35,7 +35,7 @@ fn test_graph_node_trait_for_key() {
 }
 
 fn create_test_graph() -> Graph {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         // Create a mock graph for testing
         let graph_module = py.import("breezy.graph").unwrap();
         let dict_parents_provider = graph_module.getattr("DictParentsProvider").unwrap();

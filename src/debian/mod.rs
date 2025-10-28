@@ -253,7 +253,7 @@ pub fn build_helper(
 ) -> Result<HashMap<String, PathBuf>, DebianError> {
     pyo3::prepare_freethreaded_python();
 
-    Python::with_gil(|py| -> PyResult<HashMap<String, PathBuf>> {
+    Python::attach(|py| -> PyResult<HashMap<String, PathBuf>> {
         let locals = PyDict::new(py);
         locals.set_item("local_tree", local_tree.to_object(py))?;
         locals.set_item("subpath", subpath.to_string_lossy().to_string())?;
@@ -289,7 +289,7 @@ pub fn tree_debian_tag_name(
     subpath: Option<&std::path::Path>,
     vendor: Option<Vendor>,
 ) -> Result<String, Error> {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let result = py.import("breezy.plugins.debian")?.call_method1(
             "tree_debian_tag_name",
             (
@@ -318,7 +318,7 @@ pub fn tree_debian_tag_name(
 /// # Returns
 /// Vendor or None if the distribution cannot be inferred.
 pub fn suite_to_distribution(suite: &str) -> Option<Vendor> {
-    Python::with_gil(|py| -> PyResult<Option<Vendor>> {
+    Python::attach(|py| -> PyResult<Option<Vendor>> {
         let result = py
             .import("breezy.plugins.debian.util")?
             .call_method1("suite_to_distribution", (suite,))?;

@@ -13,7 +13,7 @@ use std::{collections::HashMap, path::Path, path::PathBuf};
 ///
 /// This struct represents a collection of distribution branches that can be
 /// used when importing Debian source packages.
-pub struct DistributionBranchSet(PyObject);
+pub struct DistributionBranchSet(Py<PyAny>);
 
 impl<'py> IntoPyObject<'py> for DistributionBranchSet {
     type Target = PyAny;
@@ -28,7 +28,7 @@ impl<'py> IntoPyObject<'py> for DistributionBranchSet {
 impl DistributionBranchSet {
     /// Create a new DistributionBranchSet instance.
     pub fn new() -> Self {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let m = py.import("breezy.plugins.debian.import_dsc").unwrap();
             let ctr = m.getattr("DistributionBranchSet").unwrap();
             DistributionBranchSet(ctr.call0().unwrap().into())
@@ -40,7 +40,7 @@ impl DistributionBranchSet {
     /// # Arguments
     /// * `branch` - The branch to add to the set
     pub fn add_branch(&self, branch: &DistributionBranch) {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.0.call_method1(py, "add_branch", (&branch.0,)).unwrap();
         })
     }
@@ -50,7 +50,7 @@ impl DistributionBranchSet {
 ///
 /// This struct represents a branch used for importing Debian source packages
 /// into version control.
-pub struct DistributionBranch(PyObject);
+pub struct DistributionBranch(Py<PyAny>);
 
 impl<'py> IntoPyObject<'py> for DistributionBranch {
     type Target = PyAny;
@@ -79,7 +79,7 @@ impl DistributionBranch {
         tree: Option<&dyn PyTree>,
         pristine_upstream_tree: Option<&dyn PyTree>,
     ) -> Self {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let m = py.import("breezy.plugins.debian.import_dsc").unwrap();
             let ctr = m.getattr("DistributionBranch").unwrap();
             DistributionBranch(
@@ -106,7 +106,7 @@ impl DistributionBranch {
         &self,
         version: &debversion::Version,
     ) -> Result<RevisionId, crate::debian::error::Error> {
-        Ok(Python::with_gil(|py| -> PyResult<RevisionId> {
+        Ok(Python::attach(|py| -> PyResult<RevisionId> {
             self.0
                 .call_method1(py, "revid_of_version", (version.to_string(),))?
                 .extract::<RevisionId>(py)
@@ -126,7 +126,7 @@ impl DistributionBranch {
         dsc_path: &Path,
         apply_patches: bool,
     ) -> Result<String, crate::debian::error::Error> {
-        Ok(Python::with_gil(|py| -> PyResult<String> {
+        Ok(Python::attach(|py| -> PyResult<String> {
             self.0
                 .call_method1(
                     py,
@@ -142,11 +142,11 @@ impl DistributionBranch {
     /// # Returns
     /// The working tree, if available
     pub fn tree(&self) -> Option<GenericWorkingTree> {
-        Python::with_gil(|py| -> PyResult<Option<GenericWorkingTree>> {
+        Python::attach(|py| -> PyResult<Option<GenericWorkingTree>> {
             let tree = self
                 .0
                 .getattr(py, "tree")?
-                .extract::<Option<PyObject>>(py)?;
+                .extract::<Option<Py<PyAny>>>(py)?;
             if tree.is_none() {
                 return Ok(None);
             }
@@ -160,7 +160,7 @@ impl DistributionBranch {
     /// # Returns
     /// The branch object
     pub fn branch(&self) -> Box<dyn Branch> {
-        Python::with_gil(|py| -> PyResult<Box<dyn Branch>> {
+        Python::attach(|py| -> PyResult<Box<dyn Branch>> {
             Ok(Box::new(GenericBranch::from(self.0.getattr(py, "branch")?)))
         })
         .unwrap()
@@ -171,7 +171,7 @@ impl DistributionBranch {
     /// # Returns
     /// The pristine-tar source for accessing upstream tarballs
     pub fn pristine_upstream_source(&self) -> crate::debian::upstream::PristineTarSource {
-        Python::with_gil(
+        Python::attach(
             |py| -> PyResult<crate::debian::upstream::PristineTarSource> {
                 Ok(crate::debian::upstream::PristineTarSource::from(
                     self.0.getattr(py, "pristine_upstream_source")?,
@@ -192,7 +192,7 @@ impl DistributionBranch {
         &self,
         basedir: &Path,
     ) -> Result<(), crate::debian::error::Error> {
-        Python::with_gil(|py| -> PyResult<()> {
+        Python::attach(|py| -> PyResult<()> {
             self.0
                 .call_method1(py, "create_empty_upstream_tree", (basedir,))?;
             Ok(())
@@ -213,7 +213,7 @@ impl DistributionBranch {
         upstream_tips: &HashMap<TarballKind, (RevisionId, PathBuf)>,
         basedir: &Path,
     ) -> Result<(), crate::debian::error::Error> {
-        Ok(Python::with_gil(|py| -> PyResult<()> {
+        Ok(Python::attach(|py| -> PyResult<()> {
             self.0.call_method1(
                 py,
                 "extract_upstream_tree",

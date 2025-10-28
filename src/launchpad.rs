@@ -9,7 +9,7 @@ use launchpadlib::uris;
 /// This function authenticates the user with Launchpad via OAuth, allowing
 /// subsequent API calls to be made with the authenticated user's credentials.
 pub fn login(url: &url::Url) {
-    Python::with_gil(|py| -> PyResult<()> {
+    Python::attach(|py| -> PyResult<()> {
         let m = py.import("breezy.plugins.launchpad.cmds")?;
         let cmd = m.getattr("cmd_launchpad_login")?;
 

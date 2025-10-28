@@ -9,7 +9,7 @@ use pyo3::prelude::*;
 ///
 /// This is useful when you want to perform a commit operation but don't want
 /// to output any information about the commit.
-pub struct NullCommitReporter(PyObject);
+pub struct NullCommitReporter(Py<PyAny>);
 
 impl NullCommitReporter {
     /// Create a new NullCommitReporter.
@@ -18,7 +18,7 @@ impl NullCommitReporter {
     ///
     /// A new NullCommitReporter instance.
     pub fn new() -> Self {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let m = py.import("breezy.commit").unwrap();
             let ncr = m.getattr("NullCommitReporter").unwrap();
             NullCommitReporter(ncr.call0().unwrap().into())
@@ -32,8 +32,8 @@ impl Default for NullCommitReporter {
     }
 }
 
-impl From<PyObject> for NullCommitReporter {
-    fn from(obj: PyObject) -> Self {
+impl From<Py<PyAny>> for NullCommitReporter {
+    fn from(obj: Py<PyAny>) -> Self {
         NullCommitReporter(obj)
     }
 }
@@ -53,7 +53,7 @@ impl<'py> IntoPyObject<'py> for NullCommitReporter {
 /// This trait is implemented by commit reporters that wrap Python objects.
 pub trait PyCommitReporter: std::any::Any + std::fmt::Debug {
     /// Get the underlying Python object for this commit reporter.
-    fn to_object(&self, py: Python) -> PyObject;
+    fn to_object(&self, py: Python) -> Py<PyAny>;
 }
 
 /// Trait for commit reporters.
@@ -64,7 +64,7 @@ pub trait CommitReporter: std::fmt::Debug {}
 impl<T: PyCommitReporter> CommitReporter for T {}
 
 /// A generic commit reporter that wraps any Python commit reporter.
-pub struct GenericCommitReporter(PyObject);
+pub struct GenericCommitReporter(Py<PyAny>);
 
 impl<'py> IntoPyObject<'py> for GenericCommitReporter {
     type Target = PyAny;
@@ -85,7 +85,7 @@ impl<'a, 'py> FromPyObject<'a, 'py> for GenericCommitReporter {
 }
 
 impl PyCommitReporter for GenericCommitReporter {
-    fn to_object(&self, py: Python) -> PyObject {
+    fn to_object(&self, py: Python) -> Py<PyAny> {
         self.0.clone_ref(py)
     }
 }
@@ -100,7 +100,7 @@ impl GenericCommitReporter {
     /// # Returns
     ///
     /// A new GenericCommitReporter instance that wraps the provided Python object.
-    pub fn new(obj: PyObject) -> Self {
+    pub fn new(obj: Py<PyAny>) -> Self {
         Self(obj)
     }
 }
@@ -112,7 +112,7 @@ impl std::fmt::Debug for GenericCommitReporter {
 }
 
 impl PyCommitReporter for NullCommitReporter {
-    fn to_object(&self, py: Python) -> PyObject {
+    fn to_object(&self, py: Python) -> Py<PyAny> {
         self.0.clone_ref(py)
     }
 }
@@ -126,7 +126,7 @@ impl std::fmt::Debug for NullCommitReporter {
 /// A commit reporter that reports commit information to the log.
 ///
 /// This reporter outputs information about commits to the logging system.
-pub struct ReportCommitToLog(PyObject);
+pub struct ReportCommitToLog(Py<PyAny>);
 
 impl ReportCommitToLog {
     /// Create a new ReportCommitToLog instance.
@@ -135,7 +135,7 @@ impl ReportCommitToLog {
     ///
     /// A new ReportCommitToLog instance.
     pub fn new() -> Self {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let m = py.import("breezy.commit").unwrap();
             let rctl = m.getattr("ReportCommitToLog").unwrap();
             ReportCommitToLog(rctl.call0().unwrap().into())
@@ -149,8 +149,8 @@ impl Default for ReportCommitToLog {
     }
 }
 
-impl From<PyObject> for ReportCommitToLog {
-    fn from(obj: PyObject) -> Self {
+impl From<Py<PyAny>> for ReportCommitToLog {
+    fn from(obj: Py<PyAny>) -> Self {
         ReportCommitToLog(obj)
     }
 }
@@ -166,7 +166,7 @@ impl<'py> IntoPyObject<'py> for ReportCommitToLog {
 }
 
 impl PyCommitReporter for ReportCommitToLog {
-    fn to_object(&self, py: Python) -> PyObject {
+    fn to_object(&self, py: Python) -> Py<PyAny> {
         self.0.clone_ref(py)
     }
 }

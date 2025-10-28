@@ -12,14 +12,14 @@ lazy_static::lazy_static! {
     static ref apt_mutex: std::sync::Mutex<()> = std::sync::Mutex::new(());
 }
 
-struct SourceIterator(PyObject);
+struct SourceIterator(Py<PyAny>);
 
 impl Iterator for SourceIterator {
     type Item = Source;
 
     fn next(&mut self) -> Option<Self::Item> {
         let _mutex = apt_mutex.lock().unwrap();
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let next = self.0.call_method0(py, "__next__");
             match next {
                 Ok(next) => Some(next.extract(py).unwrap()),
@@ -31,14 +31,14 @@ impl Iterator for SourceIterator {
     }
 }
 
-struct PackageIterator(PyObject);
+struct PackageIterator(Py<PyAny>);
 
 impl Iterator for PackageIterator {
     type Item = Package;
 
     fn next(&mut self) -> Option<Self::Item> {
         let _mutex = apt_mutex.lock().unwrap();
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let next = self.0.call_method0(py, "__next__");
             match next {
                 Ok(next) => Some(next.extract(py).unwrap()),
@@ -54,8 +54,8 @@ impl Iterator for PackageIterator {
 /// This trait defines methods for retrieving packages and other information
 /// from APT repositories, both local and remote.
 pub trait Apt {
-    /// Get the underlying PyObject
-    fn as_pyobject(&self) -> &PyObject;
+    /// Get the underlying Py<PyAny>
+    fn as_pyobject(&self) -> &Py<PyAny>;
     // Retrieve the orig tarball from the repository.
     //
     // # Arguments
@@ -81,7 +81,7 @@ pub trait Apt {
         orig_version: Option<&Version>,
     ) -> Result<(), Error> {
         let _mutex = apt_mutex.lock().unwrap();
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let apt = self.as_pyobject();
             apt.call_method1(
                 py,
@@ -112,7 +112,7 @@ pub trait Apt {
         source_version: Option<&Version>,
     ) -> Result<(), Error> {
         let _mutex = apt_mutex.lock().unwrap();
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let apt = self.as_pyobject();
             apt.call_method1(
                 py,
@@ -130,7 +130,7 @@ pub trait Apt {
     /// Retrieve the binary package from the repository.
     fn iter_sources(&self) -> Box<dyn Iterator<Item = Source>> {
         let _mutex = apt_mutex.lock().unwrap();
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let apt = self.as_pyobject();
             let iter = apt.call_method0(py, "iter_sources").unwrap();
             Box::new(SourceIterator(iter))
@@ -140,7 +140,7 @@ pub trait Apt {
     /// Retrieve the binary package from the repository.
     fn iter_binaries(&self) -> Box<dyn Iterator<Item = Package>> {
         let _mutex = apt_mutex.lock().unwrap();
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let apt = self.as_pyobject();
             let iter = apt.call_method0(py, "iter_binaries").unwrap();
             Box::new(PackageIterator(iter))
@@ -150,7 +150,7 @@ pub trait Apt {
     /// Retrieve source package by name.
     fn iter_source_by_name(&self, name: &str) -> Box<dyn Iterator<Item = Source>> {
         let _mutex = apt_mutex.lock().unwrap();
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let apt = self.as_pyobject();
             let iter = apt
                 .call_method1(py, "iter_source_by_name", (name,))
@@ -162,7 +162,7 @@ pub trait Apt {
     /// Retrieve binary package by name.
     fn iter_binary_by_name(&self, name: &str) -> Box<dyn Iterator<Item = Package>> {
         let _mutex = apt_mutex.lock().unwrap();
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let apt = self.as_pyobject();
             let iter = apt
                 .call_method1(py, "iter_binary_by_name", (name,))
@@ -175,10 +175,10 @@ pub trait Apt {
 /// Interface to a local APT repository.
 ///
 /// This struct provides access to the APT repositories configured on the local system.
-pub struct LocalApt(PyObject);
+pub struct LocalApt(Py<PyAny>);
 
 impl Apt for LocalApt {
-    fn as_pyobject(&self) -> &PyObject {
+    fn as_pyobject(&self) -> &Py<PyAny> {
         &self.0
     }
 }
@@ -203,7 +203,7 @@ impl LocalApt {
     /// A new LocalApt instance or an error
     pub fn new(rootdir: Option<&std::path::Path>) -> Result<Self, Error> {
         let _mutex = apt_mutex.lock().unwrap();
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let m = match PyModule::import(py, "breezy.plugins.debian.apt_repo") {
                 Ok(m) => m,
                 Err(e) if e.is_instance_of::<PyModuleNotFoundError>(py) => {
@@ -231,7 +231,7 @@ impl Default for LocalApt {
 
 impl Drop for LocalApt {
     fn drop(&mut self) {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.0
                 .call_method1(
                     py,
@@ -246,7 +246,7 @@ impl Drop for LocalApt {
 /// Interface to a remote APT repository.
 ///
 /// This struct provides access to APT repositories on remote servers.
-pub struct RemoteApt(PyObject);
+pub struct RemoteApt(Py<PyAny>);
 
 impl<'py> IntoPyObject<'py> for RemoteApt {
     type Target = PyAny;
@@ -276,7 +276,7 @@ impl RemoteApt {
         key_path: Option<&std::path::Path>,
     ) -> Result<Self, Error> {
         let _mutex = apt_mutex.lock().unwrap();
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let m = match PyModule::import(py, "breezy.plugins.debian.apt_repo") {
                 Ok(m) => m,
                 Err(e) if e.is_instance_of::<PyModuleNotFoundError>(py) => {
@@ -304,7 +304,7 @@ impl RemoteApt {
     /// A new RemoteApt instance or an error
     pub fn from_string(text: &str, key_path: Option<&std::path::Path>) -> Result<Self, Error> {
         let _mutex = apt_mutex.lock().unwrap();
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let m = match PyModule::import(py, "breezy.plugins.debian.apt_repo") {
                 Ok(m) => m,
                 Err(e) if e.is_instance_of::<PyModuleNotFoundError>(py) => {
@@ -327,14 +327,14 @@ impl RemoteApt {
 }
 
 impl Apt for RemoteApt {
-    fn as_pyobject(&self) -> &PyObject {
+    fn as_pyobject(&self) -> &Py<PyAny> {
         &self.0
     }
 }
 
 impl Drop for RemoteApt {
     fn drop(&mut self) {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.0
                 .call_method1(
                     py,

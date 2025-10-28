@@ -49,7 +49,7 @@ impl TestEnv {
         std::env::set_var("HOME", &home_dir);
         std::env::set_var("BRZ_EMAIL", brz_email);
         std::env::set_var("BRZ_HOME", &breezy_home);
-        pyo3::Python::with_gil(|py| {
+        pyo3::Python::attach(|py| {
             let os = py.import("os").unwrap();
             os.call_method1("chdir", (working_dir.to_str().unwrap(),))
                 .unwrap();
@@ -89,7 +89,7 @@ impl Drop for TestEnv {
             } else {
                 std::env::remove_var(&key);
             }
-            Python::with_gil(|py| {
+            Python::attach(|py| {
                 let os = py.import("os").unwrap();
                 let environ = os.getattr("environ").unwrap();
                 if let Some(value) = value {
@@ -135,7 +135,7 @@ mod tests {
             "Joe Tester <joe@example.com>"
         );
 
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let os = py.import("os").unwrap();
             // On Windows, canonicalize both paths to handle short/long names and \\?\ prefix
             let py_cwd = os

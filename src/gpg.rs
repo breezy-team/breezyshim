@@ -41,7 +41,7 @@ import_exception!(breezy.gpg, GPGNotInstalled);
 
 impl From<PyErr> for Error {
     fn from(e: PyErr) -> Self {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             if e.is_instance_of::<GPGNotInstalled>(py) {
                 Error::GPGNotInstalled
             } else {
@@ -52,15 +52,15 @@ impl From<PyErr> for Error {
 }
 
 /// Strategy for handling GPG signatures.
-pub struct GPGStrategy(PyObject);
+pub struct GPGStrategy(Py<PyAny>);
 
 impl GPGStrategy {
-    fn to_object(&self) -> &PyObject {
+    fn to_object(&self) -> &Py<PyAny> {
         &self.0
     }
     /// Create a new GPG strategy with the given branch configuration.
     pub fn new(branch_config: &crate::config::BranchConfig) -> Self {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let gpg = PyModule::import(py, "breezy.gpg").unwrap();
             let gpg_strategy = gpg.getattr("GPGStrategy").unwrap();
             let branch_config = branch_config.clone().into_pyobject(py).unwrap().unbind();
@@ -71,7 +71,7 @@ impl GPGStrategy {
 
     /// Set the GPG keys that are acceptable for validating signatures.
     pub fn set_acceptable_keys(&self, keys: &[String]) {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.0
                 .call_method1(py, "set_acceptable_keys", (keys.join(","),))
                 .unwrap();
@@ -166,7 +166,7 @@ pub fn bulk_verify_signatures<R: PyRepository>(
     revids: &[&RevisionId],
     strategy: &GPGStrategy,
 ) -> Result<Vec<(RevisionId, VerificationResult)>, Error> {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let gpg = PyModule::import(py, "breezy.gpg").unwrap();
         let bulk_verify_signatures = gpg.getattr("bulk_verify_signatures").unwrap();
         let r = bulk_verify_signatures
@@ -182,7 +182,7 @@ pub fn bulk_verify_signatures<R: PyRepository>(
             .unwrap();
 
         let (_count, result, _all_verifiable) = r
-            .extract::<(PyObject, Vec<(RevisionId, isize, String)>, bool)>()
+            .extract::<(Py<PyAny>, Vec<(RevisionId, isize, String)>, bool)>()
             .unwrap();
 
         let result: Vec<(RevisionId, VerificationResult)> = result
@@ -205,7 +205,7 @@ pub fn bulk_verify_signatures<R: PyRepository>(
 }
 
 /// Context for interacting with GPG.
-pub struct GPGContext(PyObject);
+pub struct GPGContext(Py<PyAny>);
 
 /// Represents a GPG key.
 pub struct GPGKey {
@@ -226,7 +226,7 @@ impl<'a, 'py> FromPyObject<'a, 'py> for GPGKey {
 impl GPGContext {
     /// Create a new GPG context.
     pub fn new() -> Self {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let gpg = PyModule::import(py, "gpg").unwrap();
             let gpg_context = gpg.getattr("Context").unwrap();
             let context = gpg_context.call0().unwrap();
@@ -244,7 +244,7 @@ impl GPGContext {
     ///
     /// A vector of GPG keys.
     pub fn keylist(&self, secret: bool) -> Vec<GPGKey> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.0
                 .call_method1(py, "keylist", (secret,))
                 .unwrap()
@@ -263,7 +263,7 @@ impl GPGContext {
     ///
     /// The exported key data as a byte vector.
     pub fn key_export_minimal(&self, key: &str) -> Vec<u8> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.0
                 .call_method1(py, "key_export_minimal", (key,))
                 .unwrap()

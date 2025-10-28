@@ -97,7 +97,7 @@ impl<'a, 'py> pyo3::FromPyObject<'a, 'py> for FileId {
 ///
 /// A byte vector containing the generated revision identifier.
 pub fn gen_revision_id(username: &str, timestamp: Option<usize>) -> Vec<u8> {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let m = py.import("breezy.bzr.generate_ids").unwrap();
         let gen_revision_id = m.getattr("gen_revision_id").unwrap();
         gen_revision_id
@@ -123,7 +123,7 @@ fn test_gen_revision_id() {
 ///
 /// A byte vector containing the generated file identifier.
 pub fn gen_file_id(name: &str) -> Vec<u8> {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let m = py.import("breezy.bzr.generate_ids").unwrap();
         let gen_file_id = m.getattr("gen_file_id").unwrap();
         gen_file_id.call1((name,)).unwrap().extract().unwrap()
@@ -138,7 +138,7 @@ fn test_file_id() {
 /// A prober for remote Bazaar repositories.
 ///
 /// This prober can detect whether a remote location contains a Bazaar repository.
-pub struct RemoteBzrProber(PyObject);
+pub struct RemoteBzrProber(Py<PyAny>);
 
 impl RemoteBzrProber {
     /// Create a new RemoteBzrProber.
@@ -147,7 +147,7 @@ impl RemoteBzrProber {
     ///
     /// Some(RemoteBzrProber) if Bazaar is available, None otherwise.
     pub fn new() -> Option<Self> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let m = match py.import("breezy.bzr") {
                 Ok(m) => m,
                 Err(e) => {
@@ -192,7 +192,7 @@ impl std::fmt::Debug for RemoteBzrProber {
 }
 
 impl crate::controldir::PyProber for RemoteBzrProber {
-    fn to_object(&self, py: Python) -> PyObject {
+    fn to_object(&self, py: Python) -> Py<PyAny> {
         self.0.clone_ref(py)
     }
 }

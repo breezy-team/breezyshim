@@ -23,11 +23,11 @@ use pyo3::types::PyDict;
 /// This struct represents the format of a branch, which defines its capabilities
 /// and constraints.
 #[derive(Debug)]
-pub struct BranchFormat(PyObject);
+pub struct BranchFormat(Py<PyAny>);
 
 impl Clone for BranchFormat {
     fn clone(&self) -> Self {
-        Python::with_gil(|py| BranchFormat(self.0.clone_ref(py)))
+        Python::attach(|py| BranchFormat(self.0.clone_ref(py)))
     }
 }
 
@@ -41,7 +41,7 @@ impl BranchFormat {
     ///
     /// `true` if the branch format supports stacking, `false` otherwise.
     pub fn supports_stacking(&self) -> bool {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.0
                 .call_method0(py, "supports_stacking")
                 .unwrap()
@@ -441,7 +441,7 @@ pub trait Branch {
 /// This trait is implemented by branch types that wrap Breezy's Python branch objects.
 pub trait PyBranch: Branch + Send + std::any::Any {
     /// Get the underlying Python object.
-    fn to_object(&self, py: Python<'_>) -> PyObject;
+    fn to_object(&self, py: Python<'_>) -> Py<PyAny>;
 }
 
 impl dyn PyBranch {
@@ -457,7 +457,7 @@ impl<T: PyBranch> Branch for T {
     }
 
     fn format(&self) -> BranchFormat {
-        Python::with_gil(|py| BranchFormat(self.to_object(py).getattr(py, "_format").unwrap()))
+        Python::attach(|py| BranchFormat(self.to_object(py).getattr(py, "_format").unwrap()))
     }
 
     fn vcs_type(&self) -> VcsType {
@@ -465,7 +465,7 @@ impl<T: PyBranch> Branch for T {
     }
 
     fn revno(&self) -> u32 {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method0(py, "revno")
                 .unwrap()
@@ -475,7 +475,7 @@ impl<T: PyBranch> Branch for T {
     }
 
     fn lock_read(&self) -> Result<Lock, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             Ok(Lock::from(
                 self.to_object(py)
                     .call_method0(py, intern!(py, "lock_read"))?,
@@ -484,7 +484,7 @@ impl<T: PyBranch> Branch for T {
     }
 
     fn lock_write(&self) -> Result<Lock, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             Ok(Lock::from(
                 self.to_object(py)
                     .call_method0(py, intern!(py, "lock_write"))?,
@@ -493,7 +493,7 @@ impl<T: PyBranch> Branch for T {
     }
 
     fn tags(&self) -> Result<crate::tags::Tags, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             Ok(crate::tags::Tags::from(
                 self.to_object(py).getattr(py, "tags")?,
             ))
@@ -501,13 +501,13 @@ impl<T: PyBranch> Branch for T {
     }
 
     fn repository(&self) -> GenericRepository {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             GenericRepository::new(self.to_object(py).getattr(py, "repository").unwrap())
         })
     }
 
     fn last_revision(&self) -> RevisionId {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method0(py, intern!(py, "last_revision"))
                 .unwrap()
@@ -517,7 +517,7 @@ impl<T: PyBranch> Branch for T {
     }
 
     fn name(&self) -> Option<String> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .getattr(py, "name")
                 .unwrap()
@@ -527,7 +527,7 @@ impl<T: PyBranch> Branch for T {
     }
 
     fn basis_tree(&self) -> Result<crate::tree::RevisionTree, crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             Ok(crate::tree::RevisionTree(
                 self.to_object(py).call_method0(py, "basis_tree")?,
             ))
@@ -535,7 +535,7 @@ impl<T: PyBranch> Branch for T {
     }
 
     fn get_user_url(&self) -> url::Url {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let url = self
                 .to_object(py)
                 .getattr(py, "user_url")
@@ -555,7 +555,7 @@ impl<T: PyBranch> Branch for T {
             WorkingTree = crate::workingtree::GenericWorkingTree,
         >,
     > {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             Box::new(GenericControlDir::new(
                 self.to_object(py).getattr(py, "controldir").unwrap(),
             ))
@@ -576,7 +576,7 @@ impl<T: PyBranch> Branch for T {
         stop_revision: Option<&RevisionId>,
         tag_selector: Option<Box<dyn Fn(String) -> bool>>,
     ) -> Result<(), crate::error::Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let kwargs = PyDict::new(py);
             kwargs.set_item("overwrite", overwrite)?;
             if let Some(stop_revision) = stop_revision {
@@ -596,7 +596,7 @@ impl<T: PyBranch> Branch for T {
     }
 
     fn pull(&self, source_branch: &dyn PyBranch, overwrite: Option<bool>) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let kwargs = PyDict::new(py);
             if let Some(overwrite) = overwrite {
                 kwargs.set_item("overwrite", overwrite)?;
@@ -612,7 +612,7 @@ impl<T: PyBranch> Branch for T {
     }
 
     fn get_parent(&self) -> Option<String> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method0(py, "get_parent")
                 .unwrap()
@@ -622,7 +622,7 @@ impl<T: PyBranch> Branch for T {
     }
 
     fn set_parent(&mut self, parent: &str) {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method1(py, "set_parent", (parent,))
                 .unwrap();
@@ -630,7 +630,7 @@ impl<T: PyBranch> Branch for T {
     }
 
     fn get_public_branch(&self) -> Option<String> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method0(py, "get_public_branch")
                 .unwrap()
@@ -640,7 +640,7 @@ impl<T: PyBranch> Branch for T {
     }
 
     fn get_push_location(&self) -> Option<String> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method0(py, "get_push_location")
                 .unwrap()
@@ -650,7 +650,7 @@ impl<T: PyBranch> Branch for T {
     }
 
     fn get_submit_branch(&self) -> Option<String> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method0(py, "get_submit_branch")
                 .unwrap()
@@ -660,7 +660,7 @@ impl<T: PyBranch> Branch for T {
     }
 
     fn user_transport(&self) -> crate::transport::Transport {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             crate::transport::Transport::new(
                 self.to_object(py).getattr(py, "user_transport").unwrap(),
             )
@@ -668,7 +668,7 @@ impl<T: PyBranch> Branch for T {
     }
 
     fn get_config(&self) -> crate::config::BranchConfig {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             crate::config::BranchConfig::new(
                 self.to_object(py).call_method0(py, "get_config").unwrap(),
             )
@@ -676,7 +676,7 @@ impl<T: PyBranch> Branch for T {
     }
 
     fn get_config_stack(&self) -> crate::config::ConfigStack {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             crate::config::ConfigStack::new(
                 self.to_object(py)
                     .call_method0(py, "get_config_stack")
@@ -686,7 +686,7 @@ impl<T: PyBranch> Branch for T {
     }
 
     fn sprout(&self, to_controldir: &dyn PyControlDir, to_branch_name: &str) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let kwargs = PyDict::new(py);
             kwargs.set_item("name", to_branch_name)?;
             self.to_object(py).call_method(
@@ -703,7 +703,7 @@ impl<T: PyBranch> Branch for T {
         &self,
         to_location: &std::path::Path,
     ) -> Result<crate::workingtree::GenericWorkingTree, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method1(
                     py,
@@ -716,7 +716,7 @@ impl<T: PyBranch> Branch for T {
     }
 
     fn generate_revision_history(&self, last_revision: &RevisionId) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py).call_method1(
                 py,
                 "generate_revision_history",
@@ -727,7 +727,7 @@ impl<T: PyBranch> Branch for T {
     }
 
     fn bind(&self, other: &dyn Branch) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             // Try to downcast to concrete PyBranch types
             if let Some(gb) = other.as_any().downcast_ref::<GenericBranch>() {
                 self.to_object(py)
@@ -745,14 +745,14 @@ impl<T: PyBranch> Branch for T {
     }
 
     fn unbind(&self) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py).call_method0(py, "unbind")?;
             Ok(())
         })
     }
 
     fn get_bound_location(&self) -> Option<String> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method0(py, "get_bound_location")
                 .unwrap()
@@ -762,7 +762,7 @@ impl<T: PyBranch> Branch for T {
     }
 
     fn get_old_bound_location(&self) -> Option<String> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method0(py, "get_old_bound_location")
                 .unwrap()
@@ -772,7 +772,7 @@ impl<T: PyBranch> Branch for T {
     }
 
     fn is_locked(&self) -> bool {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method0(py, "is_locked")
                 .unwrap()
@@ -782,7 +782,7 @@ impl<T: PyBranch> Branch for T {
     }
 
     fn peek_lock_mode(&self) -> Option<char> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let result = self
                 .to_object(py)
                 .call_method0(py, "peek_lock_mode")
@@ -797,7 +797,7 @@ impl<T: PyBranch> Branch for T {
     }
 
     fn get_rev_id(&self, revno: u32) -> Result<RevisionId, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method1(py, "get_rev_id", (revno,))?
                 .extract(py)
@@ -806,7 +806,7 @@ impl<T: PyBranch> Branch for T {
     }
 
     fn revision_id_to_revno(&self, revision_id: &RevisionId) -> Result<u32, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method1(py, "revision_id_to_revno", (revision_id.clone(),))?
                 .extract(py)
@@ -815,7 +815,7 @@ impl<T: PyBranch> Branch for T {
     }
 
     fn check_real_revno(&self, revno: u32) -> bool {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method1(py, "check_real_revno", (revno,))
                 .unwrap()
@@ -825,7 +825,7 @@ impl<T: PyBranch> Branch for T {
     }
 
     fn last_revision_info(&self) -> (u32, RevisionId) {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method0(py, "last_revision_info")
                 .unwrap()
@@ -835,7 +835,7 @@ impl<T: PyBranch> Branch for T {
     }
 
     fn set_last_revision_info(&self, revno: u32, revision_id: &RevisionId) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py).call_method1(
                 py,
                 "set_last_revision_info",
@@ -846,7 +846,7 @@ impl<T: PyBranch> Branch for T {
     }
 
     fn get_stacked_on_url(&self) -> Result<String, Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method0(py, "get_stacked_on_url")?
                 .extract(py)
@@ -855,7 +855,7 @@ impl<T: PyBranch> Branch for T {
     }
 
     fn set_stacked_on_url(&self, url: &str) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method1(py, "set_stacked_on_url", (url,))?;
             Ok(())
@@ -867,7 +867,7 @@ impl<T: PyBranch> Branch for T {
         from_branch: &dyn Branch,
         last_revision: Option<&RevisionId>,
     ) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let kwargs = PyDict::new(py);
             if let Some(rev) = last_revision {
                 kwargs.set_item("last_revision", rev.clone())?;
@@ -890,14 +890,14 @@ impl<T: PyBranch> Branch for T {
     }
 
     fn update(&self) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py).call_method0(py, "update")?;
             Ok(())
         })
     }
 
     fn set_push_location(&self, location: &str) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method1(py, "set_push_location", (location,))?;
             Ok(())
@@ -905,7 +905,7 @@ impl<T: PyBranch> Branch for T {
     }
 
     fn set_public_branch(&self, location: &str) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method1(py, "set_public_branch", (location,))?;
             Ok(())
@@ -913,7 +913,7 @@ impl<T: PyBranch> Branch for T {
     }
 
     fn get_append_revisions_only(&self) -> bool {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method0(py, "get_append_revisions_only")
                 .unwrap()
@@ -923,7 +923,7 @@ impl<T: PyBranch> Branch for T {
     }
 
     fn set_append_revisions_only(&self, value: bool) -> Result<(), Error> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             self.to_object(py)
                 .call_method1(py, "set_append_revisions_only", (value,))?;
             Ok(())
@@ -935,16 +935,16 @@ impl<T: PyBranch> Branch for T {
 ///
 /// This struct wraps a Python branch object and provides access to it through
 /// the Branch trait.
-pub struct GenericBranch(PyObject);
+pub struct GenericBranch(Py<PyAny>);
 
 impl Clone for GenericBranch {
     fn clone(&self) -> Self {
-        Python::with_gil(|py| GenericBranch(self.0.clone_ref(py)))
+        Python::attach(|py| GenericBranch(self.0.clone_ref(py)))
     }
 }
 
 impl PyBranch for GenericBranch {
-    fn to_object(&self, py: Python<'_>) -> PyObject {
+    fn to_object(&self, py: Python<'_>) -> Py<PyAny> {
         self.0.clone_ref(py)
     }
 }
@@ -983,16 +983,16 @@ impl From<Py<PyAny>> for GenericBranch {
 ///
 /// Memory branches are not backed by a persistent storage and are primarily
 /// used for testing or temporary operations.
-pub struct MemoryBranch(PyObject);
+pub struct MemoryBranch(Py<PyAny>);
 
 impl Clone for MemoryBranch {
     fn clone(&self) -> Self {
-        Python::with_gil(|py| MemoryBranch(self.0.clone_ref(py)))
+        Python::attach(|py| MemoryBranch(self.0.clone_ref(py)))
     }
 }
 
 impl PyBranch for MemoryBranch {
-    fn to_object(&self, py: Python<'_>) -> PyObject {
+    fn to_object(&self, py: Python<'_>) -> Py<PyAny> {
         self.0.clone_ref(py)
     }
 }
@@ -1010,7 +1010,7 @@ impl MemoryBranch {
     ///
     /// A new MemoryBranch instance.
     pub fn new<R: PyRepository>(repository: &R, revno: Option<u32>, revid: &RevisionId) -> Self {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let mb_cls = py
                 .import("breezy.memorybranch")
                 .unwrap()
@@ -1029,7 +1029,7 @@ impl MemoryBranch {
 pub(crate) fn py_tag_selector(
     py: Python,
     tag_selector: Box<dyn Fn(String) -> bool>,
-) -> PyResult<PyObject> {
+) -> PyResult<Py<PyAny>> {
     #[pyclass(unsendable)]
     struct PyTagSelector(Box<dyn Fn(String) -> bool>);
 
@@ -1056,7 +1056,7 @@ pub(crate) fn py_tag_selector(
 ///
 /// The opened branch, or an error if the branch could not be opened.
 pub fn open(url: &url::Url) -> Result<Box<dyn Branch>, Error> {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let m = py.import("breezy.branch").unwrap();
         let c = m.getattr("Branch").unwrap();
         let r = c.call_method1("open", (url.to_string(),))?;
@@ -1078,7 +1078,7 @@ pub fn open(url: &url::Url) -> Result<Box<dyn Branch>, Error> {
 /// A tuple containing the opened branch and the relative path from the branch to
 /// the specified URL, or an error if no branch could be found.
 pub fn open_containing(url: &url::Url) -> Result<(Box<dyn Branch>, String), Error> {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let m = py.import("breezy.branch").unwrap();
         let c = m.getattr("Branch").unwrap();
 
@@ -1102,7 +1102,7 @@ pub fn open_containing(url: &url::Url) -> Result<(Box<dyn Branch>, String), Erro
 pub fn open_from_transport(
     transport: &crate::transport::Transport,
 ) -> Result<Box<dyn Branch>, Error> {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let m = py.import("breezy.branch").unwrap();
         let c = m.getattr("Branch").unwrap();
         let r = c.call_method1("open_from_transport", (transport.as_pyobject(),))?;
