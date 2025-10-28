@@ -104,11 +104,13 @@ dependencies = [
  "percent-encoding",
  "pyo3",
  "pyo3-filelike",
+ "regex",
  "serde",
  "serial_test",
  "sqlx",
  "tempfile",
  "url",
+ "whoami",
 ]
 
 [[package]]
@@ -320,9 +322,9 @@ dependencies = [
 
 [[package]]
 name = "debian-changelog"
-version = "0.2.1"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6e87a6b3bb320a4b1ee979720c1a531e32cd7ae3615d375759ac66768958bc9"
+checksum = "eda50dbfa5cb29cb722fffc73d3154a71546dc5772f1612512be0239fc4c74f6"
 dependencies = [
  "chrono",
  "debversion 0.5.0",
@@ -3048,6 +3050,7 @@ checksum = "5d4a4db5077702ca3015d3d02d74974948aba2ad9e12ab7df718ee64ccd7e97d"
 dependencies = [
  "libredox",
  "wasite",
+ "web-sys",
 ]
 
 [[package]]

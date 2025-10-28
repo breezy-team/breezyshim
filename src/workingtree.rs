@@ -386,9 +386,7 @@ impl<T: ?Sized + PyWorkingTree> WorkingTree for T {
     }
 
     fn branch(&self) -> GenericBranch {
-        Python::attach(|py| {
-            GenericBranch::from(self.to_object(py).getattr(py, "branch").unwrap())
-        })
+        Python::attach(|py| GenericBranch::from(self.to_object(py).getattr(py, "branch").unwrap()))
     }
 
     fn get_user_url(&self) -> url::Url {

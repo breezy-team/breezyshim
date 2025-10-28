@@ -352,10 +352,7 @@ impl Graph {
                 let key_node = T::from_pyobject(&key)?;
 
                 let mut parents = Vec::new();
-                for parent in value
-                    .cast::<pyo3::types::PyTuple>()
-                    .map_err(PyErr::from)?
-                {
+                for parent in value.cast::<pyo3::types::PyTuple>().map_err(PyErr::from)? {
                     parents.push(T::from_pyobject(&parent)?);
                 }
                 parent_map.insert(key_node, parents);
@@ -623,10 +620,7 @@ impl Graph {
                 let key_node = T::from_pyobject(&key)?;
 
                 let mut children = Vec::new();
-                for child in value
-                    .cast::<pyo3::types::PyList>()
-                    .map_err(PyErr::from)?
-                {
+                for child in value.cast::<pyo3::types::PyList>().map_err(PyErr::from)? {
                     children.push(T::from_pyobject(&child)?);
                 }
                 child_map.insert(key_node, children);

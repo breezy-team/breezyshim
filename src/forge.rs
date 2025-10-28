@@ -511,17 +511,16 @@ impl Forge {
         status: Option<MergeProposalStatus>,
         author: Option<String>,
     ) -> Result<impl Iterator<Item = MergeProposal>, Error> {
-        let ret: Vec<MergeProposal> =
-            Python::attach(|py| -> Result<Vec<MergeProposal>, Error> {
-                Ok(self
-                    .0
-                    .call_method(py, "iter_my_proposals", (status, author), None)?
-                    .bind(py)
-                    .try_iter()
-                    .unwrap()
-                    .map(|proposal| MergeProposal::from(proposal.unwrap().unbind()))
-                    .collect())
-            })?;
+        let ret: Vec<MergeProposal> = Python::attach(|py| -> Result<Vec<MergeProposal>, Error> {
+            Ok(self
+                .0
+                .call_method(py, "iter_my_proposals", (status, author), None)?
+                .bind(py)
+                .try_iter()
+                .unwrap()
+                .map(|proposal| MergeProposal::from(proposal.unwrap().unbind()))
+                .collect())
+        })?;
         Ok(ret.into_iter())
     }
 
@@ -563,14 +562,12 @@ impl Forge {
             let source_branch_obj = source_branch.to_object(py);
             let target_branch_obj = target_branch.to_object(py);
             kwargs.set_item("status", status.to_string())?;
-            let proposal_iter: Py<PyAny> = self
-                .0
-                .call_method(
-                    py,
-                    "iter_proposals",
-                    (&source_branch_obj, &target_branch_obj),
-                    Some(&kwargs),
-                )?;
+            let proposal_iter: Py<PyAny> = self.0.call_method(
+                py,
+                "iter_proposals",
+                (&source_branch_obj, &target_branch_obj),
+                Some(&kwargs),
+            )?;
 
             let mut ret = Vec::new();
             loop {
