@@ -12,24 +12,24 @@ authors = [ "Martin Packman <gzlist@googlemail.com>", "Jelmer Vernooij <jelmer@j
 include = ["src/*.rs", "Cargo.toml", "COPYING.txt", "src/*/*.rs"]
 
 [dependencies]
-pyo3-filelike = ">=0.1"
+pyo3-filelike = ">=0.5.1,<0.6"
 tempfile = "3.20.0"
 lazy_static = "1.4.0"
 chrono = "0.4"
-ctor = { version = ">=0.1", optional = true }
-lazy-regex = ">=3.4"
-regex = ">=1.10"
-patchkit = ">=0.2.2"
+ctor = { version = ">=0.2.0,<0.7", optional = true }
+lazy-regex = ">=3.4,<4"
+regex = ">=1.10,<2"
+patchkit = ">=0.2.2,<0.3"
 log = "0.4"
-whoami = ">=1.5"
-debian-control = { version = ">= 0.1.44", optional = true, features = ["python-debian"] }
+whoami = ">=1.5,<2"
+debian-control = { version = ">=0.1.44,<0.3", optional = true, features = ["python-debian"] }
 deb822-lossless = { version = "0.4.0", optional = true }
 dirty-tracker = { version = "0.3", optional = true }
-debian-changelog = { version = ">=0.2.3", optional = true }
+debian-changelog = { version = ">=0.2.3,<0.3", optional = true }
 difflib = { version = "0.4.0", optional = true }
 percent-encoding = "2.3.1"
-sqlx = { version = ">=0.8", optional = true }
-launchpadlib = { version = ">=0.4.5", optional = true }
+sqlx = { version = ">=0.8,<0.9", optional = true }
+launchpadlib = { version = ">=0.4.5,<0.5", optional = true }
 
 [features]
 default = ["auto-initialize"]
@@ -40,7 +40,7 @@ sqlx = ["sqlx/postgres"]
 launchpad = ["dep:launchpadlib"]
 
 [dependencies.debversion]
-version = ">=0.5.0"
+version = ">=0.5.0,<0.6"
 optional = true
 features = [ "python-debian",]
 
@@ -61,7 +61,7 @@ pyo3 = { version = ">=0.27,<0.28", features = ["chrono"] }
 
 [dev-dependencies]
 maplit = "1"
-serial_test = { version = ">=2", default-features = false }
+serial_test = { version = ">=2,<4", default-features = false }
 
 [dev-dependencies.pyo3]
 workspace = true
