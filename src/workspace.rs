@@ -144,7 +144,7 @@ mod tests {
     #[cfg_attr(windows, ignore = "Breezy raises OSError errno 13 (ERROR_INVALID_DATA) on Windows when calling reset_tree with subpath - likely a Breezy bug")]
     fn test_reset_tree_with_subpath() {
         let env = crate::testing::TestEnv::new();
-        let wt = create_standalone_workingtree(Path::new("."), "2a").unwrap();
+        let wt = create_standalone_workingtree(&env.working_dir, "2a").unwrap();
 
         // Create a subdir in the working tree
         std::fs::create_dir("subdir").unwrap();
