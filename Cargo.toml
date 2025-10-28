@@ -1,8 +1,8 @@
 [package]
 name = "breezyshim"
-version = "0.7.0"
+version = "0.7.1"
 edition = "2021"
-rust-version = "1.86"
+rust-version = "1.83"
 license = "GPL-2.0+"
 description = "Rust shim around the Breezy Python API"
 homepage = "https://www.breezy-vcs.org/"
