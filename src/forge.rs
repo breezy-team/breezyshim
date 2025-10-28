@@ -95,8 +95,10 @@ impl<'py> IntoPyObject<'py> for MergeProposalStatus {
     }
 }
 
-impl FromPyObject<'_> for MergeProposalStatus {
-    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for MergeProposalStatus {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         let status = ob.extract::<String>()?;
         match status.as_str() {
             "all" => Ok(MergeProposalStatus::All),
@@ -160,7 +162,7 @@ impl MergeProposal {
     pub fn is_merged(&self) -> Result<bool, crate::error::Error> {
         Python::with_gil(|py| {
             let is_merged = self.0.call_method0(py, "is_merged")?;
-            is_merged.extract(py).map_err(|e| e.into())
+            is_merged.extract(py).map_err(Into::into)
         })
     }
 
@@ -168,7 +170,7 @@ impl MergeProposal {
     pub fn is_closed(&self) -> Result<bool, crate::error::Error> {
         Python::with_gil(|py| {
             let is_closed = self.0.call_method0(py, "is_closed")?;
-            is_closed.extract(py).map_err(|e| e.into())
+            is_closed.extract(py).map_err(Into::into)
         })
     }
 
@@ -176,7 +178,7 @@ impl MergeProposal {
     pub fn get_title(&self) -> Result<Option<String>, crate::error::Error> {
         Python::with_gil(|py| {
             let title = self.0.call_method0(py, "get_title")?;
-            title.extract(py).map_err(|e| e.into())
+            title.extract(py).map_err(Into::into)
         })
     }
 
@@ -192,7 +194,7 @@ impl MergeProposal {
     pub fn get_commit_message(&self) -> Result<Option<String>, crate::error::Error> {
         Python::with_gil(|py| {
             let commit_message = self.0.call_method0(py, "get_commit_message")?;
-            commit_message.extract(py).map_err(|e| e.into())
+            commit_message.extract(py).map_err(Into::into)
         })
     }
 
@@ -216,7 +218,7 @@ impl MergeProposal {
                 .extract::<String>(py)?
                 .parse::<url::Url>()
                 .map(Some)
-                .map_err(|e| e.into())
+                .map_err(Into::into)
         })
     }
 
@@ -228,7 +230,7 @@ impl MergeProposal {
                 .extract::<String>(py)?
                 .parse::<url::Url>()
                 .map(Some)
-                .map_err(|e| e.into())
+                .map_err(Into::into)
         })
     }
 
@@ -236,7 +238,7 @@ impl MergeProposal {
     pub fn get_description(&self) -> Result<Option<String>, crate::error::Error> {
         Python::with_gil(|py| {
             let description = self.0.call_method0(py, "get_description")?;
-            description.extract(py).map_err(|e| e.into())
+            description.extract(py).map_err(Into::into)
         })
     }
 
@@ -252,7 +254,7 @@ impl MergeProposal {
     pub fn can_be_merged(&self) -> Result<bool, crate::error::Error> {
         Python::with_gil(|py| {
             let can_be_merged = self.0.call_method0(py, "can_be_merged")?;
-            can_be_merged.extract(py).map_err(|e| e.into())
+            can_be_merged.extract(py).map_err(Into::into)
         })
     }
 
@@ -284,7 +286,7 @@ impl MergeProposal {
             web_url
                 .extract::<String>(py)?
                 .parse::<url::Url>()
-                .map_err(|e| e.into())
+                .map_err(Into::into)
         })
     }
 
@@ -292,7 +294,7 @@ impl MergeProposal {
     pub fn get_merged_by(&self) -> Result<Option<String>, crate::error::Error> {
         Python::with_gil(|py| {
             let merged_by = self.0.call_method0(py, "get_merged_by")?;
-            merged_by.extract(py).map_err(|e| e.into())
+            merged_by.extract(py).map_err(Into::into)
         })
     }
 
@@ -304,7 +306,7 @@ impl MergeProposal {
             let merged_at = self.0.call_method0(py, "get_merged_at")?;
             merged_at
                 .extract::<Option<chrono::DateTime<chrono::Utc>>>(py)
-                .map_err(|e| e.into())
+                .map_err(Into::into)
         })
     }
 }
@@ -568,8 +570,7 @@ impl Forge {
                     "iter_proposals",
                     (&source_branch_obj, &target_branch_obj),
                     Some(&kwargs),
-                )?
-                .extract(py)?;
+                )?;
 
             let mut ret = Vec::new();
             loop {
@@ -690,9 +691,11 @@ impl std::fmt::Display for Forge {
     }
 }
 
-impl FromPyObject<'_> for Forge {
-    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(Forge(ob.clone().unbind()))
+impl<'a, 'py> FromPyObject<'a, 'py> for Forge {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Ok(Forge(ob.to_owned().unbind()))
     }
 }
 

@@ -262,7 +262,7 @@ impl<T: PyVersionedFiles> VersionedFiles for T {
             let mut sha1s = HashMap::new();
 
             for (key_py, sha_py) in dict {
-                let key = Key::extract_bound(&key_py)?;
+                let key = key_py.extract::<Key>()?;
                 let sha_bytes = sha_py
                     .downcast::<PyBytes>()
                     .map_err(|_| PyValueError::new_err("Expected bytes"))?;
@@ -293,7 +293,7 @@ impl<T: PyVersionedFiles> VersionedFiles for T {
                 .downcast_bound::<PyIterator>(py)
                 .map_err(|_| PyValueError::new_err("Expected iterator"))?
             {
-                let key = Key::extract_bound(&key_py?)?;
+                let key = key_py?.extract::<Key>()?;
                 keys.push(key);
             }
 
@@ -318,7 +318,7 @@ impl<T: PyVersionedFiles> VersionedFiles for T {
                 .downcast_bound::<PyIterator>(py)
                 .map_err(|_| PyValueError::new_err("Expected iterator"))?
             {
-                let diff = MultiParentDiff::extract_bound(&diff_py?)?;
+                let diff = diff_py?.extract::<MultiParentDiff>()?;
                 diffs.push(diff);
             }
 
@@ -344,13 +344,13 @@ impl<T: PyVersionedFiles> VersionedFiles for T {
             let mut parent_map = HashMap::new();
 
             for (key_py, parents_py) in dict {
-                let key = Key::extract_bound(&key_py)?;
+                let key = key_py.extract::<Key>()?;
                 let mut parents = Vec::new();
                 for parent_py in parents_py
                     .downcast::<PyTuple>()
                     .map_err(|_| PyValueError::new_err("Expected tuple"))?
                 {
-                    let parent = Key::extract_bound(&parent_py)?;
+                    let parent = parent_py.extract::<Key>()?;
                     parents.push(parent);
                 }
                 parent_map.insert(key, parents);
@@ -402,7 +402,7 @@ impl Iterator for RecordStreamIterator {
 
     fn next(&mut self) -> Option<Self::Item> {
         Python::with_gil(|py| match self.0.call_method0(py, "__next__") {
-            Ok(record_py) => Some(Record::extract_bound(&record_py.bind(py)).map_err(Into::into)),
+            Ok(record_py) => Some(record_py.bind(py).extract::<Record>().map_err(Into::into)),
             Err(e) if e.is_instance_of::<pyo3::exceptions::PyStopIteration>(py) => None,
             Err(e) => Some(Err(e.into())),
         })
@@ -417,8 +417,10 @@ pub struct Record {
     pub parents: Vec<Key>,
 }
 
-impl<'py> FromPyObject<'py> for Record {
-    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Record {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         let key = ob.getattr("key")?.extract::<Key>()?;
         let storage_kind = ob.getattr("storage_kind")?.extract::<String>()?;
 
@@ -457,8 +459,10 @@ pub struct MultiParentDiff {
     pub hunks: Vec<DiffHunk>,
 }
 
-impl<'py> FromPyObject<'py> for MultiParentDiff {
-    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for MultiParentDiff {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         let tuple = ob
             .downcast::<PyTuple>()
             .map_err(|_| PyValueError::new_err("Expected tuple"))?;
@@ -471,7 +475,7 @@ impl<'py> FromPyObject<'py> for MultiParentDiff {
             .downcast::<PyList>()
             .map_err(|_| PyValueError::new_err("Expected list"))?
         {
-            hunks.push(DiffHunk::extract_bound(&hunk_py)?);
+            hunks.push(hunk_py.extract::<DiffHunk>()?);
         }
 
         Ok(MultiParentDiff {
@@ -492,8 +496,10 @@ pub enum DiffHunk {
     },
 }
 
-impl<'py> FromPyObject<'py> for DiffHunk {
-    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for DiffHunk {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         let tuple = ob
             .downcast::<PyTuple>()
             .map_err(|_| PyValueError::new_err("Expected tuple"))?;
@@ -548,9 +554,11 @@ impl<'py> IntoPyObject<'py> for GenericVersionedFiles {
     }
 }
 
-impl<'py> FromPyObject<'py> for GenericVersionedFiles {
-    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
-        Ok(GenericVersionedFiles(ob.clone().unbind()))
+impl<'a, 'py> FromPyObject<'a, 'py> for GenericVersionedFiles {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Ok(GenericVersionedFiles(ob.to_owned().unbind()))
     }
 }
 

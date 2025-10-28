@@ -77,8 +77,10 @@ impl<'py> pyo3::IntoPyObject<'py> for FileId {
     }
 }
 
-impl pyo3::FromPyObject<'_> for FileId {
-    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
+impl<'a, 'py> pyo3::FromPyObject<'a, 'py> for FileId {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         let bytes = ob.extract::<Vec<u8>>()?;
         Ok(Self(bytes))
     }
@@ -165,9 +167,11 @@ impl RemoteBzrProber {
     }
 }
 
-impl FromPyObject<'_> for RemoteBzrProber {
-    fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(Self(obj.clone().unbind()))
+impl<'a, 'py> FromPyObject<'a, 'py> for RemoteBzrProber {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Ok(Self(obj.to_owned().unbind()))
     }
 }
 

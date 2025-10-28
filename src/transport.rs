@@ -95,9 +95,11 @@ impl Transport {
     }
 }
 
-impl FromPyObject<'_> for Transport {
-    fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(Transport(obj.clone().unbind()))
+impl<'a, 'py> FromPyObject<'a, 'py> for Transport {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Ok(Transport(obj.to_owned().unbind()))
     }
 }
 

@@ -40,9 +40,11 @@ impl SmartHgProber {
     }
 }
 
-impl FromPyObject<'_> for SmartHgProber {
-    fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(Self(obj.clone().unbind()))
+impl<'a, 'py> FromPyObject<'a, 'py> for SmartHgProber {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Ok(Self(obj.to_owned().unbind()))
     }
 }
 

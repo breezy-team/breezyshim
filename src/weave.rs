@@ -132,9 +132,11 @@ impl<'py> IntoPyObject<'py> for WeaveFile {
     }
 }
 
-impl<'py> FromPyObject<'py> for WeaveFile {
-    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
-        Ok(WeaveFile(ob.clone().unbind()))
+impl<'a, 'py> FromPyObject<'a, 'py> for WeaveFile {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Ok(WeaveFile(ob.to_owned().unbind()))
     }
 }
 
@@ -224,8 +226,10 @@ impl<'py> IntoPyObject<'py> for Weave {
     }
 }
 
-impl<'py> FromPyObject<'py> for Weave {
-    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
-        Ok(Weave(ob.clone().unbind()))
+impl<'a, 'py> FromPyObject<'a, 'py> for Weave {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Ok(Weave(ob.to_owned().unbind()))
     }
 }

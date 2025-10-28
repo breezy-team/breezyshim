@@ -39,9 +39,11 @@ impl SvnRepositoryProber {
     }
 }
 
-impl FromPyObject<'_> for SvnRepositoryProber {
-    fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(Self(obj.clone().unbind()))
+impl<'a, 'py> FromPyObject<'a, 'py> for SvnRepositoryProber {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Ok(Self(obj.to_owned().unbind()))
     }
 }
 

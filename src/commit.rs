@@ -76,9 +76,11 @@ impl<'py> IntoPyObject<'py> for GenericCommitReporter {
     }
 }
 
-impl FromPyObject<'_> for GenericCommitReporter {
-    fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(GenericCommitReporter(obj.clone().unbind()))
+impl<'a, 'py> FromPyObject<'a, 'py> for GenericCommitReporter {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Ok(GenericCommitReporter(obj.to_owned().unbind()))
     }
 }
 

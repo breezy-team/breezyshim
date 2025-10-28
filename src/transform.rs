@@ -18,8 +18,10 @@ impl From<PyObject> for TreeChange {
     }
 }
 
-impl FromPyObject<'_> for TreeChange {
-    fn extract_bound(_ob: &Bound<PyAny>) -> PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for TreeChange {
+    type Error = PyErr;
+
+    fn extract(_ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         Ok(TreeChange {})
     }
 }
@@ -159,9 +161,11 @@ impl<'py> IntoPyObject<'py> for TreeTransform {
     }
 }
 
-impl FromPyObject<'_> for TreeTransform {
-    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(TreeTransform(ob.clone().unbind()))
+impl<'a, 'py> FromPyObject<'a, 'py> for TreeTransform {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Ok(TreeTransform(ob.to_owned().unbind()))
     }
 }
 
@@ -169,8 +173,10 @@ impl FromPyObject<'_> for TreeTransform {
 /// An identifier for a transformation operation.
 pub struct TransId(String);
 
-impl FromPyObject<'_> for TransId {
-    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for TransId {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         Ok(TransId(ob.extract::<String>()?))
     }
 }
@@ -259,8 +265,10 @@ impl<'py> IntoPyObject<'py> for RawConflict {
     }
 }
 
-impl FromPyObject<'_> for RawConflict {
-    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for RawConflict {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         let tuple = ob.extract::<Bound<PyTuple>>()?;
 
         match tuple.get_item(0)?.extract::<String>()?.as_str() {

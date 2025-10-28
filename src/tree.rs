@@ -69,8 +69,10 @@ pub struct Conflict {
     pub message: Option<String>,
 }
 
-impl FromPyObject<'_> for Conflict {
-    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Conflict {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         let path: String = ob.getattr("path")?.extract()?;
         let conflict_type: String = ob.getattr("typestring")?.extract()?;
         let message: Option<String> = ob.getattr("message").ok().and_then(|m| m.extract().ok());
@@ -173,8 +175,10 @@ impl<'py> pyo3::IntoPyObject<'py> for Kind {
     }
 }
 
-impl pyo3::FromPyObject<'_> for Kind {
-    fn extract_bound(ob: &Bound<pyo3::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> pyo3::FromPyObject<'a, 'py> for Kind {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, pyo3::PyAny>) -> PyResult<Self> {
         let s: String = ob.extract()?;
         match s.as_str() {
             "file" => Ok(Kind::File),
@@ -224,8 +228,10 @@ pub enum TreeEntry {
     },
 }
 
-impl FromPyObject<'_> for TreeEntry {
-    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for TreeEntry {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         let kind: String = ob.getattr("kind")?.extract()?;
         match kind.as_str() {
             "file" => {
@@ -544,7 +550,7 @@ impl<T: PyTree + ?Sized> Tree for T {
             let text = self
                 .to_object(py)
                 .call_method1(py, "get_file_text", (path_str,))?;
-            text.extract(py).map_err(|e| e.into())
+            text.extract(py).map_err(Into::into)
         })
     }
 
@@ -554,7 +560,7 @@ impl<T: PyTree + ?Sized> Tree for T {
             let lines = self
                 .to_object(py)
                 .call_method1(py, "get_file_lines", (path_str,))?;
-            lines.extract(py).map_err(|e| e.into())
+            lines.extract(py).map_err(Into::into)
         })
     }
 
@@ -583,7 +589,7 @@ impl<T: PyTree + ?Sized> Tree for T {
             let target = self
                 .to_object(py)
                 .call_method1(py, "get_symlink_target", (path_str,))?;
-            target.extract(py).map_err(|e| e.into())
+            target.extract(py).map_err(Into::into)
         })
     }
 
@@ -615,7 +621,7 @@ impl<T: PyTree + ?Sized> Tree for T {
                 .call_method1(py, "kind", (path_str,))
                 .unwrap()
                 .extract(py)
-                .map_err(|e| e.into())
+                .map_err(Into::into)
         })
     }
 
@@ -674,7 +680,7 @@ impl<T: PyTree + ?Sized> Tree for T {
                         if next.is_none(py) {
                             None
                         } else {
-                            Some(next.extract(py).map_err(|e| e.into()))
+                            Some(next.extract(py).map_err(Into::into))
                         }
                     })
                 }
@@ -749,7 +755,7 @@ impl<T: PyTree + ?Sized> Tree for T {
                         if next.is_none(py) {
                             None
                         } else {
-                            Some(next.extract(py).map_err(|e| e.into()))
+                            Some(next.extract(py).map_err(Into::into))
                         }
                     })
                 }
@@ -793,7 +799,7 @@ impl<T: PyTree + ?Sized> Tree for T {
                         if next.is_none(py) {
                             None
                         } else {
-                            Some(next.extract(py).map_err(|e| e.into()))
+                            Some(next.extract(py).map_err(Into::into))
                         }
                     })
                 }
@@ -817,7 +823,7 @@ impl<T: PyTree + ?Sized> Tree for T {
             let size = self
                 .to_object(py)
                 .call_method1(py, "get_file_size", (path_str,))?;
-            size.extract(py).map_err(|e| e.into())
+            size.extract(py).map_err(Into::into)
         })
     }
 
@@ -831,7 +837,7 @@ impl<T: PyTree + ?Sized> Tree for T {
             let sha1 = self
                 .to_object(py)
                 .call_method1(py, "get_file_sha1", (path_str,))?;
-            sha1.extract(py).map_err(|e| e.into())
+            sha1.extract(py).map_err(Into::into)
         })
     }
 
@@ -841,7 +847,7 @@ impl<T: PyTree + ?Sized> Tree for T {
             let mtime = self
                 .to_object(py)
                 .call_method1(py, "get_file_mtime", (path_str,))?;
-            mtime.extract(py).map_err(|e| e.into())
+            mtime.extract(py).map_err(Into::into)
         })
     }
 
@@ -851,7 +857,7 @@ impl<T: PyTree + ?Sized> Tree for T {
             let result = self
                 .to_object(py)
                 .call_method1(py, "is_executable", (path_str,))?;
-            result.extract(py).map_err(|e| e.into())
+            result.extract(py).map_err(Into::into)
         })
     }
 
@@ -861,7 +867,7 @@ impl<T: PyTree + ?Sized> Tree for T {
             self.to_object(py)
                 .call_method1(py, "stored_kind", (path_str,))?
                 .extract(py)
-                .map_err(|e| e.into())
+                .map_err(Into::into)
         })
     }
 
@@ -918,7 +924,7 @@ impl<T: PyTree + ?Sized> Tree for T {
     fn unknowns(&self) -> Result<Vec<PathBuf>, Error> {
         Python::with_gil(|py| {
             let unknowns = self.to_object(py).call_method0(py, "unknowns")?;
-            unknowns.extract(py).map_err(|e| e.into())
+            unknowns.extract(py).map_err(Into::into)
         })
     }
 
@@ -946,7 +952,7 @@ impl<T: PyTree + ?Sized> Tree for T {
                         if next.is_none(py) {
                             None
                         } else {
-                            Some(next.extract(py).map_err(|e| e.into()))
+                            Some(next.extract(py).map_err(Into::into))
                         }
                     })
                 }
@@ -962,14 +968,14 @@ impl<T: PyTree + ?Sized> Tree for T {
     fn conflicts(&self) -> Result<Vec<Conflict>, Error> {
         Python::with_gil(|py| {
             let conflicts = self.to_object(py).call_method0(py, "conflicts")?;
-            conflicts.extract(py).map_err(|e| e.into())
+            conflicts.extract(py).map_err(Into::into)
         })
     }
 
     fn extras(&self) -> Result<Vec<PathBuf>, Error> {
         Python::with_gil(|py| {
             let extras = self.to_object(py).call_method0(py, "extras")?;
-            extras.extract(py).map_err(|e| e.into())
+            extras.extract(py).map_err(Into::into)
         })
     }
 
@@ -982,7 +988,7 @@ impl<T: PyTree + ?Sized> Tree for T {
             let result =
                 self.to_object(py)
                     .call_method1(py, "filter_unversioned_files", (path_strings,))?;
-            result.extract(py).map_err(|e| e.into())
+            result.extract(py).map_err(Into::into)
         })
     }
 
@@ -1111,7 +1117,7 @@ impl<T: PyTree + ?Sized> Tree for T {
                         if next.is_none(py) {
                             None
                         } else {
-                            Some(next.extract(py).map_err(|e| e.into()))
+                            Some(next.extract(py).map_err(Into::into))
                         }
                     })
                 }
@@ -1157,7 +1163,7 @@ impl<T: PyTree + ?Sized> Tree for T {
                         if next.is_none(py) {
                             None
                         } else {
-                            Some(next.extract(py).map_err(|e| e.into()))
+                            Some(next.extract(py).map_err(Into::into))
                         }
                     })
                 }
@@ -1194,7 +1200,7 @@ impl<T: PyTree + ?Sized> Tree for T {
             let result = self
                 .to_object(py)
                 .call_method1(py, "get_file_verifier", (path_str,))?;
-            result.extract(py).map_err(|e| e.into())
+            result.extract(py).map_err(Into::into)
         })
     }
 
@@ -1204,7 +1210,7 @@ impl<T: PyTree + ?Sized> Tree for T {
             let rev = self
                 .to_object(py)
                 .call_method1(py, "get_reference_revision", (path_str,))?;
-            rev.extract(py).map_err(|e| e.into())
+            rev.extract(py).map_err(Into::into)
         })
     }
 
@@ -1238,7 +1244,7 @@ impl<T: PyTree + ?Sized> Tree for T {
                         if next.is_none(py) {
                             None
                         } else {
-                            Some(next.extract(py).map_err(|e| e.into()))
+                            Some(next.extract(py).map_err(Into::into))
                         }
                     })
                 }
@@ -1294,7 +1300,7 @@ impl<T: PyTree + ?Sized> Tree for T {
                         if next.is_none(py) {
                             None
                         } else {
-                            Some(next.extract(py).map_err(|e| e.into()))
+                            Some(next.extract(py).map_err(Into::into))
                         }
                     })
                 }
@@ -1495,7 +1501,7 @@ impl<T: PyMutableTree + ?Sized> MutableTree for T {
                 .call_method1(py, "add", (path_strings,))?;
             Ok(())
         })
-        .map_err(|e| e.into())
+        .map_err(Into::into)
     }
 
     fn lock_write(&self) -> Result<Lock, Error> {
@@ -1522,7 +1528,7 @@ impl<T: PyMutableTree + ?Sized> MutableTree for T {
             self.to_object(py)
                 .call_method0(py, "has_changes")?
                 .extract::<bool>(py)
-                .map_err(|e| e.into())
+                .map_err(Into::into)
         })
     }
 
@@ -1533,7 +1539,7 @@ impl<T: PyMutableTree + ?Sized> MutableTree for T {
             self.to_object(py).call_method1(py, "mkdir", (path_str,))?;
             Ok(())
         })
-        .map_err(|e| e.into())
+        .map_err(Into::into)
     }
 
     fn remove(&self, files: &[&std::path::Path]) -> Result<(), Error> {
@@ -1549,7 +1555,7 @@ impl<T: PyMutableTree + ?Sized> MutableTree for T {
                 .call_method1(py, "remove", (path_strings,))?;
             Ok(())
         })
-        .map_err(|e| e.into())
+        .map_err(Into::into)
     }
 
     fn add_reference(&self, reference: &TreeReference) -> Result<(), Error> {
@@ -1684,7 +1690,7 @@ impl<T: PyMutableTree + ?Sized> MutableTree for T {
             let result = self
                 .to_object(py)
                 .call_method(py, "commit", (message,), Some(&kwargs))?;
-            result.extract(py).map_err(|e| e.into())
+            result.extract(py).map_err(Into::into)
         })
     }
 }
@@ -1797,8 +1803,10 @@ impl<'py> IntoPyObject<'py> for TreeChange {
     }
 }
 
-impl FromPyObject<'_> for TreeChange {
-    fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for TreeChange {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         fn from_bool(o: &Bound<PyAny>) -> PyResult<bool> {
             if let Ok(b) = o.extract::<isize>() {
                 Ok(b != 0)

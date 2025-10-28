@@ -76,8 +76,10 @@ impl std::str::FromStr for Vendor {
     }
 }
 
-impl FromPyObject<'_> for Vendor {
-    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Vendor {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         let vendor = ob.extract::<String>()?;
         match vendor.as_str() {
             "debian" => Ok(Vendor::Debian),
@@ -144,8 +146,10 @@ impl std::fmt::Display for VersionKind {
     }
 }
 
-impl FromPyObject<'_> for VersionKind {
-    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for VersionKind {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         let kind = ob.extract::<String>()?;
         match kind.as_str() {
             "auto" => Ok(VersionKind::Auto),
@@ -205,8 +209,10 @@ impl From<TarballKind> for Option<String> {
     }
 }
 
-impl FromPyObject<'_> for TarballKind {
-    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for TarballKind {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         let kind = ob.extract::<Option<String>>()?;
         Ok(kind.into())
     }

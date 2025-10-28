@@ -29,9 +29,11 @@ impl DarcsProber {
     }
 }
 
-impl FromPyObject<'_> for DarcsProber {
-    fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(Self(obj.clone().unbind()))
+impl<'a, 'py> FromPyObject<'a, 'py> for DarcsProber {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Ok(Self(obj.to_owned().unbind()))
     }
 }
 

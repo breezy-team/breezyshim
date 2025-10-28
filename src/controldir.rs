@@ -405,9 +405,11 @@ impl<'py> IntoPyObject<'py> for GenericControlDir {
     }
 }
 
-impl FromPyObject<'_> for GenericControlDir {
-    fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(GenericControlDir(obj.clone().unbind()))
+impl<'a, 'py> FromPyObject<'a, 'py> for GenericControlDir {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Ok(GenericControlDir(obj.to_owned().unbind()))
     }
 }
 
@@ -494,8 +496,7 @@ impl<T: PyControlDir> ControlDir for T {
         Python::with_gil(|py| {
             let branch: PyObject = self
                 .to_object(py)
-                .call_method(py, "create_branch", (name,), None)?
-                .extract(py)?;
+                .call_method(py, "create_branch", (name,), None)?;
             Ok(Box::new(GenericBranch::from(branch)) as Box<Self::Branch>)
         })
     }
@@ -508,8 +509,7 @@ impl<T: PyControlDir> ControlDir for T {
             }
             let repository = self
                 .to_object(py)
-                .call_method(py, "create_repository", (), Some(&kwargs))?
-                .extract(py)?;
+                .call_method(py, "create_repository", (), Some(&kwargs))?;
             Ok(GenericRepository::new(repository))
         })
     }
@@ -518,8 +518,7 @@ impl<T: PyControlDir> ControlDir for T {
         Python::with_gil(|py| {
             let branch: PyObject = self
                 .to_object(py)
-                .call_method(py, "open_branch", (branch_name,), None)?
-                .extract(py)?;
+                .call_method(py, "open_branch", (branch_name,), None)?;
             Ok(Box::new(GenericBranch::from(branch)) as Box<Self::Branch>)
         })
     }
@@ -528,8 +527,7 @@ impl<T: PyControlDir> ControlDir for T {
         Python::with_gil(|py| {
             let wt = self
                 .to_object(py)
-                .call_method0(py, "create_workingtree")?
-                .extract(py)?;
+                .call_method0(py, "create_workingtree")?;
             Ok(GenericWorkingTree(wt))
         })
     }
@@ -647,8 +645,7 @@ impl<T: PyControlDir> ControlDir for T {
         Python::with_gil(|py| {
             let wt = self
                 .to_object(py)
-                .call_method0(py, "open_workingtree")?
-                .extract(py)?;
+                .call_method0(py, "open_workingtree")?;
             Ok(GenericWorkingTree(wt))
         })
     }
@@ -685,8 +682,7 @@ impl<T: PyControlDir> ControlDir for T {
             }
             let branch: PyObject = self
                 .to_object(py)
-                .call_method(py, "create_branch_and_repo", (name,), Some(&kwargs))?
-                .extract(py)?;
+                .call_method(py, "create_branch_and_repo", (name,), Some(&kwargs))?;
             Ok(Box::new(GenericBranch::from(branch)) as Box<Self::Branch>)
         })
     }
@@ -1397,9 +1393,11 @@ impl<'py> IntoPyObject<'py> for GenericProber {
     }
 }
 
-impl FromPyObject<'_> for GenericProber {
-    fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(GenericProber(obj.clone().unbind()))
+impl<'a, 'py> FromPyObject<'a, 'py> for GenericProber {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Ok(GenericProber(obj.to_owned().unbind()))
     }
 }
 

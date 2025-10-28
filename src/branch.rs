@@ -959,9 +959,11 @@ impl<'py> IntoPyObject<'py> for GenericBranch {
     }
 }
 
-impl FromPyObject<'_> for GenericBranch {
-    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(GenericBranch(ob.clone().unbind()))
+impl<'a, 'py> FromPyObject<'a, 'py> for GenericBranch {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Ok(GenericBranch(ob.to_owned().unbind()))
     }
 }
 

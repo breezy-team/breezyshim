@@ -30,9 +30,11 @@ impl<'py> IntoPyObject<'py> for GenericInterRepository {
     }
 }
 
-impl FromPyObject<'_> for GenericInterRepository {
-    fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(GenericInterRepository(obj.clone().unbind()))
+impl<'a, 'py> FromPyObject<'a, 'py> for GenericInterRepository {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Ok(GenericInterRepository(obj.to_owned().unbind()))
     }
 }
 

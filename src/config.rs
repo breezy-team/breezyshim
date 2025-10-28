@@ -229,8 +229,10 @@ pub struct Credentials {
     pub verify_certificates: Option<bool>,
 }
 
-impl FromPyObject<'_> for Credentials {
-    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Credentials {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         let scheme = ob.get_item("scheme")?.extract()?;
         let username = ob.get_item("username")?.extract()?;
         let password = ob.get_item("password")?.extract()?;

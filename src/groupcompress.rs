@@ -67,7 +67,7 @@ impl GroupCompressVersionedFiles {
 
             let mut keys = Vec::new();
             for key_py in keys_iter {
-                let key = Key::extract_bound(&key_py?)?;
+                let key = key_py?.extract::<Key>()?;
                 keys.push(key);
             }
             Ok(keys)
@@ -97,9 +97,11 @@ impl<'py> IntoPyObject<'py> for GroupCompressVersionedFiles {
     }
 }
 
-impl<'py> FromPyObject<'py> for GroupCompressVersionedFiles {
-    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
-        Ok(GroupCompressVersionedFiles(ob.clone().unbind()))
+impl<'a, 'py> FromPyObject<'a, 'py> for GroupCompressVersionedFiles {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Ok(GroupCompressVersionedFiles(ob.to_owned().unbind()))
     }
 }
 

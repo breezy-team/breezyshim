@@ -89,9 +89,11 @@ impl<'py> IntoPyObject<'py> for GPGStrategy {
     }
 }
 
-impl FromPyObject<'_> for GPGStrategy {
-    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(GPGStrategy(ob.clone().unbind()))
+impl<'a, 'py> FromPyObject<'a, 'py> for GPGStrategy {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Ok(GPGStrategy(ob.to_owned().unbind()))
     }
 }
 
@@ -211,8 +213,10 @@ pub struct GPGKey {
     pub fpr: String,
 }
 
-impl FromPyObject<'_> for GPGKey {
-    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for GPGKey {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         Ok(GPGKey {
             fpr: ob.getattr("fpr").unwrap().extract().unwrap(),
         })

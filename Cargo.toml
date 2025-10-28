@@ -21,7 +21,7 @@ lazy-regex = ">=2"
 patchkit = "0.2"
 log = "0.4"
 debian-control = { version = ">= 0.1.44", optional = true, features = ["python-debian"] }
-deb822-lossless = { version = "0.3.0", optional = true }
+deb822-lossless = { version = "0.4.0", optional = true }
 dirty-tracker = { version = "0.3", optional = true }
 debian-changelog = { version = "0.2.1", optional = true }
 difflib = { version = "0.4.0", optional = true }
@@ -55,7 +55,7 @@ workspace = true
 features = [ "serde",]
 
 [workspace.dependencies]
-pyo3 = { version = ">=0.25,<0.27", features = ["chrono"] }
+pyo3 = { version = ">=0.25,<0.28", features = ["chrono"] }
 
 [dev-dependencies]
 maplit = "1"

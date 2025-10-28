@@ -52,9 +52,11 @@ impl<'py> IntoPyObject<'py> for GenericUIFactory {
     }
 }
 
-impl FromPyObject<'_> for GenericUIFactory {
-    fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(GenericUIFactory(obj.clone().unbind()))
+impl<'a, 'py> FromPyObject<'a, 'py> for GenericUIFactory {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Ok(GenericUIFactory(obj.to_owned().unbind()))
     }
 }
 

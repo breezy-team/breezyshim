@@ -61,9 +61,11 @@ impl<'py> IntoPyObject<'py> for KnitVersionedFiles {
     }
 }
 
-impl<'py> FromPyObject<'py> for KnitVersionedFiles {
-    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
-        Ok(KnitVersionedFiles(ob.clone().unbind()))
+impl<'a, 'py> FromPyObject<'a, 'py> for KnitVersionedFiles {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Ok(KnitVersionedFiles(ob.to_owned().unbind()))
     }
 }
 

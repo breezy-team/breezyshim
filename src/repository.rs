@@ -407,8 +407,10 @@ impl<'py> IntoPyObject<'py> for Revision {
     }
 }
 
-impl FromPyObject<'_> for Revision {
-    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Revision {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         // Extract properties if they exist
         let mut properties = std::collections::HashMap::new();
 
@@ -668,7 +670,7 @@ impl<T: PyRepository> Repository for T {
                 .call_method1(py, "get_revision", (revision_id.clone(),))?
                 .extract(py)
         })
-        .map_err(|e| e.into())
+        .map_err(Into::into)
     }
 
     // TODO: This should really be on ForeignRepository
@@ -681,7 +683,7 @@ impl<T: PyRepository> Repository for T {
                 .call_method1(py, "lookup_bzr_revision_id", (revision_id.clone(),))?
                 .extract::<(Vec<u8>, PyObject)>(py)
         })
-        .map_err(|e| e.into())
+        .map_err(Into::into)
         .map(|(v, _m)| (v,))
     }
 
@@ -694,7 +696,7 @@ impl<T: PyRepository> Repository for T {
                 .call_method1(py, "lookup_foreign_revision_id", (foreign_revid,))?
                 .extract(py)
         })
-        .map_err(|e| e.into())
+        .map_err(Into::into)
     }
 
     fn lock_read(&self) -> Result<Lock, crate::error::Error> {
@@ -720,7 +722,7 @@ impl<T: PyRepository> Repository for T {
             self.to_object(py)
                 .call_method1(py, "has_revision", (revision_id.clone(),))?
                 .extract(py)
-                .map_err(|e| e.into())
+                .map_err(Into::into)
         })
     }
 
@@ -729,7 +731,7 @@ impl<T: PyRepository> Repository for T {
             self.to_object(py)
                 .call_method0(py, "all_revision_ids")?
                 .extract(py)
-                .map_err(|e| e.into())
+                .map_err(Into::into)
         })
     }
 
@@ -738,7 +740,7 @@ impl<T: PyRepository> Repository for T {
             self.to_object(py)
                 .call_method0(py, "is_shared")?
                 .extract(py)
-                .map_err(|e| e.into())
+                .map_err(Into::into)
         })
     }
 
@@ -747,7 +749,7 @@ impl<T: PyRepository> Repository for T {
             self.to_object(py)
                 .call_method1(py, "get_signature_text", (revision_id.clone(),))?
                 .extract(py)
-                .map_err(|e| e.into())
+                .map_err(Into::into)
         })
     }
 
@@ -759,7 +761,7 @@ impl<T: PyRepository> Repository for T {
             self.to_object(py)
                 .call_method1(py, "has_signature_for_revision_id", (revision_id.clone(),))?
                 .extract(py)
-                .map_err(|e| e.into())
+                .map_err(Into::into)
         })
     }
 
@@ -850,7 +852,7 @@ impl<T: PyRepository> Repository for T {
             self.to_object(py)
                 .call_method1(py, "missing_revision_ids", (other_py, revision_id.cloned()))?
                 .extract(py)
-                .map_err(|e| e.into())
+                .map_err(Into::into)
         })
     }
 
@@ -951,7 +953,7 @@ impl<T: PyRepository> Repository for T {
             self.to_object(py)
                 .call_method1(py, "get_ancestry", (revision_ids.to_vec(), topo_sorted))?
                 .extract(py)
-                .map_err(|e| e.into())
+                .map_err(Into::into)
         })
     }
 

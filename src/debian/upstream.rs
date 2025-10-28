@@ -69,8 +69,10 @@ pub struct Tarball {
 /// A collection of tarballs.
 pub type Tarballs = Vec<Tarball>;
 
-impl FromPyObject<'_> for Tarball {
-    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Tarball {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         Ok(Tarball {
             filename: ob.get_item(0)?.extract()?,
             component: ob.get_item(1)?.extract()?,
@@ -277,9 +279,11 @@ impl<'py> IntoPyObject<'py> for GenericUpstreamSource {
     }
 }
 
-impl FromPyObject<'_> for GenericUpstreamSource {
-    fn extract_bound(obj: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(GenericUpstreamSource(obj.clone().unbind()))
+impl<'a, 'py> FromPyObject<'a, 'py> for GenericUpstreamSource {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Ok(GenericUpstreamSource(obj.to_owned().unbind()))
     }
 }
 

@@ -34,9 +34,11 @@ impl<'py> IntoPyObject<'py> for Graph {
     }
 }
 
-impl FromPyObject<'_> for Graph {
-    fn extract_bound(ob: &Bound<PyAny>) -> PyResult<Self> {
-        Ok(Graph(ob.clone().unbind()))
+impl<'a, 'py> FromPyObject<'a, 'py> for Graph {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Ok(Graph(ob.to_owned().unbind()))
     }
 }
 
@@ -660,8 +662,10 @@ impl<'py> IntoPyObject<'py> for Key {
     }
 }
 
-impl<'py> FromPyObject<'py> for Key {
-    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Key {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         let tuple = ob.downcast::<PyTuple>()?;
         let mut items = Vec::new();
         for item in tuple {
@@ -678,7 +682,7 @@ impl GraphNode for Key {
     }
 
     fn from_pyobject(obj: &Bound<PyAny>) -> PyResult<Self> {
-        Key::extract_bound(obj)
+        obj.extract::<Key>()
     }
 }
 
