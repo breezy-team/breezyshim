@@ -599,9 +599,7 @@ impl<T: PyRepository> Repository for T {
     }
 
     fn get_graph(&self) -> Graph {
-        Python::attach(|py| {
-            Graph::from(self.to_object(py).call_method0(py, "get_graph").unwrap())
-        })
+        Python::attach(|py| Graph::from(self.to_object(py).call_method0(py, "get_graph").unwrap()))
     }
 
     fn controldir(

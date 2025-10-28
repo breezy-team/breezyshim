@@ -494,9 +494,9 @@ impl<T: PyControlDir> ControlDir for T {
 
     fn create_branch(&self, name: Option<&str>) -> Result<Box<Self::Branch>, Error> {
         Python::attach(|py| {
-            let branch: Py<PyAny> = self
-                .to_object(py)
-                .call_method(py, "create_branch", (name,), None)?;
+            let branch: Py<PyAny> =
+                self.to_object(py)
+                    .call_method(py, "create_branch", (name,), None)?;
             Ok(Box::new(GenericBranch::from(branch)) as Box<Self::Branch>)
         })
     }
@@ -507,27 +507,25 @@ impl<T: PyControlDir> ControlDir for T {
             if let Some(shared) = shared {
                 kwargs.set_item("shared", shared)?;
             }
-            let repository = self
-                .to_object(py)
-                .call_method(py, "create_repository", (), Some(&kwargs))?;
+            let repository =
+                self.to_object(py)
+                    .call_method(py, "create_repository", (), Some(&kwargs))?;
             Ok(GenericRepository::new(repository))
         })
     }
 
     fn open_branch(&self, branch_name: Option<&str>) -> Result<Box<Self::Branch>, Error> {
         Python::attach(|py| {
-            let branch: Py<PyAny> = self
-                .to_object(py)
-                .call_method(py, "open_branch", (branch_name,), None)?;
+            let branch: Py<PyAny> =
+                self.to_object(py)
+                    .call_method(py, "open_branch", (branch_name,), None)?;
             Ok(Box::new(GenericBranch::from(branch)) as Box<Self::Branch>)
         })
     }
 
     fn create_workingtree(&self) -> crate::Result<GenericWorkingTree> {
         Python::attach(|py| {
-            let wt = self
-                .to_object(py)
-                .call_method0(py, "create_workingtree")?;
+            let wt = self.to_object(py).call_method0(py, "create_workingtree")?;
             Ok(GenericWorkingTree(wt))
         })
     }
@@ -643,9 +641,7 @@ impl<T: PyControlDir> ControlDir for T {
 
     fn open_workingtree(&self) -> crate::Result<GenericWorkingTree> {
         Python::attach(|py| {
-            let wt = self
-                .to_object(py)
-                .call_method0(py, "open_workingtree")?;
+            let wt = self.to_object(py).call_method0(py, "open_workingtree")?;
             Ok(GenericWorkingTree(wt))
         })
     }
@@ -680,9 +676,12 @@ impl<T: PyControlDir> ControlDir for T {
             if let Some(shared) = shared {
                 kwargs.set_item("shared", shared)?;
             }
-            let branch: Py<PyAny> = self
-                .to_object(py)
-                .call_method(py, "create_branch_and_repo", (name,), Some(&kwargs))?;
+            let branch: Py<PyAny> = self.to_object(py).call_method(
+                py,
+                "create_branch_and_repo",
+                (name,),
+                Some(&kwargs),
+            )?;
             Ok(Box::new(GenericBranch::from(branch)) as Box<Self::Branch>)
         })
     }
@@ -1311,9 +1310,7 @@ impl AsFormat for &str {
 
 impl AsFormat for &ControlDirFormat {
     fn as_format(&self) -> Option<ControlDirFormat> {
-        Some(Python::attach(|py| {
-            ControlDirFormat(self.0.clone_ref(py))
-        }))
+        Some(Python::attach(|py| ControlDirFormat(self.0.clone_ref(py))))
     }
 }
 
