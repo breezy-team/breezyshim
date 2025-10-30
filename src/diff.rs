@@ -60,6 +60,7 @@ mod tests {
 
     #[test]
     fn test_show_diff_trees_empty() {
+        crate::init();
         let tmp_dir = tempfile::tempdir().unwrap();
         let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
         let tree1 = wt.basis_tree().unwrap();
@@ -72,6 +73,7 @@ mod tests {
 
     #[test]
     fn test_show_diff_trees_with_labels() {
+        crate::init();
         let tmp_dir = tempfile::tempdir().unwrap();
         let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
         let tree1 = wt.basis_tree().unwrap();
@@ -84,6 +86,7 @@ mod tests {
 
     #[test]
     fn test_show_diff_trees_cursor() {
+        crate::init();
         let tmp_dir = tempfile::tempdir().unwrap();
         let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
         let tree1 = wt.basis_tree().unwrap();

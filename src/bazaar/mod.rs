@@ -110,6 +110,7 @@ pub fn gen_revision_id(username: &str, timestamp: Option<usize>) -> Vec<u8> {
 
 #[test]
 fn test_gen_revision_id() {
+    crate::init();
     gen_revision_id("user", None);
 }
 
@@ -132,6 +133,7 @@ pub fn gen_file_id(name: &str) -> Vec<u8> {
 
 #[test]
 fn test_file_id() {
+    crate::init();
     gen_file_id("somename");
 }
 

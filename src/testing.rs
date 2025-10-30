@@ -18,7 +18,7 @@ pub struct TestEnv {
     /// The home directory for the test environment.
     pub home_dir: PathBuf,
     /// The original working directory before the test environment was set up.
-    pub old_cwd: PathBuf,
+    pub old_cwd: Option<PathBuf>,
     /// The original environment variables before the test environment was set up.
     pub old_env: HashMap<String, Option<String>>,
 }
@@ -33,13 +33,15 @@ impl TestEnv {
     ///
     /// A new TestEnv instance
     pub fn new() -> Self {
+        // Ensure Python and Breezy are initialized
+        crate::init();
         let temp_dir = TempDir::new().unwrap();
         let working_dir = temp_dir.path().join("test");
         fs::create_dir(&working_dir).unwrap();
         let home_dir = temp_dir.path().join("home");
         fs::create_dir(&home_dir).unwrap();
         let mut old_env = HashMap::new();
-        let old_cwd = std::env::current_dir().unwrap();
+        let old_cwd = std::env::current_dir().ok();
         old_env.insert("HOME".to_string(), std::env::var("HOME").ok());
         old_env.insert("BRZ_EMAIL".to_string(), std::env::var("BRZ_EMAIL").ok());
         old_env.insert("BRZ_HOME".to_string(), std::env::var("BRZ_HOME").ok());
@@ -99,7 +101,9 @@ impl Drop for TestEnv {
                 }
             });
         }
-        let _ = std::env::set_current_dir(&self.old_cwd);
+        if let Some(ref old_cwd) = self.old_cwd {
+            let _ = std::env::set_current_dir(old_cwd);
+        }
     }
 }
 

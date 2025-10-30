@@ -1539,6 +1539,7 @@ mod tests {
 
     #[test]
     fn test_control_dir_format_registry() {
+        crate::init();
         let registry = ControlDirFormatRegistry::new();
         let format = registry.make_controldir("2a").unwrap();
         let _ = format.get_format_string();
@@ -1546,18 +1547,21 @@ mod tests {
 
     #[test]
     fn test_format_registry() {
+        crate::init();
         let format = FORMAT_REGISTRY.make_controldir("2a").unwrap();
         let _ = format.get_format_string();
     }
 
     #[test]
     fn test_all_probers() {
+        crate::init();
         let probers = all_probers();
         assert!(!probers.is_empty());
     }
 
     #[test]
     fn test_open_tree_or_branch() {
+        crate::init();
         let tmp_dir = tempfile::tempdir().unwrap();
         create_branch_convenience(
             &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
@@ -1584,12 +1588,14 @@ mod tests {
 
     #[test]
     fn test_control_dir_format_default() {
+        crate::init();
         let d = ControlDirFormat::default();
         d.get_format_string();
     }
 
     #[test]
     fn test_open() {
+        crate::init();
         let tmp_dir = tempfile::tempdir().unwrap();
 
         let e = open(
@@ -1620,6 +1626,7 @@ mod tests {
 
     #[test]
     fn test_create() {
+        crate::init();
         let tmp_dir = tempfile::tempdir().unwrap();
         let cd = create(
             &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
@@ -1641,6 +1648,7 @@ mod tests {
 
     #[test]
     fn test_create_on_transport() {
+        crate::init();
         let tmp_dir = tempfile::tempdir().unwrap();
         let transport = crate::transport::get_transport(
             &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
@@ -1652,6 +1660,7 @@ mod tests {
 
     #[test]
     fn test_open_containing_from_transport() {
+        crate::init();
         let tmp_dir = tempfile::tempdir().unwrap();
         let transport = crate::transport::get_transport(
             &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
@@ -1664,6 +1673,7 @@ mod tests {
 
     #[test]
     fn test_open_from_transport() {
+        crate::init();
         let tmp_dir = tempfile::tempdir().unwrap();
         let transport = crate::transport::get_transport(
             &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
@@ -1676,6 +1686,7 @@ mod tests {
 
     #[test]
     fn test_create_standalone_workingtree() {
+        crate::init();
         let tmp_dir = tempfile::tempdir().unwrap();
         let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
 
@@ -1687,6 +1698,7 @@ mod tests {
 
     #[test]
     fn test_create_branch_convenience() {
+        crate::init();
         let tmp_dir = tempfile::tempdir().unwrap();
         let branch = create_branch_convenience(
             &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
@@ -1703,6 +1715,7 @@ mod tests {
 
     #[test]
     fn test_create_repository() {
+        crate::init();
         let tmp_dir = tempfile::tempdir().unwrap();
         let controldir = create(
             &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
@@ -1715,6 +1728,7 @@ mod tests {
 
     #[test]
     fn test_create_branch() {
+        crate::init();
         let tmp_dir = tempfile::tempdir().unwrap();
         let controldir = create(
             &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
@@ -1732,6 +1746,7 @@ mod tests {
 
     #[test]
     fn test_create_workingtree() {
+        crate::init();
         let tmp_dir = tempfile::tempdir().unwrap();
         let controldir = create(
             &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
@@ -1746,6 +1761,7 @@ mod tests {
 
     #[test]
     fn test_branch_names() {
+        crate::init();
         let tmp_dir = tempfile::tempdir().unwrap();
         let controldir = create(
             &url::Url::from_directory_path(tmp_dir.path()).unwrap(),

@@ -1116,6 +1116,7 @@ mod tests {
 
     #[test]
     fn test_create_and_clone() {
+        crate::init();
         let td = tempfile::tempdir().unwrap();
         let url = url::Url::from_directory_path(td.path()).unwrap();
         let branch = crate::controldir::create_branch_convenience(
@@ -1131,6 +1132,7 @@ mod tests {
 
     #[test]
     fn test_create_and_clone_memory() {
+        crate::init();
         let td = tempfile::tempdir().unwrap();
         let url = url::Url::from_directory_path(td.path()).unwrap();
         let branch = crate::controldir::create_branch_convenience(
