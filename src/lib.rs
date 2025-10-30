@@ -127,6 +127,7 @@ pub fn init_bzr() {
 }
 
 #[cfg(feature = "auto-initialize")]
+/// Initialize
 #[ctor::ctor]
 fn ensure_initialized() {
     init();
@@ -138,7 +139,10 @@ const MINIMUM_VERSION: (usize, usize, usize) = (3, 3, 6);
 /// Initialization lock to ensure Breezy is only initialized once.
 static INIT_BREEZY: Once = Once::new();
 
-/// Initialize the Breezy library.
+/// Initialize the Breezy library and Python interpreter.
+///
+/// This function ensures Python is initialized and Breezy is loaded.
+/// It is safe to call multiple times.
 ///
 /// This function ensures that Breezy is properly initialized, checking version
 /// compatibility and loading required modules. It should be called before

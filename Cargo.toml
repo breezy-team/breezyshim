@@ -16,7 +16,7 @@ pyo3-filelike = ">=0.5.1,<0.6"
 tempfile = "3.20.0"
 lazy_static = "1.4.0"
 chrono = "0.4"
-ctor = { version = ">=0.2.0,<0.7", optional = true }
+ctor = { version = ">=0.1,<0.7", optional = true }
 lazy-regex = ">=3.4,<4"
 regex = ">=1.10,<2"
 patchkit = ">=0.2.2,<0.3"
