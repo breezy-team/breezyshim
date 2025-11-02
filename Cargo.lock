@@ -85,14 +85,14 @@ dependencies = [
 
 [[package]]
 name = "breezyshim"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "chrono",
  "ctor",
  "deb822-lossless",
  "debian-changelog",
  "debian-control",
- "debversion 0.5.0",
+ "debversion",
  "difflib",
  "dirty-tracker",
  "launchpadlib",
@@ -327,7 +327,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eda50dbfa5cb29cb722fffc73d3154a71546dc5772f1612512be0239fc4c74f6"
 dependencies = [
  "chrono",
- "debversion 0.5.0",
+ "debversion",
  "lazy-regex",
  "log",
  "rowan",
@@ -344,23 +344,11 @@ dependencies = [
  "chrono",
  "deb822-fast",
  "deb822-lossless",
- "debversion 0.5.0",
+ "debversion",
  "pyo3",
  "regex",
  "rowan",
  "url",
-]
-
-[[package]]
-name = "debversion"
-version = "0.4.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "94b3734b1da78d7dd8b45634007e53d8b2b42cbe7bf1898f6d9f7600dfd6c320"
-dependencies = [
- "chrono",
- "lazy-regex",
- "num-bigint",
- "serde",
 ]
 
 [[package]]
@@ -373,6 +361,7 @@ dependencies = [
  "lazy-regex",
  "num-bigint",
  "pyo3",
+ "serde",
 ]
 
 [[package]]
@@ -1174,12 +1163,12 @@ dependencies = [
 
 [[package]]
 name = "launchpadlib"
-version = "0.4.6"
+version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "10b57b27892f724318950a4a485dec1f6a6c5035292b64266e53e92ecec9a72e"
+checksum = "5303515a606488dbf7531cf9de3ad81d1b646c42a01a7247496223b13d0eff95"
 dependencies = [
  "chrono",
- "debversion 0.4.8",
+ "debversion",
  "form_urlencoded",
  "lazy_static",
  "log",
