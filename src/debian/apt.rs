@@ -88,7 +88,7 @@ pub trait Apt {
                 "retrieve_orig",
                 (
                     source_name,
-                    target_directory,
+                    target_directory.to_string_lossy().to_string(),
                     orig_version.map(|v| v.to_string()),
                 ),
             )?;
@@ -119,7 +119,7 @@ pub trait Apt {
                 "retrieve_source",
                 (
                     source_name,
-                    target_directory,
+                    target_directory.to_string_lossy().to_string(),
                     source_version.map(|v| v.to_string()),
                 ),
             )?;
@@ -215,7 +215,7 @@ impl LocalApt {
                 Err(e) => return Err(e.into()),
             };
             let apt = m.getattr("LocalApt")?;
-            let apt = apt.call1((rootdir,))?;
+            let apt = apt.call1((rootdir.map(|p| p.to_string_lossy().to_string()),))?;
 
             apt.call_method0(intern!(py, "__enter__"))?;
             Ok(Self(apt.into()))
@@ -288,7 +288,12 @@ impl RemoteApt {
                 Err(e) => return Err(e.into()),
             };
             let apt = m.getattr("RemoteApt")?;
-            let apt = apt.call1((mirror_uri.as_str(), distribution, components, key_path))?;
+            let apt = apt.call1((
+                mirror_uri.as_str(),
+                distribution,
+                components,
+                key_path.map(|p| p.to_string_lossy().to_string()),
+            ))?;
             apt.call_method0(intern!(py, "__enter__"))?;
             Ok(Self(apt.into()))
         })
