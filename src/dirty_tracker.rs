@@ -117,7 +117,7 @@ mod tests {
         let td = tempfile::tempdir().unwrap();
 
         let tree = create_standalone_workingtree(td.path(), &ControlDirFormat::default()).unwrap();
-        let mut tracker = DirtyTreeTracker::new(tree.clone());
+        let mut tracker = DirtyTreeTracker::new(Clone::clone(&tree));
         tree.build_commit()
             .message("Dummy")
             .committer("Joe Example <joe@example.com")
@@ -137,7 +137,7 @@ mod tests {
         let subdir = td.path().join("subdir");
         std::fs::create_dir(&subdir).unwrap();
         let mut tracker =
-            DirtyTreeTracker::new_in_subpath(tree.clone(), std::path::Path::new("subdir"));
+            DirtyTreeTracker::new_in_subpath(Clone::clone(&tree), std::path::Path::new("subdir"));
         std::fs::write(subdir.join("foo"), "bar").unwrap();
         assert_eq!(
             tracker.relpaths(),
@@ -158,7 +158,7 @@ mod tests {
         let subdir = td.path().join("subdir");
         std::fs::create_dir(subdir).unwrap();
         let mut tracker =
-            DirtyTreeTracker::new_in_subpath(tree.clone(), std::path::Path::new("subdir"));
+            DirtyTreeTracker::new_in_subpath(Clone::clone(&tree), std::path::Path::new("subdir"));
         std::fs::write(td.path().join("foo"), "bar").unwrap();
         assert_eq!(tracker.relpaths(), Some(std::collections::HashSet::new()));
         assert_eq!(tracker.paths(), Some(std::collections::HashSet::new()));
@@ -173,7 +173,7 @@ mod tests {
         let subdir = td.path().join("subdir");
         std::fs::create_dir(&subdir).unwrap();
         let mut tracker =
-            DirtyTreeTracker::new_in_subpath(tree.clone(), std::path::Path::new("subdir"));
+            DirtyTreeTracker::new_in_subpath(Clone::clone(&tree), std::path::Path::new("subdir"));
         tree.build_commit()
             .message("Dummy")
             .committer("Joe Example <joe@example.com>")

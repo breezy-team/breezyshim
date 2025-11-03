@@ -195,7 +195,7 @@ mod tests {
         let tmp_dir = tempfile::tempdir().unwrap();
         let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
         let basis_tree = wt.basis_tree().unwrap();
-        let mut dirty_tracker = DirtyTreeTracker::new(wt.clone());
+        let mut dirty_tracker = DirtyTreeTracker::new(Clone::clone(&wt));
 
         let result =
             reset_tree_with_dirty_tracker(&wt, Some(&basis_tree), None, Some(&mut dirty_tracker));
