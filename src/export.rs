@@ -46,10 +46,13 @@ mod tests {
     use crate::controldir::create_standalone_workingtree;
     use crate::tree::MutableTree;
     use crate::workingtree::WorkingTree;
+    use serial_test::serial;
     use std::path::Path;
 
+    #[serial]
     #[test]
     fn test_export_tree() {
+        let env = crate::testing::TestEnv::new();
         let tmp_dir = tempfile::tempdir().unwrap();
         let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
         let tree = wt.basis_tree().unwrap();
@@ -58,10 +61,13 @@ mod tests {
         let target_dir = target_tmp.path().join("export_target");
         let result = export(&tree, &target_dir, None);
         assert!(result.is_ok());
+        std::mem::drop(env);
     }
 
+    #[serial]
     #[test]
     fn test_export_with_subdir() {
+        let env = crate::testing::TestEnv::new();
         let tmp_dir = tempfile::tempdir().unwrap();
         let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
 
@@ -77,10 +83,13 @@ mod tests {
         // Test with None subdir to simplify the test
         let result = export(&tree, &target_dir, None);
         assert!(result.is_ok());
+        std::mem::drop(env);
     }
 
+    #[serial]
     #[test]
     fn test_export_with_empty_subdir() {
+        let env = crate::testing::TestEnv::new();
         let tmp_dir = tempfile::tempdir().unwrap();
         let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
         let tree = wt.basis_tree().unwrap();
@@ -90,5 +99,6 @@ mod tests {
         let subdir = Path::new("");
         let result = export(&tree, &target_dir, Some(subdir));
         assert!(result.is_ok());
+        std::mem::drop(env);
     }
 }
