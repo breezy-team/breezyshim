@@ -103,6 +103,76 @@ impl crate::controldir::AsFormat for BareLocalGitControlDirFormat {
     }
 }
 
+/// Retrieve the Git committer information from the working tree's repository.
+pub fn get_committer(working_tree: &dyn crate::workingtree::PyWorkingTree) -> Option<String> {
+    use crate::branch::Branch;
+    use crate::repository::PyRepository;
+    pyo3::Python::attach(|py| {
+        let repo = working_tree.branch().repository();
+        let git = match repo.to_object(py).getattr(py, "_git") {
+            Ok(x) => Some(x),
+            Err(e) if e.is_instance_of::<pyo3::exceptions::PyAttributeError>(py) => None,
+            Err(e) => {
+                return Err(e);
+            }
+        };
+
+        if let Some(git) = git {
+            let cs = git.call_method0(py, "get_config_stack")?;
+
+            let mut user = std::env::var("GIT_COMMITTER_NAME").ok();
+            let mut email = std::env::var("GIT_COMMITTER_EMAIL").ok();
+            if user.is_none() {
+                match cs.call_method1(py, "get", (("user",), "name")) {
+                    Ok(x) => {
+                        user = Some(
+                            std::str::from_utf8(x.extract::<&[u8]>(py)?)
+                                .unwrap()
+                                .to_string(),
+                        );
+                    }
+                    Err(e) if e.is_instance_of::<pyo3::exceptions::PyKeyError>(py) => {
+                        // Ignore
+                    }
+                    Err(e) => {
+                        return Err(e);
+                    }
+                };
+            }
+            if email.is_none() {
+                match cs.call_method1(py, "get", (("user",), "email")) {
+                    Ok(x) => {
+                        email = Some(
+                            std::str::from_utf8(x.extract::<&[u8]>(py)?)
+                                .unwrap()
+                                .to_string(),
+                        );
+                    }
+                    Err(e) if e.is_instance_of::<pyo3::exceptions::PyKeyError>(py) => {
+                        // Ignore
+                    }
+                    Err(e) => {
+                        return Err(e);
+                    }
+                };
+            }
+
+            if let (Some(user), Some(email)) = (user, email) {
+                return Ok(Some(format!("{} <{}>", user, email)));
+            }
+
+            let gs = crate::config::global_stack().unwrap();
+
+            Ok(gs
+                .get("email")?
+                .map(|email| email.extract::<String>(py).unwrap()))
+        } else {
+            Ok(None)
+        }
+    })
+    .unwrap()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -156,5 +226,65 @@ mod tests {
                 let _pyobj = format.into_pyobject(py).unwrap();
             });
         }
+    }
+
+    #[serial_test::serial]
+    #[test]
+    // Ignored on Windows due to dulwich permission errors when creating .git directories in CI
+    #[cfg_attr(target_os = "windows", ignore)]
+    fn test_git_env() {
+        let td = tempfile::tempdir().unwrap();
+        let cd = crate::controldir::create_standalone_workingtree(td.path(), "git").unwrap();
+
+        let old_name = std::env::var("GIT_COMMITTER_NAME").ok();
+        let old_email = std::env::var("GIT_COMMITTER_EMAIL").ok();
+
+        std::env::set_var("GIT_COMMITTER_NAME", "Some Git Committer");
+        std::env::set_var("GIT_COMMITTER_EMAIL", "committer@example.com");
+
+        let committer = get_committer(&cd).unwrap();
+
+        if let Some(old_name) = old_name {
+            std::env::set_var("GIT_COMMITTER_NAME", old_name);
+        } else {
+            std::env::remove_var("GIT_COMMITTER_NAME");
+        }
+
+        if let Some(old_email) = old_email {
+            std::env::set_var("GIT_COMMITTER_EMAIL", old_email);
+        } else {
+            std::env::remove_var("GIT_COMMITTER_EMAIL");
+        }
+
+        assert_eq!(
+            "Some Git Committer <committer@example.com>",
+            committer.as_str()
+        );
+
+        // Drop cd before td cleanup to release Python file handles (needed on Windows)
+        drop(cd);
+    }
+
+    #[serial_test::serial]
+    #[test]
+    // Ignored on Windows due to dulwich permission errors when creating .git directories in CI
+    #[cfg_attr(target_os = "windows", ignore)]
+    fn test_git_config() {
+        let td = tempfile::tempdir().unwrap();
+        let cd = crate::controldir::create_standalone_workingtree(td.path(), "git").unwrap();
+
+        std::fs::write(
+            td.path().join(".git/config"),
+            b"[user]\nname = Some Git Committer\nemail = other@example.com",
+        )
+        .unwrap();
+
+        assert_eq!(
+            get_committer(&cd).unwrap(),
+            "Some Git Committer <other@example.com>"
+        );
+
+        // Drop cd before td cleanup to release Python file handles (needed on Windows)
+        drop(cd);
     }
 }
