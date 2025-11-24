@@ -230,6 +230,8 @@ mod tests {
 
     #[serial_test::serial]
     #[test]
+    // Ignored on Windows due to dulwich permission errors when creating .git directories in CI
+    #[cfg_attr(target_os = "windows", ignore)]
     fn test_git_env() {
         let td = tempfile::tempdir().unwrap();
         let cd = crate::controldir::create_standalone_workingtree(td.path(), "git").unwrap();
@@ -258,10 +260,15 @@ mod tests {
             "Some Git Committer <committer@example.com>",
             committer.as_str()
         );
+
+        // Drop cd before td cleanup to release Python file handles (needed on Windows)
+        drop(cd);
     }
 
     #[serial_test::serial]
     #[test]
+    // Ignored on Windows due to dulwich permission errors when creating .git directories in CI
+    #[cfg_attr(target_os = "windows", ignore)]
     fn test_git_config() {
         let td = tempfile::tempdir().unwrap();
         let cd = crate::controldir::create_standalone_workingtree(td.path(), "git").unwrap();
@@ -276,5 +283,8 @@ mod tests {
             get_committer(&cd).unwrap(),
             "Some Git Committer <other@example.com>"
         );
+
+        // Drop cd before td cleanup to release Python file handles (needed on Windows)
+        drop(cd);
     }
 }
