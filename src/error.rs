@@ -396,6 +396,25 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
+/// Convert a Python headers object (dict or HTTPMessage) to a HashMap<String, String>
+fn extract_headers(headers_obj: &Bound<PyAny>) -> std::collections::HashMap<String, String> {
+    // Try to extract as a dict first
+    if let Ok(headers) = headers_obj.extract::<std::collections::HashMap<String, String>>() {
+        return headers;
+    }
+
+    // Otherwise, try to get items() method (works for HTTPMessage and other dict-like objects)
+    let mut headers = std::collections::HashMap::new();
+    if let Ok(items) = headers_obj.call_method0("items") {
+        if let Ok(items_list) = items.extract::<Vec<(String, String)>>() {
+            for (key, value) in items_list {
+                headers.insert(key, value);
+            }
+        }
+    }
+    headers
+}
+
 impl From<PyErr> for Error {
     fn from(err: PyErr) -> Self {
         pyo3::import_exception!(socket, error);
@@ -587,6 +606,7 @@ impl From<PyErr> for Error {
                     ),
                 )
             } else if err.is_instance_of::<UnexpectedHttpStatus>(py) {
+                let headers_obj = value.getattr("headers").unwrap();
                 Error::UnexpectedHttpStatus {
                     url: value
                         .getattr("path")
@@ -597,7 +617,7 @@ impl From<PyErr> for Error {
                         .unwrap(),
                     code: value.getattr("code").unwrap().extract().unwrap(),
                     extra: value.getattr("extra").unwrap().extract().unwrap(),
-                    headers: value.getattr("headers").unwrap().extract().unwrap(),
+                    headers: extract_headers(&headers_obj),
                 }
             } else if err.is_instance_of::<pyo3::exceptions::PyTimeoutError>(py) {
                 Error::Timeout
@@ -695,11 +715,12 @@ impl From<PyErr> for Error {
                 Error::NoCompatibleInter
             // Intentionally sorted below the more specific errors
             } else if err.is_instance_of::<InvalidHttpResponse>(py) {
+                let headers_obj = value.getattr("headers").unwrap();
                 Error::InvalidHttpResponse(
                     value.getattr("path").unwrap().extract().unwrap(),
                     value.getattr("msg").unwrap().extract().unwrap(),
                     value.getattr("orig_error").unwrap().extract().unwrap(),
-                    value.getattr("headers").unwrap().extract().unwrap(),
+                    extract_headers(&headers_obj),
                 )
             } else if err.is_instance_of::<TransportError>(py) {
                 Error::TransportError(value.getattr("msg").unwrap().extract().unwrap())
@@ -1291,6 +1312,86 @@ fn test_unexpected_http_status() {
     // Verify that p is an instance of UnexpectedHttpStatus
     Python::attach(|py| {
         assert!(p.is_instance_of::<UnexpectedHttpStatus>(py), "{}", p);
+    });
+}
+
+#[test]
+fn test_unexpected_http_status_with_httpmessage() {
+    // Test that we can convert UnexpectedHttpStatus with HTTPMessage headers
+    Python::attach(|py| {
+        // Create a mock HTTPMessage by using email.message.Message (HTTPMessage inherits from it)
+        let email_module = py.import("email.message").unwrap();
+        let message_class = email_module.getattr("Message").unwrap();
+        let headers = message_class.call0().unwrap();
+
+        // Add some headers using the standard interface
+        let _ = headers.call_method1("__setitem__", ("Content-Type", "text/html"));
+        let _ = headers.call_method1("__setitem__", ("Server", "TestServer"));
+
+        // Create an UnexpectedHttpStatus error with HTTPMessage headers
+        let err = UnexpectedHttpStatus::new_err((
+            "http://example.com",
+            404,
+            Some("Not Found"),
+            headers.unbind(),
+        ));
+
+        // Convert to Rust Error - this should not panic
+        let rust_err: Error = err.into();
+
+        // Verify we got the right error type
+        match rust_err {
+            Error::UnexpectedHttpStatus {
+                url,
+                code,
+                extra,
+                headers,
+            } => {
+                assert_eq!(url.to_string(), "http://example.com/");
+                assert_eq!(code, 404);
+                assert_eq!(extra, Some("Not Found".to_string()));
+                // Verify headers were extracted (at least the ones we set)
+                assert_eq!(headers.get("Content-Type"), Some(&"text/html".to_string()));
+                assert_eq!(headers.get("Server"), Some(&"TestServer".to_string()));
+            }
+            _ => panic!("Expected UnexpectedHttpStatus error, got {:?}", rust_err),
+        }
+    });
+}
+
+#[test]
+fn test_invalid_http_response_with_httpmessage() {
+    // Test that we can convert InvalidHttpResponse with HTTPMessage headers
+    Python::attach(|py| {
+        // Create a mock HTTPMessage
+        let email_module = py.import("email.message").unwrap();
+        let message_class = email_module.getattr("Message").unwrap();
+        let headers = message_class.call0().unwrap();
+
+        // Add some headers
+        let _ = headers.call_method1("__setitem__", ("X-Custom", "value"));
+
+        // Create an InvalidHttpResponse error with HTTPMessage headers
+        let err = InvalidHttpResponse::new_err((
+            "http://example.com",
+            "Invalid response",
+            py.None(),
+            headers.unbind(),
+        ));
+
+        // Convert to Rust Error - this should not panic (that's the bug we're fixing)
+        let rust_err: Error = err.into();
+
+        // Verify we got the right error type
+        match rust_err {
+            Error::InvalidHttpResponse(path, msg, _orig_error, headers) => {
+                assert_eq!(path, "http://example.com");
+                assert_eq!(msg, "Invalid response");
+                // The key test: verify HTTPMessage headers were properly extracted without panicking
+                assert_eq!(headers.get("X-Custom"), Some(&"value".to_string()));
+            }
+            _ => panic!("Expected InvalidHttpResponse error, got {:?}", rust_err),
+        }
     });
 }
 
