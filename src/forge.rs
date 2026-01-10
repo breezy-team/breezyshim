@@ -525,6 +525,10 @@ impl Forge {
     }
 
     /// Gets a branch derived from a main branch with the given name and optional owner.
+    #[deprecated(
+        since = "0.7.7",
+        note = "Use `get_derived_branch_as_generic` instead to avoid unnecessary boxing"
+    )]
     pub fn get_derived_branch(
         &self,
         main_branch: &dyn PyBranch,
@@ -532,6 +536,22 @@ impl Forge {
         owner: Option<&str>,
         preferred_schemes: Option<&[&str]>,
     ) -> Result<Box<dyn Branch>, crate::error::Error> {
+        self.get_derived_branch_as_generic(main_branch, name, owner, preferred_schemes)
+            .map(|b| Box::new(b) as Box<dyn Branch>)
+    }
+
+    /// Gets a branch derived from a main branch with the given name and optional owner, returning a GenericBranch.
+    ///
+    /// This is similar to `get_derived_branch`, but returns a `GenericBranch` directly
+    /// instead of boxing it as a trait object. This is more efficient and allows the caller
+    /// to use `GenericBranch`-specific methods and traits like `Clone`.
+    pub fn get_derived_branch_as_generic(
+        &self,
+        main_branch: &dyn PyBranch,
+        name: &str,
+        owner: Option<&str>,
+        preferred_schemes: Option<&[&str]>,
+    ) -> Result<GenericBranch, crate::error::Error> {
         Python::attach(|py| {
             let kwargs = PyDict::new(py);
             if let Some(owner) = owner {
@@ -546,7 +566,7 @@ impl Forge {
                 (main_branch.to_object(py), name),
                 Some(&kwargs),
             )?;
-            Ok(Box::new(GenericBranch::from(branch)) as Box<dyn Branch>)
+            Ok(GenericBranch::from(branch))
         })
     }
 

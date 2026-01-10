@@ -1055,12 +1055,33 @@ pub(crate) fn py_tag_selector(
 /// # Returns
 ///
 /// The opened branch, or an error if the branch could not be opened.
+#[deprecated(
+    since = "0.7.7",
+    note = "Use `open_as_generic` instead to avoid unnecessary boxing"
+)]
 pub fn open(url: &url::Url) -> Result<Box<dyn Branch>, Error> {
+    open_as_generic(url).map(|b| Box::new(b) as Box<dyn Branch>)
+}
+
+/// Open a branch at the specified URL, returning a GenericBranch.
+///
+/// This is similar to `open`, but returns a `GenericBranch` directly
+/// instead of boxing it as a trait object. This is more efficient and allows the caller
+/// to use `GenericBranch`-specific methods and traits like `Clone`.
+///
+/// # Parameters
+///
+/// * `url` - The URL of the branch to open.
+///
+/// # Returns
+///
+/// The opened branch, or an error if the branch could not be opened.
+pub fn open_as_generic(url: &url::Url) -> Result<GenericBranch, Error> {
     Python::attach(|py| {
         let m = py.import("breezy.branch").unwrap();
         let c = m.getattr("Branch").unwrap();
         let r = c.call_method1("open", (url.to_string(),))?;
-        Ok(Box::new(GenericBranch::from(r)) as Box<dyn Branch>)
+        Ok(GenericBranch::from(r))
     })
 }
 
@@ -1077,7 +1098,29 @@ pub fn open(url: &url::Url) -> Result<Box<dyn Branch>, Error> {
 ///
 /// A tuple containing the opened branch and the relative path from the branch to
 /// the specified URL, or an error if no branch could be found.
+#[deprecated(
+    since = "0.7.7",
+    note = "Use `open_containing_as_generic` instead to avoid unnecessary boxing"
+)]
 pub fn open_containing(url: &url::Url) -> Result<(Box<dyn Branch>, String), Error> {
+    open_containing_as_generic(url).map(|(b, p)| (Box::new(b) as Box<dyn Branch>, p))
+}
+
+/// Find and open a branch containing the specified URL, returning a GenericBranch.
+///
+/// This is similar to `open_containing`, but returns a `GenericBranch` directly
+/// instead of boxing it as a trait object. This is more efficient and allows the caller
+/// to use `GenericBranch`-specific methods and traits like `Clone`.
+///
+/// # Parameters
+///
+/// * `url` - The URL to find a branch for.
+///
+/// # Returns
+///
+/// A tuple containing the opened branch and the relative path from the branch to
+/// the specified URL, or an error if no branch could be found.
+pub fn open_containing_as_generic(url: &url::Url) -> Result<(GenericBranch, String), Error> {
     Python::attach(|py| {
         let m = py.import("breezy.branch").unwrap();
         let c = m.getattr("Branch").unwrap();
@@ -1086,7 +1129,7 @@ pub fn open_containing(url: &url::Url) -> Result<(Box<dyn Branch>, String), Erro
             .call_method1("open_containing", (url.to_string(),))?
             .extract()?;
 
-        Ok((Box::new(GenericBranch(b.unbind())) as Box<dyn Branch>, p))
+        Ok((GenericBranch(b.unbind()), p))
     })
 }
 
@@ -1099,14 +1142,37 @@ pub fn open_containing(url: &url::Url) -> Result<(Box<dyn Branch>, String), Erro
 /// # Returns
 ///
 /// The opened branch, or an error if the branch could not be opened.
+#[deprecated(
+    since = "0.7.7",
+    note = "Use `open_from_transport_as_generic` instead to avoid unnecessary boxing"
+)]
 pub fn open_from_transport(
     transport: &crate::transport::Transport,
 ) -> Result<Box<dyn Branch>, Error> {
+    open_from_transport_as_generic(transport).map(|b| Box::new(b) as Box<dyn Branch>)
+}
+
+/// Open a branch from a transport, returning a GenericBranch.
+///
+/// This is similar to `open_from_transport`, but returns a `GenericBranch` directly
+/// instead of boxing it as a trait object. This is more efficient and allows the caller
+/// to use `GenericBranch`-specific methods and traits like `Clone`.
+///
+/// # Parameters
+///
+/// * `transport` - The transport to use for accessing the branch.
+///
+/// # Returns
+///
+/// The opened branch, or an error if the branch could not be opened.
+pub fn open_from_transport_as_generic(
+    transport: &crate::transport::Transport,
+) -> Result<GenericBranch, Error> {
     Python::attach(|py| {
         let m = py.import("breezy.branch").unwrap();
         let c = m.getattr("Branch").unwrap();
         let r = c.call_method1("open_from_transport", (transport.as_pyobject(),))?;
-        Ok(Box::new(GenericBranch(r.unbind())) as Box<dyn Branch>)
+        Ok(GenericBranch(r.unbind()))
     })
 }
 
@@ -1119,7 +1185,7 @@ mod tests {
         crate::init();
         let td = tempfile::tempdir().unwrap();
         let url = url::Url::from_directory_path(td.path()).unwrap();
-        let branch = crate::controldir::create_branch_convenience(
+        let branch = crate::controldir::create_branch_convenience_as_generic(
             &url,
             None,
             &crate::controldir::ControlDirFormat::default(),
@@ -1135,7 +1201,7 @@ mod tests {
         crate::init();
         let td = tempfile::tempdir().unwrap();
         let url = url::Url::from_directory_path(td.path()).unwrap();
-        let branch = crate::controldir::create_branch_convenience(
+        let branch = crate::controldir::create_branch_convenience_as_generic(
             &url,
             None,
             &crate::controldir::ControlDirFormat::default(),
