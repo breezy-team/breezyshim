@@ -10,13 +10,43 @@ pub type Path = std::path::Path;
 /// Type alias for std::path::PathBuf.
 pub type PathBuf = std::path::PathBuf;
 
+/// Convert a Python stat_result object to Rust Metadata.
+///
+/// Note: std::fs::Metadata is an opaque platform-specific type that cannot be
+/// directly constructed. This function extracts and validates the stat data from
+/// Python, but currently returns None since we cannot create a Metadata instance.
+///
+/// In the future, this could be extended to return a custom metadata type or
+/// to use platform-specific unsafe code to construct Metadata.
+///
+/// # Arguments
+/// * `py_stat` - Python stat_result object (from os.stat or similar)
+///
+/// # Returns
+/// * `Ok(None)` - Successfully validated stat object (but cannot convert to Metadata)
+/// * `Err(_)` - Invalid or missing stat fields
+fn convert_python_stat_to_metadata(
+    py_stat: &Py<PyAny>,
+) -> Result<Option<std::fs::Metadata>, Error> {
+    Python::attach(|py| {
+        let stat_obj = py_stat.bind(py);
+
+        // Validate that required fields exist and are correct types
+        let _st_mode: u32 = stat_obj.getattr("st_mode")?.extract()?;
+        let _st_size: u64 = stat_obj.getattr("st_size")?.extract()?;
+        let _st_mtime: f64 = stat_obj.getattr("st_mtime")?.extract()?;
+
+        // Cannot construct std::fs::Metadata directly, so return None
+        // The stat data is validated but not converted
+        Ok(None)
+    })
+}
+
 /// Result of walking directories in a tree.
 #[derive(Debug)]
 pub struct WalkdirResult {
     /// The path relative to the tree root.
     pub relpath: PathBuf,
-    /// The absolute path.
-    pub abspath: PathBuf,
     /// The kind of the entry.
     pub kind: Kind,
     /// The stat information for the entry.
@@ -997,51 +1027,109 @@ impl<T: PyTree + ?Sized> Tree for T {
         prefix: Option<&Path>,
     ) -> Result<Box<dyn Iterator<Item = Result<WalkdirResult, Error>>>, Error> {
         Python::attach(|py| {
-            struct WalkdirsIter(pyo3::Py<PyAny>);
+            // Entry type: (relpath, basename, kind, lstat, versioned_kind)
+            // versioned_kind is Some(kind_string) if versioned, None if unversioned
+            type EntryTuple = (String, String, String, Option<Py<PyAny>>, Option<String>);
+
+            // Helper function to process an entry tuple into a WalkdirResult
+            fn process_entry(entry: &EntryTuple) -> Result<WalkdirResult, Error> {
+                let kind = entry.2.parse().map_err(|_| {
+                    Error::Other(Python::attach(|_py| {
+                        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                            "Invalid kind: {}",
+                            entry.2
+                        ))
+                    }))
+                })?;
+
+                // File is versioned if versioned_kind is Some
+                let versioned = entry.4.is_some();
+
+                // Convert stat if present
+                let stat = if let Some(ref py_stat) = entry.3 {
+                    convert_python_stat_to_metadata(py_stat)?
+                } else {
+                    None
+                };
+
+                Ok(WalkdirResult {
+                    relpath: PathBuf::from(&entry.0),
+                    kind,
+                    stat,
+                    versioned,
+                })
+            }
+
+            struct WalkdirsIter {
+                py_iter: pyo3::Py<PyAny>,
+                current_entries: Vec<EntryTuple>,
+                current_index: usize,
+            }
 
             impl Iterator for WalkdirsIter {
                 type Item = Result<WalkdirResult, Error>;
 
                 fn next(&mut self) -> Option<Self::Item> {
                     Python::attach(|py| {
-                        let next = match self.0.call_method0(py, intern!(py, "__next__")) {
-                            Ok(v) => v,
-                            Err(e) => {
-                                if e.is_instance_of::<pyo3::exceptions::PyStopIteration>(py) {
-                                    return None;
-                                }
-                                return Some(Err(e.into()));
-                            }
-                        };
+                        // If we have entries from the current directory, return them
+                        if self.current_index < self.current_entries.len() {
+                            let entry = &self.current_entries[self.current_index];
+                            self.current_index += 1;
+                            return Some(process_entry(entry));
+                        }
 
-                        if next.is_none(py) {
-                            None
-                        } else {
-                            let tuple = match next
-                                .extract::<(String, String, String, Option<Py<PyAny>>, bool)>(py)
+                        // Get the next directory from Python
+                        loop {
+                            let next = match self.py_iter.call_method0(py, intern!(py, "__next__"))
                             {
+                                Ok(v) => v,
+                                Err(e) => {
+                                    if e.is_instance_of::<pyo3::exceptions::PyStopIteration>(py) {
+                                        return None;
+                                    }
+                                    return Some(Err(e.into()));
+                                }
+                            };
+
+                            if next.is_none(py) {
+                                return None;
+                            }
+
+                            // Python walkdirs returns: (directory_relpath, [(relpath, basename, kind, lstat, versioned_kind), ...])
+                            let tuple: (String, Vec<EntryTuple>) = match next.extract(py) {
                                 Ok(t) => t,
                                 Err(e) => return Some(Err(e.into())),
                             };
 
-                            Some(Ok(WalkdirResult {
-                                relpath: PathBuf::from(tuple.0),
-                                abspath: PathBuf::from(tuple.1),
-                                kind: tuple.2.parse().unwrap(),
-                                stat: None, // TODO: convert Python stat to Rust metadata
-                                versioned: tuple.4,
-                            }))
+                            self.current_entries = tuple.1;
+                            self.current_index = 0;
+
+                            // If this directory has entries, return the first one
+                            if !self.current_entries.is_empty() {
+                                let entry = &self.current_entries[0];
+                                self.current_index = 1;
+                                return Some(process_entry(entry));
+                            }
+                            // If directory is empty, continue to next directory
                         }
                     })
                 }
             }
 
-            let prefix_str = prefix.map(|p| p.to_string_lossy().to_string());
-            Ok(Box::new(WalkdirsIter(self.to_object(py).call_method1(
-                py,
-                "walkdirs",
-                (prefix_str,),
-            )?))
+            // Convert prefix to string, using "" if None to avoid Python TypeError
+            let prefix_str = match prefix {
+                Some(p) => p.to_string_lossy().to_string(),
+                None => "".to_string(),
+            };
+            let py_iter = self
+                .to_object(py)
+                .call_method1(py, "walkdirs", (prefix_str,))?;
+
+            Ok(Box::new(WalkdirsIter {
+                py_iter,
+                current_entries: Vec::new(),
+                current_index: 0,
+            })
                 as Box<dyn Iterator<Item = Result<WalkdirResult, Error>>>)
         })
     }
@@ -1906,6 +1994,70 @@ mod tests {
         assert!(wt.has_filename(&path));
         wt.remove(&[Path::new("foo")]).unwrap();
         assert!(!wt.is_versioned(&path));
+        std::mem::drop(env);
+    }
+
+    #[test]
+    #[serial]
+    fn test_walkdirs() {
+        let env = crate::testing::TestEnv::new();
+        let wt =
+            create_standalone_workingtree(std::path::Path::new("."), &ControlDirFormat::default())
+                .unwrap();
+
+        // Create a directory structure
+        std::fs::create_dir("subdir").unwrap();
+        std::fs::write("file1.txt", b"content1").unwrap();
+        std::fs::write("subdir/file2.txt", b"content2").unwrap();
+        std::fs::write(".gitattributes", b"* text=auto\n").unwrap();
+
+        wt.add(&[
+            Path::new("file1.txt"),
+            Path::new("subdir"),
+            Path::new("subdir/file2.txt"),
+            Path::new(".gitattributes"),
+        ])
+        .unwrap();
+
+        wt.build_commit()
+            .message("Add files")
+            .reporter(&crate::commit::NullCommitReporter::new())
+            .commit()
+            .unwrap();
+
+        let lock = wt.lock_read().unwrap();
+
+        // Test walkdirs with no prefix
+        let entries: Vec<_> = wt.walkdirs(None).unwrap().collect();
+        assert!(entries.len() > 0, "Should have at least some entries");
+
+        // Check that we can find .gitattributes
+        let found_gitattributes = entries.iter().any(|entry| {
+            entry
+                .as_ref()
+                .map(|e| e.relpath.file_name() == Some(std::ffi::OsStr::new(".gitattributes")))
+                .unwrap_or(false)
+        });
+        assert!(
+            found_gitattributes,
+            "Should find .gitattributes file. Found entries: {:?}",
+            entries
+                .iter()
+                .filter_map(|e| e.as_ref().ok())
+                .map(|e| &e.relpath)
+                .collect::<Vec<_>>()
+        );
+
+        // Check that we can find file in subdirectory
+        let found_subdir_file = entries.iter().any(|entry| {
+            entry
+                .as_ref()
+                .map(|e| e.relpath.to_str() == Some("subdir/file2.txt"))
+                .unwrap_or(false)
+        });
+        assert!(found_subdir_file, "Should find file in subdirectory");
+
+        std::mem::drop(lock);
         std::mem::drop(env);
     }
 }
