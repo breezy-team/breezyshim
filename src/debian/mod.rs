@@ -251,8 +251,6 @@ pub fn build_helper(
     guess_upstream_branch_url: bool,
     apt_repo: Option<&dyn apt::Apt>,
 ) -> Result<HashMap<String, PathBuf>, DebianError> {
-    pyo3::prepare_freethreaded_python();
-
     Python::attach(|py| -> PyResult<HashMap<String, PathBuf>> {
         let locals = PyDict::new(py);
         locals.set_item("local_tree", local_tree.to_object(py))?;

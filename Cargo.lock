@@ -107,7 +107,7 @@ dependencies = [
 
 [[package]]
 name = "breezyshim"
-version = "0.7.9"
+version = "0.7.10"
 dependencies = [
  "chrono",
  "ctor",
@@ -359,9 +359,9 @@ dependencies = [
 
 [[package]]
 name = "deb822-lossless"
-version = "0.5.6"
+version = "0.5.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12ec78b603882b2168522351b0dffa4a2c0dbb65a42a63dbd8c9073c24f5cee2"
+checksum = "f2c1e3f5f26745117f650ad360bd01d64e79a4dc81e3fd7ee40edb922f2119be"
 dependencies = [
  "pyo3",
  "regex",
@@ -386,9 +386,9 @@ dependencies = [
 
 [[package]]
 name = "debian-control"
-version = "0.2.15"
+version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5134cb48cb45dd196a1825d09b74b90dfe2c708d442651e3df91abcb83c3f678"
+checksum = "fb6ca91f8cd0a81452ac2547072c0871b744a00d9fcbbab19e9bda18b08b5d33"
 dependencies = [
  "chrono",
  "deb822-fast",
@@ -402,9 +402,9 @@ dependencies = [
 
 [[package]]
 name = "debversion"
-version = "0.5.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4f5cc9ce1d5067bee8060dd75208525dd0133ffea0b2960fef64ab85d58c4c5"
+checksum = "b8ba0e270fb9f27dbb4c46e08d2ad27e69501d6ca573bfdf9e0aa793e7377929"
 dependencies = [
  "chrono",
  "lazy-regex",
@@ -1092,15 +1092,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "indoc"
-version = "2.0.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "79cf5c93f93228cf8efb3ba362535fb11199ac548a09ce117c9b1adc3030d706"
-dependencies = [
- "rustversion",
-]
-
-[[package]]
 name = "inotify"
 version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1390,15 +1381,6 @@ name = "memchr"
 version = "2.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f52b00d39961fc5b2736ea853c9cc86238e165017a493d1d5c8eac6bdc4cc273"
-
-[[package]]
-name = "memoffset"
-version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "488016bfae457b036d996092f6cb448677611ce4449e970ceaf42695203f218a"
-dependencies = [
- "autocfg",
-]
 
 [[package]]
 name = "mime"
@@ -1709,37 +1691,34 @@ dependencies = [
 
 [[package]]
 name = "pyo3"
-version = "0.27.2"
+version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab53c047fcd1a1d2a8820fe84f05d6be69e9526be40cb03b73f86b6b03e6d87d"
+checksum = "fcf3ccafdf54c050be48a3a086d372f77ba6615f5057211607cd30e5ac5cec6d"
 dependencies = [
  "chrono",
- "indoc",
  "libc",
- "memoffset",
  "once_cell",
  "portable-atomic",
  "pyo3-build-config",
  "pyo3-ffi",
  "pyo3-macros",
  "serde",
- "unindent",
 ]
 
 [[package]]
 name = "pyo3-build-config"
-version = "0.27.2"
+version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b455933107de8642b4487ed26d912c2d899dec6114884214a0b3bb3be9261ea6"
+checksum = "972720a441c91fd9c49f212a1d2d74c6e3803b231ebc8d66c51efbd7ccab11c8"
 dependencies = [
  "target-lexicon",
 ]
 
 [[package]]
 name = "pyo3-ffi"
-version = "0.27.2"
+version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c85c9cbfaddf651b1221594209aed57e9e5cff63c4d11d1feead529b872a089"
+checksum = "5994456d9dab8934d600d3867571b6410f24fbd6002570ad56356733eb54859b"
 dependencies = [
  "libc",
  "pyo3-build-config",
@@ -1756,9 +1735,9 @@ dependencies = [
 
 [[package]]
 name = "pyo3-macros"
-version = "0.27.2"
+version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a5b10c9bf9888125d917fb4d2ca2d25c8df94c7ab5a52e13313a07e050a3b02"
+checksum = "11ce9cc8d81b3c4969748807604d92b4eef363c5bb82b1a1bdb34ec6f1093a18"
 dependencies = [
  "proc-macro2",
  "pyo3-macros-backend",
@@ -1768,9 +1747,9 @@ dependencies = [
 
 [[package]]
 name = "pyo3-macros-backend"
-version = "0.27.2"
+version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "03b51720d314836e53327f5871d4c0cfb4fb37cc2c4a11cc71907a86342c40f9"
+checksum = "eaf4b60036a154d23282679b658e3cc7d88d3b8c9a40b43824785f232d2e1b98"
 dependencies = [
  "heck",
  "proc-macro2",
@@ -2961,12 +2940,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4ac048d71ede7ee76d585517add45da530660ef4390e49b098733c6e897f254"
 
 [[package]]
-name = "unindent"
-version = "0.2.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7264e107f553ccae879d21fbea1d6724ac785e8c3bfc762137959b5802826ef3"
-
-[[package]]
 name = "untrusted"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3151,9 +3124,9 @@ dependencies = [
 
 [[package]]
 name = "webpki-root-certs"
-version = "1.0.5"
+version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "36a29fc0408b113f68cf32637857ab740edfafdf460c326cd2afaa2d84cc05dc"
+checksum = "804f18a4ac2676ffb4e8b5b5fa9ae38af06df08162314f96a68d2a363e21a8ca"
 dependencies = [
  "rustls-pki-types",
 ]
@@ -3599,18 +3572,18 @@ dependencies = [
 
 [[package]]
 name = "zerocopy"
-version = "0.8.37"
+version = "0.8.38"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7456cf00f0685ad319c5b1693f291a650eaf345e941d082fc4e03df8a03996ac"
+checksum = "57cf3aa6855b23711ee9852dfc97dfaa51c45feaba5b645d0c777414d494a961"
 dependencies = [
  "zerocopy-derive",
 ]
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.8.37"
+version = "0.8.38"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1328722bbf2115db7e19d69ebcc15e795719e2d66b60827c6a69a117365e37a0"
+checksum = "8a616990af1a287837c4fe6596ad77ef57948f787e46ce28e166facc0cc1cb75"
 dependencies = [
  "proc-macro2",
  "quote",

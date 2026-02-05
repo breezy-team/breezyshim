@@ -5,7 +5,7 @@
 //! access to credential stores.
 use crate::Result;
 use pyo3::prelude::*;
-use pyo3::BoundObject;
+use pyo3::conversion::IntoPyObjectExt;
 
 /// Parse a username string into name and email components.
 ///
@@ -105,16 +105,7 @@ impl BranchConfig {
     /// `Ok(())` on success, or an error if the option could not be set.
     pub fn set_user_option<T: ConfigValue>(&self, key: &str, value: T) -> Result<()> {
         Python::attach(|py| -> Result<()> {
-            let py_value = value
-                .into_pyobject(py)
-                .map_err(|_| {
-                    crate::error::Error::Other(
-                        pyo3::PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                            "Failed to convert value to Python object",
-                        ),
-                    )
-                })?
-                .unbind();
+            let py_value = value.into_py_any(py)?;
             self.0
                 .call_method1(py, "set_user_option", (key, py_value))?;
             Ok(())
@@ -176,16 +167,7 @@ impl ConfigStack {
     /// `Ok(())` on success, or an error if the configuration could not be set.
     pub fn set<T: ConfigValue>(&self, key: &str, value: T) -> Result<()> {
         Python::attach(|py| -> Result<()> {
-            let py_value = value
-                .into_pyobject(py)
-                .map_err(|_| {
-                    crate::error::Error::Other(
-                        pyo3::PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                            "Failed to convert value to Python object",
-                        ),
-                    )
-                })?
-                .unbind();
+            let py_value = value.into_py_any(py)?;
             self.0.call_method1(py, "set", (key, py_value))?;
             Ok(())
         })?;
