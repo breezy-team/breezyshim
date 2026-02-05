@@ -107,7 +107,7 @@ dependencies = [
 
 [[package]]
 name = "breezyshim"
-version = "0.7.8"
+version = "0.7.9"
 dependencies = [
  "chrono",
  "ctor",
@@ -1747,9 +1747,9 @@ dependencies = [
 
 [[package]]
 name = "pyo3-filelike"
-version = "0.5.1"
+version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57429f455b9811f2a8af73d8bae91e028fbf6f62ad4011073c2248bb028a2288"
+checksum = "5a8cb6cd0231ea816b4452c0cd37b5215f9ec45b66ed3e748fad8eb39cfd4997"
 dependencies = [
  "pyo3",
 ]
@@ -3175,7 +3175,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
