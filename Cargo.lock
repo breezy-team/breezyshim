@@ -371,9 +371,9 @@ dependencies = [
 
 [[package]]
 name = "debian-changelog"
-version = "0.2.14"
+version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1b2dbdd00d57ff463e85d76ff81c1f28e64d8412d01ef5ae9bcd041eea982f9"
+checksum = "c54dc825b416cb3e80a9dbde13ae400ab8b8a7388bac6dc2ef4a159d0396b043"
 dependencies = [
  "chrono",
  "debversion",
