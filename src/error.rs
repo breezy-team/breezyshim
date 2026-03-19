@@ -562,7 +562,13 @@ impl From<PyErr> for Error {
                         .unwrap()
                         .extract()
                         .unwrap(),
-                    value.getattr("msg").unwrap().extract().unwrap(),
+                    value
+                        .getattr("msg")
+                        .unwrap()
+                        .call_method0("__str__")
+                        .unwrap()
+                        .extract()
+                        .unwrap(),
                 )
             } else if err.is_instance_of::<pyo3::exceptions::PyNotImplementedError>(py) {
                 Error::NotImplemented
