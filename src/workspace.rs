@@ -168,12 +168,13 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_check_clean_tree() {
-        let tmp_dir = tempfile::tempdir().unwrap();
-        let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
+        let env = crate::testing::TestEnv::new();
+        let wt = create_standalone_workingtree(&env.working_dir, "2a").unwrap();
 
         // Add and commit some content first
-        std::fs::write(tmp_dir.path().join("file.txt"), "content").unwrap();
+        std::fs::write(env.working_dir.join("file.txt"), "content").unwrap();
         wt.add(&[Path::new("file.txt")]).unwrap();
         wt.build_commit()
             .message("Initial commit")
@@ -185,6 +186,7 @@ mod tests {
 
         let result = check_clean_tree(&wt, &basis_tree, subpath);
         assert!(result.is_ok());
+        std::mem::drop(env);
     }
 
     #[cfg(feature = "dirty-tracker")]
