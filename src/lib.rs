@@ -98,7 +98,6 @@ use pyo3::exceptions::PyImportError;
 use pyo3::prelude::*;
 /// Revision identifier type
 pub use revisionid::RevisionId;
-use std::sync::Once;
 /// Transport functions and types for accessing remote repositories
 pub use transport::{get_transport, Transport};
 /// Tree-related traits and types
@@ -136,74 +135,119 @@ fn ensure_initialized() {
 /// The minimum supported Breezy version.
 const MINIMUM_VERSION: (usize, usize, usize) = (3, 3, 6);
 
+/// Error returned when Breezy initialization fails.
+#[derive(Debug, Clone)]
+pub enum BreezyInitError {
+    /// Breezy is not installed.
+    NotInstalled,
+    /// The installed Breezy version is too old.
+    VersionTooOld {
+        /// The installed version.
+        installed: (usize, usize, usize),
+        /// The minimum required version.
+        required: (usize, usize, usize),
+    },
+    /// Some other error occurred during initialization.
+    Other(String),
+}
+
+impl std::fmt::Display for BreezyInitError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BreezyInitError::NotInstalled => {
+                write!(f, "Breezy is not installed. Please install Breezy first.")
+            }
+            BreezyInitError::VersionTooOld {
+                installed,
+                required,
+            } => write!(
+                f,
+                "Breezy version {}.{}.{} is too old, please upgrade to at least {}.{}.{}.",
+                installed.0, installed.1, installed.2, required.0, required.1, required.2
+            ),
+            BreezyInitError::Other(e) => write!(f, "{}", e),
+        }
+    }
+}
+
+impl std::error::Error for BreezyInitError {}
+
 /// Initialization lock to ensure Breezy is only initialized once.
-static INIT_BREEZY: Once = Once::new();
+static INIT_BREEZY: std::sync::OnceLock<std::result::Result<(), BreezyInitError>> =
+    std::sync::OnceLock::new();
+
+fn do_init() -> std::result::Result<(), BreezyInitError> {
+    pyo3::Python::initialize();
+    let (major, minor, micro) = pyo3::Python::attach(|py| match py.import("breezy") {
+        Ok(breezy) => {
+            let (major, minor, micro, _releaselevel, _serial): (
+                usize,
+                usize,
+                usize,
+                String,
+                usize,
+            ) = breezy.getattr("version_info").unwrap().extract().unwrap();
+            Ok((major, minor, micro))
+        }
+        Err(e) => {
+            if e.is_instance_of::<PyImportError>(py) {
+                Err(BreezyInitError::NotInstalled)
+            } else {
+                Err(BreezyInitError::Other(e.to_string()))
+            }
+        }
+    })?;
+
+    if (major, minor, micro) < MINIMUM_VERSION {
+        return Err(BreezyInitError::VersionTooOld {
+            installed: (major, minor, micro),
+            required: MINIMUM_VERSION,
+        });
+    }
+
+    if major >= 4 {
+        log::warn!("Support for Breezy 4.0 is experimental and incomplete.");
+    }
+
+    init_git();
+    init_bzr();
+
+    // Work around a breezy bug
+    pyo3::Python::attach(|py| {
+        let m = py.import("breezy.controldir").unwrap();
+        let f = m.getattr("ControlDirFormat").unwrap();
+        f.call_method0("known_formats").unwrap();
+    });
+
+    // Prevent race conditions
+    pyo3::Python::attach(|py| {
+        let m = py.import("breezy.config").unwrap();
+        m.call_method0("GlobalStack").unwrap();
+        m.call_method1("LocationStack", ("file:///",)).unwrap();
+    });
+
+    Ok(())
+}
+
+/// Try to initialize the Breezy library and Python interpreter.
+///
+/// Returns `Ok(())` if initialization succeeded, or a [`BreezyInitError`] if it failed.
+/// The result is cached after the first call.
+pub fn try_init() -> std::result::Result<(), BreezyInitError> {
+    INIT_BREEZY.get_or_init(do_init).clone()
+}
 
 /// Initialize the Breezy library and Python interpreter.
 ///
 /// This function ensures Python is initialized and Breezy is loaded.
 /// It is safe to call multiple times.
 ///
-/// This function ensures that Breezy is properly initialized, checking version
-/// compatibility and loading required modules. It should be called before
-/// using any other functionality in this crate unless the "auto-initialize"
-/// feature is enabled.
-///
 /// # Panics
 ///
 /// - If Breezy is not installed
 /// - If the installed Breezy version is too old
 pub fn init() {
-    INIT_BREEZY.call_once(|| {
-        pyo3::Python::initialize();
-        let (major, minor, micro) = pyo3::Python::attach(|py| match py.import("breezy") {
-            Ok(breezy) => {
-                let (major, minor, micro, _releaselevel, _serial): (
-                    usize,
-                    usize,
-                    usize,
-                    String,
-                    usize,
-                ) = breezy.getattr("version_info").unwrap().extract().unwrap();
-                (major, minor, micro)
-            }
-            Err(e) => {
-                if e.is_instance_of::<PyImportError>(py) {
-                    panic!("Breezy is not installed. Please install Breezy first.");
-                } else {
-                    panic!("{}", e);
-                }
-            }
-        });
-
-        if (major, minor, micro) < MINIMUM_VERSION {
-            panic!(
-                "Breezy version {}.{}.{} is too old, please upgrade to at least {}.{}.{}.",
-                major, minor, micro, MINIMUM_VERSION.0, MINIMUM_VERSION.1, MINIMUM_VERSION.2
-            );
-        }
-
-        if major >= 4 {
-            log::warn!("Support for Breezy 4.0 is experimental and incomplete.");
-        }
-
-        init_git();
-        init_bzr();
-
-        // Work around a breezy bug
-        pyo3::Python::attach(|py| {
-            let m = py.import("breezy.controldir").unwrap();
-            let f = m.getattr("ControlDirFormat").unwrap();
-            f.call_method0("known_formats").unwrap();
-        });
-
-        // Prevent race conditions
-        pyo3::Python::attach(|py| {
-            let m = py.import("breezy.config").unwrap();
-            m.call_method0("GlobalStack").unwrap();
-            m.call_method1("LocationStack", ("file:///",)).unwrap();
-        });
-    });
+    try_init().unwrap();
 }
 
 /// Shorthand for the standard result type used throughout this crate.
