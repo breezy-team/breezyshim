@@ -246,6 +246,30 @@ impl MergeProposal {
         })
     }
 
+    /// Post a comment on the merge proposal. Forwards to the forge's
+    /// `post_comment(body)` method (e.g. GitHub adds an issue
+    /// comment, GitLab adds a discussion note). Forges that don't
+    /// support comment posting raise `NotImplementedError` upstream;
+    /// this wrapper propagates that as the usual `Error::Other`.
+    pub fn post_comment(&self, body: &str) -> Result<(), crate::error::Error> {
+        Python::attach(|py| {
+            self.0.call_method1(py, "post_comment", (body,))?;
+            Ok(())
+        })
+    }
+
+    /// Set the merge proposal's target branch name. Used by the
+    /// publisher when the role-to-branch mapping for a campaign
+    /// changes and the existing proposal needs to be redirected
+    /// rather than closed and re-opened.
+    pub fn set_target_branch_name(&self, name: &str) -> Result<(), crate::error::Error> {
+        Python::attach(|py| {
+            self.0
+                .call_method1(py, "set_target_branch_name", (name,))?;
+            Ok(())
+        })
+    }
+
     /// Retrieves the description of the merge proposal.
     pub fn get_description(&self) -> Result<Option<String>, crate::error::Error> {
         Python::attach(|py| {
