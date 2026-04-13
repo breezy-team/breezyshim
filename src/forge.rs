@@ -234,6 +234,18 @@ impl MergeProposal {
         })
     }
 
+    /// Returns the revision id of the tip of the source branch for this
+    /// merge proposal, or `None` if the forge cannot resolve it.
+    pub fn get_source_revision(&self) -> Result<Option<RevisionId>, crate::error::Error> {
+        Python::attach(|py| {
+            let revision = self.0.call_method0(py, "get_source_revision")?;
+            if revision.is_none(py) {
+                return Ok(None);
+            }
+            Ok(Some(revision.extract::<RevisionId>(py)?))
+        })
+    }
+
     /// Retrieves the description of the merge proposal.
     pub fn get_description(&self) -> Result<Option<String>, crate::error::Error> {
         Python::attach(|py| {
