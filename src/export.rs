@@ -102,12 +102,7 @@ pub fn archive<T: crate::tree::PyTree>(
             kwargs.set_item("root", r)?;
         }
         let obj = tree.to_object(py);
-        let iter = obj.call_method(
-            py,
-            "archive",
-            (format.as_str(), name),
-            Some(&kwargs),
-        )?;
+        let iter = obj.call_method(py, "archive", (format.as_str(), name), Some(&kwargs))?;
         let iter = py.import("builtins")?.getattr("iter")?.call1((iter,))?;
         Ok(ArchiveIter(iter.unbind()))
     })

@@ -805,20 +805,16 @@ impl<T: PyTree + ?Sized> Tree for T {
                                 Err(e) => return Some(Err(PyErr::from(e).into())),
                             };
                             if tuple.len() != 4 {
-                                return Some(Err(
-                                    pyo3::exceptions::PyValueError::new_err(
-                                        "list_files: expected 4-tuple",
-                                    )
-                                    .into(),
-                                ));
+                                return Some(Err(pyo3::exceptions::PyValueError::new_err(
+                                    "list_files: expected 4-tuple",
+                                )
+                                .into()));
                             }
-                            let path: PathBuf = match tuple
-                                .get_item(0)
-                                .and_then(|o| o.extract::<String>())
-                            {
-                                Ok(s) => PathBuf::from(s),
-                                Err(e) => return Some(Err(e.into())),
-                            };
+                            let path: PathBuf =
+                                match tuple.get_item(0).and_then(|o| o.extract::<String>()) {
+                                    Ok(s) => PathBuf::from(s),
+                                    Err(e) => return Some(Err(e.into())),
+                                };
                             let flag = match tuple.get_item(1) {
                                 Ok(o) => o,
                                 Err(e) => return Some(Err(e.into())),
@@ -829,20 +825,16 @@ impl<T: PyTree + ?Sized> Tree for T {
                                 // 'V' = versioned; anything else treated as not.
                                 s == "V"
                             } else {
-                                return Some(Err(
-                                    pyo3::exceptions::PyTypeError::new_err(
-                                        "list_files: unexpected type for versioned flag",
-                                    )
-                                    .into(),
-                                ));
+                                return Some(Err(pyo3::exceptions::PyTypeError::new_err(
+                                    "list_files: unexpected type for versioned flag",
+                                )
+                                .into()));
                             };
-                            let kind: Kind = match tuple
-                                .get_item(2)
-                                .and_then(|o| o.extract::<Kind>())
-                            {
-                                Ok(k) => k,
-                                Err(e) => return Some(Err(e.into())),
-                            };
+                            let kind: Kind =
+                                match tuple.get_item(2).and_then(|o| o.extract::<Kind>()) {
+                                    Ok(k) => k,
+                                    Err(e) => return Some(Err(e.into())),
+                                };
                             let entry: TreeEntry = match tuple
                                 .get_item(3)
                                 .and_then(|o| TreeEntry::extract(o.as_borrowed()))
@@ -1478,12 +1470,9 @@ impl<T: PyTree + ?Sized> Tree for T {
                 )?;
             }
 
-            let result = self.to_object(py).call_method(
-                py,
-                "annotate_iter",
-                (path_str,),
-                Some(&kwargs),
-            )?;
+            let result =
+                self.to_object(py)
+                    .call_method(py, "annotate_iter", (path_str,), Some(&kwargs))?;
             // Some tree impls (notably `RevisionTree`) return a list rather
             // than a generator; normalize with `iter()` so `__next__` works.
             let iterator = py
