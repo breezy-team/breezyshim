@@ -4,8 +4,8 @@
 //! It allows reading and writing configuration values, and provides
 //! access to credential stores.
 use crate::Result;
-use pyo3::prelude::*;
 use pyo3::conversion::IntoPyObjectExt;
+use pyo3::prelude::*;
 
 /// Parse a username string into name and email components.
 ///
@@ -111,6 +111,28 @@ impl BranchConfig {
             Ok(())
         })?;
         Ok(())
+    }
+
+    /// Get a user option from this branch configuration, as a string.
+    ///
+    /// Returns `None` if the option is unset.
+    pub fn get_user_option(&self, key: &str) -> Result<Option<String>> {
+        Python::attach(|py| -> Result<Option<String>> {
+            let value = self.0.call_method1(py, "get_user_option", (key,))?;
+            if value.is_none(py) {
+                Ok(None)
+            } else {
+                Ok(Some(value.extract(py)?))
+            }
+        })
+    }
+
+    /// Get the branch's nickname as reported by Breezy, falling back to the
+    /// directory name if no explicit nickname is set.
+    pub fn get_nickname(&self) -> Result<String> {
+        Python::attach(|py| -> Result<String> {
+            Ok(self.0.call_method0(py, "get_nickname")?.extract(py)?)
+        })
     }
 }
 
