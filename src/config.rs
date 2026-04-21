@@ -127,6 +127,22 @@ impl BranchConfig {
         })
     }
 
+    /// Get a user option as a bool. Breezy interprets any of the
+    /// strings "true", "yes", "1", "on", "enable" (case-insensitive)
+    /// as true; "false", "no", "0", "off", "disable" as false. Unset
+    /// keys, empty strings, and unrecognised values fall back to
+    /// `default`.
+    pub fn get_user_option_as_bool(&self, key: &str, default: bool) -> Result<bool> {
+        Python::attach(|py| -> Result<bool> {
+            let kwargs = pyo3::types::PyDict::new(py);
+            kwargs.set_item("default", default)?;
+            let value = self
+                .0
+                .call_method(py, "get_user_option_as_bool", (key,), Some(&kwargs))?;
+            Ok(value.extract(py)?)
+        })
+    }
+
     /// Get the branch's nickname as reported by Breezy, falling back to the
     /// directory name if no explicit nickname is set.
     pub fn get_nickname(&self) -> Result<String> {
