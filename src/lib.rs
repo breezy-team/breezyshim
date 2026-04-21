@@ -65,6 +65,7 @@ pub mod prelude;
 pub mod rename_map;
 pub mod repository;
 pub mod revisionid;
+pub mod search;
 pub mod status;
 pub mod subversion;
 pub mod tags;
