@@ -17,9 +17,23 @@ use std::io::Write;
 pub fn show_diff_trees(
     tree1: &dyn crate::tree::PyTree,
     tree2: &dyn crate::tree::PyTree,
+    w: impl Write,
+    old_label: Option<&str>,
+    new_label: Option<&str>,
+) -> Result<(), crate::error::Error> {
+    show_diff_trees_with(tree1, tree2, w, old_label, new_label, None)
+}
+
+/// Like [`show_diff_trees`] but accepts an optional `context` override
+/// (the number of unchanged lines to show around each hunk). Passing
+/// `None` uses Breezy's default of 3.
+pub fn show_diff_trees_with(
+    tree1: &dyn crate::tree::PyTree,
+    tree2: &dyn crate::tree::PyTree,
     mut w: impl Write,
     old_label: Option<&str>,
     new_label: Option<&str>,
+    context: Option<usize>,
 ) -> Result<(), crate::error::Error> {
     Python::attach(|py| -> PyResult<()> {
         let m = py.import("breezy.diff")?;
@@ -34,6 +48,10 @@ pub fn show_diff_trees(
 
         if let Some(new_label) = new_label {
             kwargs.set_item("new_label", new_label)?;
+        }
+
+        if let Some(ctx) = context {
+            kwargs.set_item("context", ctx)?;
         }
 
         f.call(
