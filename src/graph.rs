@@ -77,6 +77,67 @@ impl<T: GraphNode> Iterator for NodeIter<T> {
     }
 }
 
+/// Iterator over `(node, Option<Vec<parent>>)` pairs from
+/// `Graph.iter_ancestry`. A `None` parents value indicates a ghost.
+struct AncestryIter<T: GraphNode>(Py<PyAny>, std::marker::PhantomData<T>);
+
+impl<T: GraphNode> Iterator for AncestryIter<T> {
+    type Item = Result<(T, Option<Vec<T>>), crate::error::Error>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        Python::attach(|py| match self.0.call_method0(py, "__next__") {
+            Ok(item) => {
+                let bound = item.bind(py);
+                let tuple = match bound.cast::<PyTuple>() {
+                    Ok(t) => t,
+                    Err(e) => return Some(Err(PyErr::from(e).into())),
+                };
+                if tuple.len() != 2 {
+                    return Some(Err(pyo3::exceptions::PyValueError::new_err(
+                        "Expected 2-tuple from iter_ancestry",
+                    )
+                    .into()));
+                }
+                let node_obj = match tuple.get_item(0) {
+                    Ok(o) => o,
+                    Err(e) => return Some(Err(e.into())),
+                };
+                let parents_obj = match tuple.get_item(1) {
+                    Ok(o) => o,
+                    Err(e) => return Some(Err(e.into())),
+                };
+                let node = match T::from_pyobject(&node_obj) {
+                    Ok(n) => n,
+                    Err(e) => return Some(Err(e.into())),
+                };
+                let parents = if parents_obj.is_none() {
+                    None
+                } else {
+                    let mut out = Vec::new();
+                    let iter = match parents_obj.try_iter() {
+                        Ok(i) => i,
+                        Err(e) => return Some(Err(e.into())),
+                    };
+                    for p in iter {
+                        let p = match p {
+                            Ok(p) => p,
+                            Err(e) => return Some(Err(e.into())),
+                        };
+                        match T::from_pyobject(&p) {
+                            Ok(t) => out.push(t),
+                            Err(e) => return Some(Err(e.into())),
+                        }
+                    }
+                    Some(out)
+                };
+                Some(Ok((node, parents)))
+            }
+            Err(e) if e.is_instance_of::<PyStopIteration>(py) => None,
+            Err(e) => Some(Err(e.into())),
+        })
+    }
+}
+
 struct TopoOrderIter<T: GraphNode>(Py<PyAny>, std::marker::PhantomData<T>);
 
 impl<T: GraphNode> Iterator for TopoOrderIter<T> {
@@ -307,7 +368,12 @@ impl Graph {
         })
     }
 
-    /// Iterate through ancestry of given nodes.
+    /// Iterate through the ancestry of the given nodes, yielding each node
+    /// together with its parents.
+    ///
+    /// Wraps `breezy.graph.Graph.iter_ancestry`, which produces pairs of
+    /// `(node, parents)` where `parents` is `None` for ghost revisions that
+    /// are referenced but not present in the repository.
     ///
     /// # Arguments
     ///
@@ -315,15 +381,19 @@ impl Graph {
     ///
     /// # Returns
     ///
-    /// An iterator that yields nodes in the ancestry
+    /// An iterator yielding `(node, Option<Vec<parent>>)`. A `None` parents
+    /// value indicates the node is a ghost.
     pub fn iter_ancestry<T: GraphNode>(
         &self,
         nodes: &[T],
-    ) -> Result<impl Iterator<Item = Result<T, crate::error::Error>>, crate::error::Error> {
+    ) -> Result<
+        impl Iterator<Item = Result<(T, Option<Vec<T>>), crate::error::Error>>,
+        crate::error::Error,
+    > {
         Python::attach(|py| {
             let py_nodes: Result<Vec<_>, _> = nodes.iter().map(|n| n.to_pyobject(py)).collect();
             let iter = self.0.call_method1(py, "iter_ancestry", (py_nodes?,))?;
-            Ok(NodeIter(iter, std::marker::PhantomData))
+            Ok(AncestryIter(iter, std::marker::PhantomData))
         })
     }
 

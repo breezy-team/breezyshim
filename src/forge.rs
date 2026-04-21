@@ -264,8 +264,7 @@ impl MergeProposal {
     /// rather than closed and re-opened.
     pub fn set_target_branch_name(&self, name: &str) -> Result<(), crate::error::Error> {
         Python::attach(|py| {
-            self.0
-                .call_method1(py, "set_target_branch_name", (name,))?;
+            self.0.call_method1(py, "set_target_branch_name", (name,))?;
             Ok(())
         })
     }

@@ -263,36 +263,47 @@ impl<'a, 'py> FromPyObject<'a, 'py> for TreeEntry {
 
     fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         let kind: String = ob.getattr("kind")?.extract()?;
+        // `revision` is optional on some backends (Git's GitTreeFile
+        // has no such attribute at all, so this returns `None` there).
+        fn opt_revision(ob: &Borrowed<PyAny>) -> Option<RevisionId> {
+            ob.getattr("revision")
+                .ok()
+                .and_then(|o| o.extract::<Option<RevisionId>>().ok())
+                .flatten()
+        }
+
         match kind.as_str() {
             "file" => {
                 let executable: bool = ob.getattr("executable")?.extract()?;
                 let kind: Kind = ob.getattr("kind")?.extract()?;
-                let size: u64 = ob.getattr("size")?.extract()?;
-                let revision: Option<RevisionId> = ob.getattr("revision")?.extract()?;
+                // Accept both `size` (newer/plain-tree entries) and
+                // `text_size` (inventory-backed entries in Bazaar repos).
+                let size: u64 = ob
+                    .getattr("size")
+                    .and_then(|o| o.extract::<u64>())
+                    .or_else(|_| ob.getattr("text_size").and_then(|o| o.extract::<u64>()))
+                    .unwrap_or(0);
                 Ok(TreeEntry::File {
                     executable,
                     kind,
                     size,
-                    revision,
+                    revision: opt_revision(&ob),
                 })
             }
-            "directory" => {
-                let revision: Option<RevisionId> = ob.getattr("revision")?.extract()?;
-                Ok(TreeEntry::Directory { revision })
-            }
+            "directory" => Ok(TreeEntry::Directory {
+                revision: opt_revision(&ob),
+            }),
             "symlink" => {
-                let revision: Option<RevisionId> = ob.getattr("revision")?.extract()?;
                 let symlink_target: String = ob.getattr("symlink_target")?.extract()?;
                 Ok(TreeEntry::Symlink {
-                    revision,
+                    revision: opt_revision(&ob),
                     symlink_target,
                 })
             }
             "tree-reference" => {
-                let revision: Option<RevisionId> = ob.getattr("revision")?.extract()?;
                 let reference_revision: RevisionId = ob.getattr("reference_revision")?.extract()?;
                 Ok(TreeEntry::TreeReference {
-                    revision,
+                    revision: opt_revision(&ob),
                     reference_revision,
                 })
             }
@@ -434,6 +445,9 @@ pub trait Tree {
 
     /// Get the modification time of a file.
     fn get_file_mtime(&self, path: &Path) -> Result<u64, Error>;
+
+    /// Get the revision id that last touched `path`.
+    fn get_file_revision(&self, path: &Path) -> Result<RevisionId, Error>;
 
     /// Check if a file is executable.
     fn is_executable(&self, path: &Path) -> Result<bool, Error>;
@@ -785,7 +799,55 @@ impl<T: PyTree + ?Sized> Tree for T {
                         if next.is_none(py) {
                             None
                         } else {
-                            Some(next.extract(py).map_err(Into::into))
+                            // `tree.list_files()` yields 4-tuples whose second
+                            // element is either a bool (e.g. newer trees'
+                            // `versioned` flag) or a 1-character classification
+                            // string like `"V"` / `"?"` / `"I"` (older trees
+                            // and many revision-tree impls). Accept both.
+                            let bound = next.bind(py);
+                            let tuple = match bound.cast::<pyo3::types::PyTuple>() {
+                                Ok(t) => t,
+                                Err(e) => return Some(Err(PyErr::from(e).into())),
+                            };
+                            if tuple.len() != 4 {
+                                return Some(Err(pyo3::exceptions::PyValueError::new_err(
+                                    "list_files: expected 4-tuple",
+                                )
+                                .into()));
+                            }
+                            let path: PathBuf =
+                                match tuple.get_item(0).and_then(|o| o.extract::<String>()) {
+                                    Ok(s) => PathBuf::from(s),
+                                    Err(e) => return Some(Err(e.into())),
+                                };
+                            let flag = match tuple.get_item(1) {
+                                Ok(o) => o,
+                                Err(e) => return Some(Err(e.into())),
+                            };
+                            let versioned: bool = if let Ok(b) = flag.extract::<bool>() {
+                                b
+                            } else if let Ok(s) = flag.extract::<String>() {
+                                // 'V' = versioned; anything else treated as not.
+                                s == "V"
+                            } else {
+                                return Some(Err(pyo3::exceptions::PyTypeError::new_err(
+                                    "list_files: unexpected type for versioned flag",
+                                )
+                                .into()));
+                            };
+                            let kind: Kind =
+                                match tuple.get_item(2).and_then(|o| o.extract::<Kind>()) {
+                                    Ok(k) => k,
+                                    Err(e) => return Some(Err(e.into())),
+                                };
+                            let entry: TreeEntry = match tuple
+                                .get_item(3)
+                                .and_then(|o| TreeEntry::extract(o.as_borrowed()))
+                            {
+                                Ok(e) => e,
+                                Err(e) => return Some(Err(e.into())),
+                            };
+                            Some(Ok((path, versioned, kind, entry)))
                         }
                     })
                 }
@@ -878,6 +940,16 @@ impl<T: PyTree + ?Sized> Tree for T {
                 .to_object(py)
                 .call_method1(py, "get_file_mtime", (path_str,))?;
             mtime.extract(py).map_err(Into::into)
+        })
+    }
+
+    fn get_file_revision(&self, path: &Path) -> Result<RevisionId, Error> {
+        Python::attach(|py| {
+            let path_str = path.to_string_lossy().to_string();
+            let rev = self
+                .to_object(py)
+                .call_method1(py, "get_file_revision", (path_str,))?;
+            rev.extract(py).map_err(Into::into)
         })
     }
 
@@ -1403,12 +1475,18 @@ impl<T: PyTree + ?Sized> Tree for T {
                 )?;
             }
 
-            Ok(Box::new(AnnotateIter(self.to_object(py).call_method(
-                py,
-                "annotate_iter",
-                (path_str,),
-                Some(&kwargs),
-            )?))
+            let result =
+                self.to_object(py)
+                    .call_method(py, "annotate_iter", (path_str,), Some(&kwargs))?;
+            // Some tree impls (notably `RevisionTree`) return a list rather
+            // than a generator; normalize with `iter()` so `__next__` works.
+            let iterator = py
+                .import("builtins")?
+                .getattr("iter")?
+                .call1((result,))?
+                .unbind();
+
+            Ok(Box::new(AnnotateIter(iterator))
                 as Box<
                     dyn Iterator<Item = Result<(RevisionId, Vec<u8>), Error>>,
                 >)
