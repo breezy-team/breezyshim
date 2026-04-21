@@ -72,6 +72,7 @@ pub mod testing;
 pub mod transform;
 pub mod transport;
 pub mod tree;
+pub mod tsort;
 pub mod ui;
 pub mod urlutils;
 pub mod version;
