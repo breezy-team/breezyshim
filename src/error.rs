@@ -3,8 +3,24 @@ use crate::transform::RawConflict;
 use pyo3::import_exception;
 use pyo3::intern;
 use pyo3::prelude::*;
+use pyo3::type_object::PyTypeInfo;
 use pyo3::PyErr;
+use std::panic::AssertUnwindSafe;
 use url::Url;
+
+/// Tolerant variant of [`PyErr::is_instance_of`] that returns `false` when
+/// the named exception type cannot be resolved in the currently loaded
+/// Breezy (e.g. an exception class was removed in a later version).
+///
+/// Without this, any error-to-Rust conversion would panic when breezy drops
+/// one of the classes this crate knows about (for example, `PermissionDenied`
+/// was removed in the `breezy` development branch).
+fn is_inst_safe<T: PyTypeInfo>(py: Python<'_>, err: &PyErr) -> bool {
+    match std::panic::catch_unwind(AssertUnwindSafe(|| err.is_instance_of::<T>(py))) {
+        Ok(v) => v,
+        Err(_) => false,
+    }
+}
 
 import_exception!(breezy.errors, UnknownFormatError);
 import_exception!(breezy.errors, NotBranchError);
@@ -434,17 +450,17 @@ impl From<PyErr> for Error {
                     value.getattr("library").unwrap().extract().unwrap(),
                     value.getattr("error").unwrap().extract().unwrap(),
                 )
-            } else if err.is_instance_of::<PermissionDenied>(py) {
+            } else if is_inst_safe::<PermissionDenied>(py, &err) {
                 Error::PermissionDenied(
                     value.getattr("path").unwrap().extract().unwrap(),
                     value.getattr("extra").unwrap().extract().unwrap(),
                 )
-            } else if err.is_instance_of::<UnsupportedProtocol>(py) {
+            } else if is_inst_safe::<UnsupportedProtocol>(py, &err) {
                 Error::UnsupportedProtocol(
                     value.getattr("url").unwrap().extract().unwrap(),
                     value.getattr("extra").unwrap().extract().unwrap(),
                 )
-            } else if err.is_instance_of::<UnusableRedirect>(py) {
+            } else if is_inst_safe::<UnusableRedirect>(py, &err) {
                 Error::UnusableRedirect(
                     value.getattr("source").unwrap().extract().unwrap(),
                     value.getattr("target").unwrap().extract().unwrap(),
@@ -491,7 +507,7 @@ impl From<PyErr> for Error {
                     .extract::<String>(py)
                     .unwrap();
                 Error::WorkspaceDirty(std::path::PathBuf::from(path))
-            } else if err.is_instance_of::<NoSuchFile>(py) {
+            } else if is_inst_safe::<NoSuchFile>(py, &err) {
                 Error::NoSuchFile(std::path::PathBuf::from(
                     value.getattr("path").unwrap().extract::<String>().unwrap(),
                 ))
@@ -611,7 +627,7 @@ impl From<PyErr> for Error {
                         value.getattr("errno").unwrap().extract::<i32>().unwrap(),
                     ),
                 )
-            } else if err.is_instance_of::<UnexpectedHttpStatus>(py) {
+            } else if is_inst_safe::<UnexpectedHttpStatus>(py, &err) {
                 let headers_obj = value.getattr("headers").unwrap();
                 Error::UnexpectedHttpStatus {
                     url: value
@@ -627,7 +643,7 @@ impl From<PyErr> for Error {
                 }
             } else if err.is_instance_of::<pyo3::exceptions::PyTimeoutError>(py) {
                 Error::Timeout
-            } else if err.is_instance_of::<BadHttpRequest>(py) {
+            } else if is_inst_safe::<BadHttpRequest>(py, &err) {
                 Error::BadHttpRequest(
                     value
                         .getattr("path")
@@ -638,7 +654,7 @@ impl From<PyErr> for Error {
                         .unwrap(),
                     value.getattr("reason").unwrap().extract().unwrap(),
                 )
-            } else if err.is_instance_of::<TransportNotPossible>(py) {
+            } else if is_inst_safe::<TransportNotPossible>(py, &err) {
                 Error::TransportNotPossible(value.getattr("msg").unwrap().extract().unwrap())
             } else if err.is_instance_of::<IncompatibleFormat>(py) {
                 let format = value.getattr("format").unwrap();
@@ -697,7 +713,7 @@ impl From<PyErr> for Error {
                 Error::ConnectionError(err.to_string())
             } else if err.is_instance_of::<ReadOnlyError>(py) {
                 Error::ReadOnly
-            } else if err.is_instance_of::<RedirectRequested>(py) {
+            } else if is_inst_safe::<RedirectRequested>(py, &err) {
                 Error::RedirectRequested {
                     source: value
                         .getattr("source")
