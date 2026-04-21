@@ -3,23 +3,45 @@ use crate::transform::RawConflict;
 use pyo3::import_exception;
 use pyo3::intern;
 use pyo3::prelude::*;
-use pyo3::type_object::PyTypeInfo;
 use pyo3::PyErr;
-use std::panic::AssertUnwindSafe;
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
 use url::Url;
 
-/// Tolerant variant of [`PyErr::is_instance_of`] that returns `false` when
-/// the named exception type cannot be resolved in the currently loaded
-/// Breezy (e.g. an exception class was removed in a later version).
-///
-/// Without this, any error-to-Rust conversion would panic when breezy drops
-/// one of the classes this crate knows about (for example, `PermissionDenied`
-/// was removed in the `breezy` development branch).
-fn is_inst_safe<T: PyTypeInfo>(py: Python<'_>, err: &PyErr) -> bool {
-    match std::panic::catch_unwind(AssertUnwindSafe(|| err.is_instance_of::<T>(py))) {
-        Ok(v) => v,
-        Err(_) => false,
+/// Dynamic, version-tolerant replacement for `err.is_instance_of::<T>(py)`
+/// for exception types that may or may not exist in the loaded Breezy.
+/// Python-level lookup (`import module` + `getattr(name)`) is cached
+/// so it only runs once per `(module, name)` pair; later calls do a
+/// cheap HashMap probe.
+fn is_versioned_instance(err: &PyErr, py: Python<'_>, module: &str, name: &str) -> bool {
+    static CACHE: OnceLock<Mutex<HashMap<String, Option<Py<PyAny>>>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+
+    let key = format!("{module}.{name}");
+    {
+        let guard = cache.lock().unwrap();
+        if let Some(slot) = guard.get(&key) {
+            return match slot {
+                Some(ty) => err.is_instance(py, ty.bind(py)),
+                None => false,
+            };
+        }
     }
+
+    // Slow path: probe. A missing attribute is an expected condition
+    // when the currently-loaded Breezy has dropped the exception.
+    let resolved: Option<Py<PyAny>> = py
+        .import(module)
+        .ok()
+        .and_then(|m| m.getattr(name).ok())
+        .map(|o| o.unbind());
+
+    let result = match &resolved {
+        Some(ty) => err.is_instance(py, ty.bind(py)),
+        None => false,
+    };
+    cache.lock().unwrap().insert(key, resolved);
+    result
 }
 
 import_exception!(breezy.errors, UnknownFormatError);
@@ -450,17 +472,17 @@ impl From<PyErr> for Error {
                     value.getattr("library").unwrap().extract().unwrap(),
                     value.getattr("error").unwrap().extract().unwrap(),
                 )
-            } else if is_inst_safe::<PermissionDenied>(py, &err) {
+            } else if is_versioned_instance(&err, py, "breezy.errors", "PermissionDenied") {
                 Error::PermissionDenied(
                     value.getattr("path").unwrap().extract().unwrap(),
                     value.getattr("extra").unwrap().extract().unwrap(),
                 )
-            } else if is_inst_safe::<UnsupportedProtocol>(py, &err) {
+            } else if is_versioned_instance(&err, py, "breezy.transport", "UnsupportedProtocol") {
                 Error::UnsupportedProtocol(
                     value.getattr("url").unwrap().extract().unwrap(),
                     value.getattr("extra").unwrap().extract().unwrap(),
                 )
-            } else if is_inst_safe::<UnusableRedirect>(py, &err) {
+            } else if is_versioned_instance(&err, py, "breezy.transport", "UnusableRedirect") {
                 Error::UnusableRedirect(
                     value.getattr("source").unwrap().extract().unwrap(),
                     value.getattr("target").unwrap().extract().unwrap(),
@@ -507,7 +529,7 @@ impl From<PyErr> for Error {
                     .extract::<String>(py)
                     .unwrap();
                 Error::WorkspaceDirty(std::path::PathBuf::from(path))
-            } else if is_inst_safe::<NoSuchFile>(py, &err) {
+            } else if is_versioned_instance(&err, py, "breezy.transport", "NoSuchFile") {
                 Error::NoSuchFile(std::path::PathBuf::from(
                     value.getattr("path").unwrap().extract::<String>().unwrap(),
                 ))
@@ -627,7 +649,7 @@ impl From<PyErr> for Error {
                         value.getattr("errno").unwrap().extract::<i32>().unwrap(),
                     ),
                 )
-            } else if is_inst_safe::<UnexpectedHttpStatus>(py, &err) {
+            } else if is_versioned_instance(&err, py, "breezy.errors", "UnexpectedHttpStatus") {
                 let headers_obj = value.getattr("headers").unwrap();
                 Error::UnexpectedHttpStatus {
                     url: value
@@ -643,7 +665,7 @@ impl From<PyErr> for Error {
                 }
             } else if err.is_instance_of::<pyo3::exceptions::PyTimeoutError>(py) {
                 Error::Timeout
-            } else if is_inst_safe::<BadHttpRequest>(py, &err) {
+            } else if is_versioned_instance(&err, py, "breezy.errors", "BadHttpRequest") {
                 Error::BadHttpRequest(
                     value
                         .getattr("path")
@@ -654,7 +676,7 @@ impl From<PyErr> for Error {
                         .unwrap(),
                     value.getattr("reason").unwrap().extract().unwrap(),
                 )
-            } else if is_inst_safe::<TransportNotPossible>(py, &err) {
+            } else if is_versioned_instance(&err, py, "breezy.errors", "TransportNotPossible") {
                 Error::TransportNotPossible(value.getattr("msg").unwrap().extract().unwrap())
             } else if err.is_instance_of::<IncompatibleFormat>(py) {
                 let format = value.getattr("format").unwrap();
@@ -713,7 +735,7 @@ impl From<PyErr> for Error {
                 Error::ConnectionError(err.to_string())
             } else if err.is_instance_of::<ReadOnlyError>(py) {
                 Error::ReadOnly
-            } else if is_inst_safe::<RedirectRequested>(py, &err) {
+            } else if is_versioned_instance(&err, py, "breezy.errors", "RedirectRequested") {
                 Error::RedirectRequested {
                     source: value
                         .getattr("source")
