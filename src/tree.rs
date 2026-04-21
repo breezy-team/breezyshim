@@ -263,6 +263,15 @@ impl<'a, 'py> FromPyObject<'a, 'py> for TreeEntry {
 
     fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         let kind: String = ob.getattr("kind")?.extract()?;
+        // `revision` is optional on some backends (Git's GitTreeFile
+        // has no such attribute at all, so this returns `None` there).
+        fn opt_revision(ob: &Borrowed<PyAny>) -> Option<RevisionId> {
+            ob.getattr("revision")
+                .ok()
+                .and_then(|o| o.extract::<Option<RevisionId>>().ok())
+                .flatten()
+        }
+
         match kind.as_str() {
             "file" => {
                 let executable: bool = ob.getattr("executable")?.extract()?;
@@ -274,31 +283,27 @@ impl<'a, 'py> FromPyObject<'a, 'py> for TreeEntry {
                     .and_then(|o| o.extract::<u64>())
                     .or_else(|_| ob.getattr("text_size").and_then(|o| o.extract::<u64>()))
                     .unwrap_or(0);
-                let revision: Option<RevisionId> = ob.getattr("revision")?.extract()?;
                 Ok(TreeEntry::File {
                     executable,
                     kind,
                     size,
-                    revision,
+                    revision: opt_revision(&ob),
                 })
             }
-            "directory" => {
-                let revision: Option<RevisionId> = ob.getattr("revision")?.extract()?;
-                Ok(TreeEntry::Directory { revision })
-            }
+            "directory" => Ok(TreeEntry::Directory {
+                revision: opt_revision(&ob),
+            }),
             "symlink" => {
-                let revision: Option<RevisionId> = ob.getattr("revision")?.extract()?;
                 let symlink_target: String = ob.getattr("symlink_target")?.extract()?;
                 Ok(TreeEntry::Symlink {
-                    revision,
+                    revision: opt_revision(&ob),
                     symlink_target,
                 })
             }
             "tree-reference" => {
-                let revision: Option<RevisionId> = ob.getattr("revision")?.extract()?;
                 let reference_revision: RevisionId = ob.getattr("reference_revision")?.extract()?;
                 Ok(TreeEntry::TreeReference {
-                    revision,
+                    revision: opt_revision(&ob),
                     reference_revision,
                 })
             }
