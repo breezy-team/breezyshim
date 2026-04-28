@@ -541,22 +541,48 @@ impl Forge {
     }
 
     /// Returns an iterator over merge proposals owned by the current user.
+    ///
+    /// Eagerly drains the underlying Python iterator; the first per-item
+    /// error short-circuits and is returned. Use
+    /// [`Forge::iter_my_proposals_lazy`] for streaming with per-item
+    /// error handling.
     pub fn iter_my_proposals(
         &self,
         status: Option<MergeProposalStatus>,
         author: Option<String>,
     ) -> Result<impl Iterator<Item = MergeProposal>, Error> {
-        let ret: Vec<MergeProposal> = Python::attach(|py| -> Result<Vec<MergeProposal>, Error> {
+        let ret: Vec<MergeProposal> = self
+            .iter_my_proposals_lazy(status, author)?
+            .collect::<Result<_, _>>()?;
+        Ok(ret.into_iter())
+    }
+
+    /// Returns a lazy iterator over merge proposals owned by the current user.
+    ///
+    /// Each item is a `Result` so that per-item Python errors are surfaced
+    /// rather than panicking — the underlying breezy iterators can raise
+    /// lazily (e.g. the GitHub plugin only checks auth on first `__next__`).
+    pub fn iter_my_proposals_lazy(
+        &self,
+        status: Option<MergeProposalStatus>,
+        author: Option<String>,
+    ) -> Result<impl Iterator<Item = Result<MergeProposal, Error>>, Error> {
+        let iter = Python::attach(|py| -> Result<Py<PyAny>, Error> {
             Ok(self
                 .0
                 .call_method(py, "iter_my_proposals", (status, author), None)?
                 .bind(py)
-                .try_iter()
-                .unwrap()
-                .map(|proposal| MergeProposal::from(proposal.unwrap().unbind()))
-                .collect())
+                .try_iter()?
+                .into_any()
+                .unbind())
         })?;
-        Ok(ret.into_iter())
+        Ok(std::iter::from_fn(move || {
+            Python::attach(|py| match iter.call_method0(py, "__next__") {
+                Ok(proposal) => Some(Ok(MergeProposal::from(proposal))),
+                Err(e) if e.is_instance_of::<pyo3::exceptions::PyStopIteration>(py) => None,
+                Err(e) => Some(Err(e.into())),
+            })
+        }))
     }
 
     /// Gets a branch derived from a main branch with the given name and optional owner.
