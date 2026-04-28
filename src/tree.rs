@@ -641,8 +641,7 @@ impl<T: PyTree + ?Sized> Tree for T {
         Python::attach(|py| {
             Ok(self
                 .to_object(py)
-                .call_method0(py, intern!(py, "get_parent_ids"))
-                .unwrap()
+                .call_method0(py, intern!(py, "get_parent_ids"))?
                 .extract(py)?)
         })
     }
