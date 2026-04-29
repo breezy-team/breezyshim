@@ -560,8 +560,10 @@ impl<T: PyControlDir> ControlDir for T {
             if let Some(overwrite) = overwrite {
                 kwargs.set_item("overwrite", overwrite)?;
             }
+            // ControlDir.push_branch() takes `revision_id`; `stop_revision`
+            // is the kwarg used by Branch.push() and is rejected here.
             if let Some(stop_revision) = stop_revision {
-                kwargs.set_item("stop_revision", stop_revision.clone())?;
+                kwargs.set_item("revision_id", stop_revision.clone())?;
             }
             let result = self.to_object(py).call_method(
                 py,
