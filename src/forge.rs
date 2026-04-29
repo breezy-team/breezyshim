@@ -210,10 +210,15 @@ impl MergeProposal {
         })
     }
 
-    /// Returns the URL of the target branch for this merge proposal.
+    /// Returns the URL of the target branch for this merge proposal,
+    /// or `None` if the forge does not expose one (e.g. the target repo
+    /// was deleted or made private).
     pub fn get_target_branch_url(&self) -> Result<Option<url::Url>, crate::error::Error> {
         Python::attach(|py| {
             let target_branch_url = self.0.call_method0(py, "get_target_branch_url")?;
+            if target_branch_url.is_none(py) {
+                return Ok(None);
+            }
             target_branch_url
                 .extract::<String>(py)?
                 .parse::<url::Url>()
@@ -222,10 +227,15 @@ impl MergeProposal {
         })
     }
 
-    /// Returns the URL of the source branch for this merge proposal.
+    /// Returns the URL of the source branch for this merge proposal,
+    /// or `None` if the forge does not expose one (e.g. the source fork
+    /// was deleted).
     pub fn get_source_branch_url(&self) -> Result<Option<url::Url>, crate::error::Error> {
         Python::attach(|py| {
             let source_branch_url = self.0.call_method0(py, "get_source_branch_url")?;
+            if source_branch_url.is_none(py) {
+                return Ok(None);
+            }
             source_branch_url
                 .extract::<String>(py)?
                 .parse::<url::Url>()
