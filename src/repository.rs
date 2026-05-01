@@ -521,8 +521,20 @@ impl<T: PyRepository> Repository for T {
     }
 
     fn vcs_type(&self) -> VcsType {
+        // `_git` is only exposed by LocalGitRepository, not
+        // RemoteGitRepository, so probe by isinstance against the
+        // GitRepository base class instead.
         Python::attach(|py| {
-            if self.to_object(py).getattr(py, "_git").is_ok() {
+            let obj = self.to_object(py);
+            if let Ok(module) = py.import("breezy.git.repository") {
+                if let Ok(class) = module.getattr("GitRepository") {
+                    if obj.bind(py).is_instance(&class).unwrap_or(false) {
+                        return VcsType::Git;
+                    }
+                    return VcsType::Bazaar;
+                }
+            }
+            if obj.getattr(py, "_git").is_ok() {
                 VcsType::Git
             } else {
                 VcsType::Bazaar
@@ -1119,6 +1131,37 @@ mod repository_tests {
         let repo: GenericRepository = crate::repository::open(td.path()).unwrap();
         let vcs_type = repo.vcs_type();
         assert!(matches!(vcs_type, VcsType::Bazaar | VcsType::Git));
+    }
+
+    #[test]
+    // Ignored on Windows due to dulwich permission errors when creating .git directories in CI
+    #[cfg_attr(target_os = "windows", ignore)]
+    fn test_vcs_type_returns_git_for_local_git_repo() {
+        crate::init();
+        let td = tempfile::tempdir().unwrap();
+        let format = crate::controldir::FORMAT_REGISTRY
+            .make_controldir("git")
+            .expect("breezy must know the 'git' format");
+        let wt = crate::controldir::create_standalone_workingtree(td.path(), &format)
+            .expect("create_standalone_workingtree(git) should succeed");
+        let repo: GenericRepository = crate::repository::open(td.path()).unwrap();
+        assert_eq!(repo.vcs_type(), VcsType::Git);
+        // Drop wt before td cleanup to release Python file handles (needed on Windows)
+        drop(repo);
+        drop(wt);
+    }
+
+    #[test]
+    fn test_vcs_type_returns_bazaar_for_local_bzr_repo() {
+        crate::init();
+        let td = tempfile::tempdir().unwrap();
+        let format = crate::controldir::FORMAT_REGISTRY
+            .make_controldir("2a")
+            .expect("breezy must know the '2a' format");
+        let _wt = crate::controldir::create_standalone_workingtree(td.path(), &format)
+            .expect("create_standalone_workingtree(2a) should succeed");
+        let repo: GenericRepository = crate::repository::open(td.path()).unwrap();
+        assert_eq!(repo.vcs_type(), VcsType::Bazaar);
     }
 
     #[test]
