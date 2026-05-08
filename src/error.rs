@@ -453,6 +453,14 @@ fn extract_headers(headers_obj: &Bound<PyAny>) -> std::collections::HashMap<Stri
     headers
 }
 
+fn get_exception_msg(value: &Bound<PyAny>) -> String {
+    value
+        .getattr("msg")
+        .ok()
+        .and_then(|m| m.extract().ok())
+        .unwrap_or_else(|| value.str().unwrap().to_string())
+}
+
 impl From<PyErr> for Error {
     fn from(err: PyErr) -> Self {
         pyo3::import_exception!(socket, error);
@@ -500,12 +508,7 @@ impl From<PyErr> for Error {
             } else if err.is_instance_of::<UnsupportedVcs>(py) {
                 Error::UnsupportedVcs(value.getattr("vcs").unwrap().extract().unwrap())
             } else if err.is_instance_of::<RemoteGitError>(py) {
-                if let Ok(e) = value.getattr("msg").unwrap().extract() {
-                    Error::RemoteGitError(e)
-                } else {
-                    // Just get it from the args tuple
-                    Error::RemoteGitError(value.getattr("args").unwrap().extract().unwrap())
-                }
+                Error::RemoteGitError(get_exception_msg(value))
             } else if err.is_instance_of::<IncompleteRead>(py) {
                 Error::IncompleteRead(
                     value.getattr("partial").unwrap().extract().unwrap(),
@@ -573,7 +576,7 @@ impl From<PyErr> for Error {
                     value.getattr("tname").unwrap().extract().unwrap(),
                 )
             } else if err.is_instance_of::<ProtectedBranchHookDeclined>(py) {
-                Error::ProtectedBranchHookDeclined(value.getattr("msg").unwrap().extract().unwrap())
+                Error::ProtectedBranchHookDeclined(get_exception_msg(value))
             } else if err.is_instance_of::<NoRepositoryPresent>(py) {
                 Error::NoRepositoryPresent
             } else if err.is_instance_of::<LockFailed>(py) {
@@ -602,11 +605,10 @@ impl From<PyErr> for Error {
                         .unwrap(),
                     value
                         .getattr("msg")
-                        .unwrap()
-                        .call_method0("__str__")
-                        .unwrap()
-                        .extract()
-                        .unwrap(),
+                        .ok()
+                        .and_then(|m| m.call_method0("__str__").ok())
+                        .and_then(|m| m.extract().ok())
+                        .unwrap_or_else(|| "".to_string()),
                 )
             } else if err.is_instance_of::<pyo3::exceptions::PyNotImplementedError>(py) {
                 Error::NotImplemented
@@ -677,7 +679,7 @@ impl From<PyErr> for Error {
                     value.getattr("reason").unwrap().extract().unwrap(),
                 )
             } else if is_versioned_instance(&err, py, "breezy.errors", "TransportNotPossible") {
-                Error::TransportNotPossible(value.getattr("msg").unwrap().extract().unwrap())
+                Error::TransportNotPossible(get_exception_msg(value))
             } else if err.is_instance_of::<IncompatibleFormat>(py) {
                 let format = value.getattr("format").unwrap();
                 let controldir = value.getattr("controldir").unwrap();
@@ -762,12 +764,12 @@ impl From<PyErr> for Error {
                 let headers_obj = value.getattr("headers").unwrap();
                 Error::InvalidHttpResponse(
                     value.getattr("path").unwrap().extract().unwrap(),
-                    value.getattr("msg").unwrap().extract().unwrap(),
+                    get_exception_msg(value),
                     value.getattr("orig_error").unwrap().extract().unwrap(),
                     extract_headers(&headers_obj),
                 )
             } else if err.is_instance_of::<TransportError>(py) {
-                Error::TransportError(value.getattr("msg").unwrap().extract().unwrap())
+                Error::TransportError(get_exception_msg(value))
             } else if err.is_instance_of::<BranchReferenceLoop>(py) {
                 Error::BranchReferenceLoop
             } else if err.is_instance_of::<ObjectNotLocked>(py) {
@@ -1043,6 +1045,23 @@ fn test_error_remotegiterror() {
     // Verify that p is an instance of RemoteGitError
     Python::attach(|py| {
         assert!(p.is_instance_of::<RemoteGitError>(py));
+    });
+}
+
+#[test]
+fn test_error_remotegiterror_no_msg() {
+    Python::attach(|py| {
+        let breezy_git_remote = py.import("breezy.git.remote").unwrap();
+        let remote_git_error_cls = breezy_git_remote.getattr("RemoteGitError").unwrap();
+        let err_obj = remote_git_error_cls.call1(("some error",)).unwrap();
+
+        let py_err = PyErr::from_value(err_obj);
+
+        let error: Error = py_err.into();
+        match error {
+            Error::RemoteGitError(msg) => assert_eq!(msg, "some error"),
+            _ => panic!("Expected RemoteGitError, got {:?}", error),
+        }
     });
 }
 
