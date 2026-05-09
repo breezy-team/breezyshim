@@ -36,13 +36,18 @@ fn test_graph_node_trait_for_key() {
 
 fn create_test_graph() -> Graph {
     Python::attach(|py| {
-        // Create a mock graph for testing
-        let graph_module = py.import("breezy.graph").unwrap();
-        let dict_parents_provider = graph_module.getattr("DictParentsProvider").unwrap();
-
         // Create a simple graph structure:
         // null -> rev1 -> rev2 -> rev3
         //              \-> rev4
+        let (graph_module, dict_parents_provider) = py
+            .import("vcsgraph.graph")
+            .and_then(|m| m.getattr("DictParentsProvider").map(|c| (m, c)))
+            .or_else(|_| {
+                py.import("breezy.graph")
+                    .and_then(|m| m.getattr("DictParentsProvider").map(|c| (m, c)))
+            })
+            .unwrap();
+
         let parents_dict = pyo3::types::PyDict::new(py);
         parents_dict
             .set_item(b"rev1".as_slice(), pyo3::types::PyTuple::empty(py))
