@@ -349,8 +349,16 @@ impl MergeProposal {
     ) -> Result<Option<chrono::DateTime<chrono::Utc>>, crate::error::Error> {
         Python::attach(|py| {
             let merged_at = self.0.call_method0(py, "get_merged_at")?;
+            if merged_at.is_none(py) {
+                return Ok(None);
+            }
+            // Try timezone-aware first; fall back to naive (treat as UTC).
+            if let Ok(dt) = merged_at.extract::<chrono::DateTime<chrono::Utc>>(py) {
+                return Ok(Some(dt));
+            }
             merged_at
-                .extract::<Option<chrono::DateTime<chrono::Utc>>>(py)
+                .extract::<chrono::NaiveDateTime>(py)
+                .map(|dt| Some(dt.and_utc()))
                 .map_err(Into::into)
         })
     }
