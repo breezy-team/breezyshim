@@ -650,6 +650,10 @@ impl Forge {
     }
 
     /// Returns an iterator over merge proposals from one branch to another.
+    #[deprecated(
+        since = "0.7.20",
+        note = "Use `publish_derived_as_generic_branch` instead to avoid unnecessary boxing"
+    )]
     pub fn iter_proposals(
         &self,
         source_branch: &dyn PyBranch,
@@ -684,6 +688,45 @@ impl Forge {
                 }
             }
             Ok(ret.into_iter())
+        })
+    }
+
+    /// Publishes a derived branch and returns the branch and its URL.
+    pub fn publish_derived_as_generic_branch(
+        &self,
+        local_branch: &dyn PyBranch,
+        base_branch: &dyn PyBranch,
+        name: &str,
+        overwrite: Option<bool>,
+        owner: Option<&str>,
+        revision_id: Option<&RevisionId>,
+        tag_selector: Option<Box<dyn Fn(String) -> bool>>,
+    ) -> Result<(GenericBranch, url::Url), crate::error::Error> {
+        Python::attach(|py| {
+            let kwargs = PyDict::new(py);
+            let local_branch_obj = local_branch.to_object(py);
+            let base_branch_obj = base_branch.to_object(py);
+            let forge_obj = self.to_object();
+
+            kwargs.set_item("local_branch", local_branch_obj)?;
+            kwargs.set_item("base_branch", base_branch_obj)?;
+            kwargs.set_item("name", name)?;
+            if let Some(overwrite) = overwrite {
+                kwargs.set_item("overwrite", overwrite)?;
+            }
+            if let Some(owner) = owner {
+                kwargs.set_item("owner", owner)?;
+            }
+            if let Some(revision_id) = revision_id {
+                kwargs.set_item("revision_id", revision_id.clone())?;
+            }
+            if let Some(tag_selector) = tag_selector {
+                kwargs.set_item("tag_selector", py_tag_selector(py, tag_selector)?)?;
+            }
+            let (b, u): (Py<PyAny>, String) = forge_obj
+                .call_method(py, "publish_derived", (), Some(&kwargs))?
+                .extract(py)?;
+            Ok((GenericBranch::from(b), u.parse::<url::Url>().unwrap()))
         })
     }
 
