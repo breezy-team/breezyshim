@@ -689,10 +689,6 @@ impl Forge {
     }
 
     /// Publishes a derived branch and returns the branch and its URL.
-    #[deprecated(
-        since = "0.7.7",
-        note = "Use `publish_derived_as_generic_branch` instead to avoid unnecessary boxing"
-    )]
     pub fn publish_derived_as_generic_branch(
         &self,
         local_branch: &dyn PyBranch,
@@ -732,6 +728,10 @@ impl Forge {
     }
 
     /// Publishes a derived branch and returns the branch and its URL.
+    #[deprecated(
+        since = "0.7.7",
+        note = "Use `publish_derived_as_generic_branch` instead to avoid unnecessary boxing"
+    )]
     pub fn publish_derived(
         &self,
         local_branch: &dyn PyBranch,
