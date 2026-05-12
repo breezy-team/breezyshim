@@ -650,10 +650,7 @@ impl Forge {
     }
 
     /// Returns an iterator over merge proposals from one branch to another.
-    #[deprecated(
-        since = "0.7.20",
-        note = "Use `publish_derived_as_generic_branch` instead to avoid unnecessary boxing"
-    )]
+
     pub fn iter_proposals(
         &self,
         source_branch: &dyn PyBranch,
@@ -692,6 +689,10 @@ impl Forge {
     }
 
     /// Publishes a derived branch and returns the branch and its URL.
+    #[deprecated(
+        since = "0.7.7",
+        note = "Use `publish_derived_as_generic_branch` instead to avoid unnecessary boxing"
+    )]
     pub fn publish_derived_as_generic_branch(
         &self,
         local_branch: &dyn PyBranch,
