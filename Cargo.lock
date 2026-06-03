@@ -365,9 +365,9 @@ dependencies = [
 
 [[package]]
 name = "deb822-lossless"
-version = "0.5.15"
+version = "0.5.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3010ab21b879670c60b013a500a9afe82094921707b151a4dac4a17f5676134f"
+checksum = "c53935151def6ca46a0c6460b7b71f0fd74ecc1feffa594dea04eef98e5a6eba"
 dependencies = [
  "pyo3",
  "regex",
