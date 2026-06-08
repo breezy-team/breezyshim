@@ -422,8 +422,8 @@ impl Graph {
                 let key_node = T::from_pyobject(&key)?;
 
                 let mut parents = Vec::new();
-                for parent in value.cast::<pyo3::types::PyTuple>().map_err(PyErr::from)? {
-                    parents.push(T::from_pyobject(&parent)?);
+                for parent in value.try_iter()? {
+                    parents.push(T::from_pyobject(&parent?)?);
                 }
                 parent_map.insert(key_node, parents);
             }

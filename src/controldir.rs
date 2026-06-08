@@ -857,8 +857,10 @@ impl Default for ControlDirFormat {
     fn default() -> Self {
         Python::attach(|py| {
             let breezy = PyModule::import(py, "breezy.controldir").unwrap();
-            let cd_format = breezy.getattr("ControlDirFormat").unwrap();
-            let obj = cd_format.call_method0("get_default_format").unwrap();
+            let registry = breezy.getattr("format_registry").unwrap();
+            let obj = registry
+                .call_method1("make_controldir", ("default",))
+                .unwrap();
             assert!(!obj.is_none());
             ControlDirFormat(obj.into())
         })
