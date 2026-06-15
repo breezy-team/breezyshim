@@ -1550,6 +1550,7 @@ mod tests {
         // 1. Get a working tree
         // 2. Get its controldir as Box<dyn ControlDir>
         // 3. Downcast it to use as &dyn PyControlDir
+        crate::init();
 
         let tmp_dir = tempfile::tempdir().unwrap();
         let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
