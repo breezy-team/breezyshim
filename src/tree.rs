@@ -139,6 +139,18 @@ pub struct InventoryDelta {
     pub entry: Option<TreeEntry>,
 }
 
+/// Coerce a Python boolean-ish value to a `bool`.
+///
+/// Bazaar inventory entries expose flags such as `executable` as an int
+/// (0/1) rather than a bool, so accept either.
+fn extract_bool(o: &Bound<PyAny>) -> PyResult<bool> {
+    if let Ok(b) = o.extract::<bool>() {
+        Ok(b)
+    } else {
+        Ok(o.extract::<isize>()? != 0)
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Eq)]
 /// Kind of object in a tree.
 pub enum Kind {
@@ -274,7 +286,7 @@ impl<'a, 'py> FromPyObject<'a, 'py> for TreeEntry {
 
         match kind.as_str() {
             "file" => {
-                let executable: bool = ob.getattr("executable")?.extract()?;
+                let executable = extract_bool(&ob.getattr("executable")?)?;
                 let kind: Kind = ob.getattr("kind")?.extract()?;
                 // Accept both `size` (newer/plain-tree entries) and
                 // `text_size` (inventory-backed entries in Bazaar repos).
@@ -1972,24 +1984,22 @@ impl<'a, 'py> FromPyObject<'a, 'py> for TreeChange {
     type Error = PyErr;
 
     fn extract(obj: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
-        fn from_bool(o: &Bound<PyAny>) -> PyResult<bool> {
-            if let Ok(b) = o.extract::<isize>() {
-                Ok(b != 0)
-            } else {
-                o.extract::<bool>()
-            }
-        }
-
         fn from_opt_bool_tuple(o: &Bound<PyAny>) -> PyResult<(Option<bool>, Option<bool>)> {
             let tuple = o.extract::<(Option<Bound<PyAny>>, Option<Bound<PyAny>>)>()?;
             Ok((
-                tuple.0.map(|o| from_bool(&o.as_borrowed())).transpose()?,
-                tuple.1.map(|o| from_bool(&o.as_borrowed())).transpose()?,
+                tuple
+                    .0
+                    .map(|o| extract_bool(&o.as_borrowed()))
+                    .transpose()?,
+                tuple
+                    .1
+                    .map(|o| extract_bool(&o.as_borrowed()))
+                    .transpose()?,
             ))
         }
 
         let path = obj.getattr("path")?;
-        let changed_content = from_bool(&obj.getattr("changed_content")?)?;
+        let changed_content = extract_bool(&obj.getattr("changed_content")?)?;
 
         let versioned = from_opt_bool_tuple(&obj.getattr("versioned")?)?;
         let name = obj.getattr("name")?;
@@ -2134,6 +2144,45 @@ mod tests {
         });
         assert!(found_subdir_file, "Should find file in subdirectory");
 
+        std::mem::drop(lock);
+        std::mem::drop(env);
+    }
+
+    #[test]
+    #[serial]
+    fn test_list_files_with_executable_int() {
+        // Bazaar inventory entries expose `executable` as an int (0/1) rather
+        // than a bool, which used to break `TreeEntry` extraction.
+        let env = crate::testing::TestEnv::new();
+        let wt =
+            create_standalone_workingtree(std::path::Path::new("."), &ControlDirFormat::default())
+                .unwrap();
+        std::fs::write("file.txt", b"content").unwrap();
+        wt.add(&[Path::new("file.txt")]).unwrap();
+        wt.build_commit()
+            .message("Add file")
+            .reporter(&crate::commit::NullCommitReporter::new())
+            .commit()
+            .unwrap();
+
+        let lock = wt.lock_read().unwrap();
+        let entries: Vec<_> = wt
+            .list_files(Some(false), None, Some(true), None)
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        let (_path, _versioned, kind, entry) = entries
+            .iter()
+            .find(|(p, _, _, _)| p == Path::new("file.txt"))
+            .unwrap();
+        assert_eq!(*kind, Kind::File);
+        assert!(matches!(
+            entry,
+            TreeEntry::File {
+                executable: false,
+                ..
+            }
+        ));
         std::mem::drop(lock);
         std::mem::drop(env);
     }
