@@ -72,11 +72,78 @@ impl HookDict {
     pub fn get(&self, name: &str) -> Result<Vec<Hook>, crate::error::Error> {
         Python::attach(|py| {
             let entrypoint = self.0.bind(py).get_item(name)?;
+            // HookPoint is iterable but not a Sequence, so iterate rather than extract.
             Ok(entrypoint
-                .extract::<Vec<Py<PyAny>>>()?
-                .into_iter()
-                .map(Hook)
-                .collect())
+                .try_iter()?
+                .map(|r| r.map(|obj| Hook(obj.unbind())))
+                .collect::<PyResult<Vec<_>>>()?)
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn merge_hooks() -> HookDict {
+        crate::init();
+        HookDict::new("breezy.merge", "Merger", "hooks")
+    }
+
+    /// `get` succeeds on a real breezy hook point and returns a `Vec`. The
+    /// hook point is iterable but not a `Sequence`, which is why `get`
+    /// iterates rather than extracting a `Vec` directly.
+    #[test]
+    fn test_get_returns_vec() {
+        let hooks = merge_hooks();
+        let registered = hooks.get("post_merge").unwrap();
+        // We don't assert a length: other tests or breezy itself may register
+        // hooks on this process-wide hook point. We only care that iterating
+        // the hook point succeeds.
+        let _ = registered;
+    }
+
+    /// A hook registered on the underlying breezy hook point shows up in the
+    /// result of `get`, exercising the iteration code path.
+    #[test]
+    fn test_get_returns_registered_hook() {
+        let hooks = merge_hooks();
+
+        let before = hooks.get("post_merge").unwrap().len();
+
+        Python::attach(|py| {
+            let entrypoint = hooks.0.bind(py).get_item("post_merge").unwrap();
+            let func = py
+                .eval(
+                    std::ffi::CString::new("lambda merger: None")
+                        .unwrap()
+                        .as_c_str(),
+                    None,
+                    None,
+                )
+                .unwrap();
+            entrypoint
+                .call_method1("hook", (func, "breezyshim test hook"))
+                .unwrap();
+        });
+
+        let after = hooks.get("post_merge").unwrap();
+        assert_eq!(before + 1, after.len());
+
+        // Clean up so this process-wide hook point is left as we found it.
+        Python::attach(|py| {
+            let entrypoint = hooks.0.bind(py).get_item("post_merge").unwrap();
+            entrypoint
+                .call_method1("uninstall", ("breezyshim test hook",))
+                .unwrap();
+        });
+        assert_eq!(before, hooks.get("post_merge").unwrap().len());
+    }
+
+    /// `get` on an unknown hook name returns an error rather than panicking.
+    #[test]
+    fn test_get_unknown_name() {
+        let hooks = merge_hooks();
+        assert!(hooks.get("nonexistent_hook").is_err());
     }
 }
