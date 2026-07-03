@@ -25,6 +25,7 @@ regex = ">=1.10,<2"
 patchkit = ">=0.2.2,<0.4"
 log = "0.4"
 whoami = ">=1.5,<2"
+bazaar = { version = ">=3.5,<4", default-features = false }
 debian-control = { version = ">=0.1.44,<0.4", optional = true, features = [
 	"python-debian",
 ] }
