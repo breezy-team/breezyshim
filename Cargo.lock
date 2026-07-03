@@ -270,6 +270,7 @@ dependencies = [
  "sqlx",
  "tempfile",
  "url",
+ "vcs-graph",
  "whoami 1.6.1",
 ]
 
