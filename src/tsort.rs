@@ -1,12 +1,10 @@
 //! Topological sorting helpers.
 //!
-//! Wraps the [`breezy.tsort`](https://www.breezy-vcs.org/doc/en/api/breezy.tsort.html)
-//! module. Only `merge_sort` is exposed for now — that is what revision
-//! viewers like loggerhead need to lay out a branch history as a DAG with
-//! dotted revision numbers.
+//! Thin wrapper around [`vcs_graph::tsort::merge_sort`] that presents the
+//! result as [`MergeSortEntry`] values. Only `merge_sort` is exposed for
+//! now — that is what revision viewers like loggerhead need to lay out a
+//! branch history as a DAG with dotted revision numbers.
 
-use pyo3::prelude::*;
-use pyo3::types::{PyList, PyTuple};
 use std::collections::HashMap;
 
 use crate::graph::GraphNode;
@@ -48,57 +46,30 @@ impl<T: GraphNode> MergeSortEntry<T> {
 ///
 /// `branch_tip` is the node to start from (typically the branch's last
 /// revision). Ghost parents must already be filtered out of `graph`.
-pub fn merge_sort<T: GraphNode>(
+pub fn merge_sort<T: GraphNode + std::fmt::Debug>(
     graph: &HashMap<T, Vec<T>>,
     branch_tip: &T,
 ) -> Result<Vec<MergeSortEntry<T>>, crate::error::Error> {
-    Python::attach(|py| {
-        // `merge_sort` lived in `breezy.tsort` historically; newer breezy
-        // (the dromedary rewrite) relocated it to `vcsgraph.tsort`. Try both.
-        let tsort = py
-            .import("breezy.tsort")
-            .or_else(|_| py.import("vcsgraph.tsort"))?;
-        let py_graph = pyo3::types::PyDict::new(py);
-        for (node, parents) in graph {
-            let py_parents = PyList::empty(py);
-            for parent in parents {
-                py_parents.append(parent.to_pyobject(py)?)?;
-            }
-            py_graph.set_item(node.to_pyobject(py)?, py_parents)?;
-        }
-        let kwargs = pyo3::types::PyDict::new(py);
-        kwargs.set_item("generate_revno", true)?;
-        let result = tsort.call_method(
-            "merge_sort",
-            (py_graph, branch_tip.to_pyobject(py)?),
-            Some(&kwargs),
-        )?;
-        let mut out = Vec::new();
-        for item in result.try_iter()? {
-            let item = item?;
-            let tup = item.cast::<PyTuple>().map_err(PyErr::from)?;
-            if tup.len() != 5 {
-                return Err(crate::error::Error::from(
-                    pyo3::exceptions::PyValueError::new_err(
-                        "Expected 5-tuple from merge_sort(generate_revno=True)",
-                    ),
-                ));
-            }
-            let sequence: usize = tup.get_item(0)?.extract()?;
-            let node = T::from_pyobject(&tup.get_item(1)?)?;
-            let merge_depth: usize = tup.get_item(2)?.extract()?;
-            let revno: Vec<u32> = tup.get_item(3)?.extract()?;
-            let end_of_merge: bool = tup.get_item(4)?.extract()?;
-            out.push(MergeSortEntry {
-                sequence,
-                node,
-                merge_depth,
-                revno,
-                end_of_merge,
-            });
-        }
-        Ok(out)
-    })
+    let rows = vcs_graph::tsort::merge_sort(graph.clone(), Some(branch_tip.clone()), None, true)
+        .map_err(|e| {
+            crate::error::Error::from(pyo3::exceptions::PyValueError::new_err(format!("{:?}", e)))
+        })?;
+    let mut out = Vec::with_capacity(rows.len());
+    for (sequence, node, merge_depth, revno, end_of_merge) in rows {
+        let revno = revno
+            .expect("generate_revno=true should always yield a revno")
+            .into_iter()
+            .map(|n| n as u32)
+            .collect();
+        out.push(MergeSortEntry {
+            sequence,
+            node,
+            merge_depth,
+            revno,
+            end_of_merge,
+        });
+    }
+    Ok(out)
 }
 
 #[cfg(test)]
