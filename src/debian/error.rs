@@ -5,7 +5,7 @@ use pyo3::prelude::*;
 
 pyo3::import_exception!(breezy.plugins.debian.builder, BuildFailedError);
 import_exception!(breezy.plugins.debian.import_dsc, UpstreamAlreadyImported);
-import_exception!(breezy.plugins.debian.upstream.branch, DistCommandfailed);
+import_exception!(breezy.plugins.debian.upstream.branch, DistCommandFailed);
 import_exception!(breezy.plugins.debian.upstream, PackageVersionNotPresent);
 import_exception!(breezy.plugins.debian.upstream, MissingUpstreamTarball);
 import_exception!(breezy.plugins.debian.changelog, UnreleasedChanges);
@@ -116,7 +116,7 @@ impl From<PyErr> for Error {
                         version: v.getattr("version").unwrap().extract().unwrap(),
                         tag_name: v.getattr("tag_name").unwrap().extract().unwrap(),
                     }
-                } else if err.is_instance_of::<DistCommandfailed>(py) {
+                } else if err.is_instance_of::<DistCommandFailed>(py) {
                     let v = err.value(py);
                     Error::DistCommandFailed(v.getattr("error").unwrap().extract().unwrap())
                 } else if err.is_instance_of::<PackageVersionNotPresent>(py) {
@@ -151,7 +151,7 @@ impl From<Error> for PyErr {
             Error::BrzError(err) => err.into(),
             Error::BuildFailed => BuildFailedError::new_err(("Build failed",)),
             Error::UpstreamAlreadyImported(version) => UpstreamAlreadyImported::new_err((version,)),
-            Error::DistCommandFailed(err) => DistCommandfailed::new_err((err,)),
+            Error::DistCommandFailed(err) => DistCommandFailed::new_err((err,)),
             Error::PackageVersionNotPresent { package, version } => {
                 PackageVersionNotPresent::new_err((package, version))
             }
@@ -166,5 +166,30 @@ impl From<Error> for PyErr {
                 tag_name,
             } => VersionAlreadyImported::new_err((package, version, tag_name)),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_dist_command_failed_from_pyerr() {
+        crate::init();
+        Python::attach(|py| {
+            let module = match py.import("breezy.plugins.debian.upstream.branch") {
+                Ok(module) => module,
+                // Skip test if brz-debian plugin is not installed
+                Err(_) => return,
+            };
+            let cls = module.getattr("DistCommandFailed").unwrap();
+            let exc = cls.call1(("boom",)).unwrap();
+            let pyerr = PyErr::from_value(exc);
+            let err: Error = pyerr.into();
+            match err {
+                Error::DistCommandFailed(msg) => assert_eq!(msg, "boom"),
+                other => panic!("expected DistCommandFailed, got {:?}", other),
+            }
+        });
     }
 }
