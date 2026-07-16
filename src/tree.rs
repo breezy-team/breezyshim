@@ -2071,16 +2071,16 @@ mod tests {
             create_standalone_workingtree(std::path::Path::new("."), &ControlDirFormat::default())
                 .unwrap();
         let path = std::path::Path::new("foo");
-        std::fs::write(&path, b"").unwrap();
+        std::fs::write(path, b"").unwrap();
         wt.add(&[(std::path::Path::new("foo"))]).unwrap();
         wt.build_commit()
             .message("Initial commit")
             .reporter(&crate::commit::NullCommitReporter::new())
             .commit()
             .unwrap();
-        assert!(wt.has_filename(&path));
+        assert!(wt.has_filename(path));
         wt.remove(&[Path::new("foo")]).unwrap();
-        assert!(!wt.is_versioned(&path));
+        assert!(!wt.is_versioned(path));
         std::mem::drop(env);
     }
 
@@ -2116,7 +2116,7 @@ mod tests {
 
         // Test walkdirs with no prefix
         let entries: Vec<_> = wt.walkdirs(None).unwrap().collect();
-        assert!(entries.len() > 0, "Should have at least some entries");
+        assert!(!entries.is_empty(), "Should have at least some entries");
 
         // Check that we can find .gitattributes
         let found_gitattributes = entries.iter().any(|entry| {

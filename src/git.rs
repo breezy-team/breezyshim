@@ -201,7 +201,7 @@ mod tests {
     #[test]
     fn test_bare_local_git_control_dir_format() {
         // This test will only pass if git plugin is available
-        let result = std::panic::catch_unwind(|| BareLocalGitControlDirFormat::new());
+        let result = std::panic::catch_unwind(BareLocalGitControlDirFormat::new);
 
         if let Ok(format) = result {
             let _opt_format = format.as_format();
@@ -219,7 +219,7 @@ mod tests {
 
     #[test]
     fn test_bare_local_git_into_pyobject() {
-        let result = std::panic::catch_unwind(|| BareLocalGitControlDirFormat::new());
+        let result = std::panic::catch_unwind(BareLocalGitControlDirFormat::new);
 
         if let Ok(format) = result {
             Python::attach(|py| {

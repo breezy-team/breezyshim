@@ -1260,7 +1260,7 @@ mod repository_tests {
 
         // Test write lock
         let write_lock = repo.lock_write();
-        assert!(!write_lock.is_ok());
+        assert!(write_lock.is_err());
     }
 
     #[test]
