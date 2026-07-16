@@ -76,26 +76,24 @@ mod tests {
 
     #[test]
     fn test_is_inside_any_found() {
-        let dirs = vec![
+        let dirs = [
             Path::new("/home/user1"),
             Path::new("/home/user2"),
             Path::new("/home/user3"),
         ];
-        let dir_refs: Vec<&Path> = dirs.iter().map(|p| *p).collect();
         let file = Path::new("/home/user2/document.txt");
-        assert!(is_inside_any(&dir_refs, file));
+        assert!(is_inside_any(&dirs, file));
     }
 
     #[test]
     fn test_is_inside_any_not_found() {
-        let dirs = vec![
+        let dirs = [
             Path::new("/home/user1"),
             Path::new("/home/user2"),
             Path::new("/home/user3"),
         ];
-        let dir_refs: Vec<&Path> = dirs.iter().map(|p| *p).collect();
         let file = Path::new("/home/other/document.txt");
-        assert!(!is_inside_any(&dir_refs, file));
+        assert!(!is_inside_any(&dirs, file));
     }
 
     #[test]
@@ -107,10 +105,9 @@ mod tests {
 
     #[test]
     fn test_is_inside_any_first_match() {
-        let dirs = vec![Path::new("/home/user"), Path::new("/home/user/subdir")];
-        let dir_refs: Vec<&Path> = dirs.iter().map(|p| *p).collect();
+        let dirs = [Path::new("/home/user"), Path::new("/home/user/subdir")];
         let file = Path::new("/home/user/subdir/document.txt");
         // Should match the first one that matches
-        assert!(is_inside_any(&dir_refs, file));
+        assert!(is_inside_any(&dirs, file));
     }
 }

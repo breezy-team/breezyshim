@@ -22,11 +22,9 @@ pub fn export<T: crate::tree::PyTree>(
         let m = py.import("breezy.export").unwrap();
         let export = m.getattr("export").unwrap();
         let kwargs = PyDict::new(py);
-        let subdir = if subdir.is_none() || subdir == Some(Path::new("")) {
-            None
-        } else {
-            Some(subdir.unwrap().to_string_lossy().to_string())
-        };
+        let subdir = subdir
+            .filter(|p| *p != Path::new(""))
+            .map(|p| p.to_string_lossy().to_string());
         kwargs.set_item("subdir", subdir).unwrap();
         export.call(
             (

@@ -650,7 +650,6 @@ impl Forge {
     }
 
     /// Returns an iterator over merge proposals from one branch to another.
-
     pub fn iter_proposals(
         &self,
         source_branch: &dyn PyBranch,
