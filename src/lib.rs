@@ -129,7 +129,7 @@ pub fn init_bzr() {
 
 #[cfg(feature = "auto-initialize")]
 /// Initialize
-#[ctor::ctor]
+#[ctor::ctor(unsafe)]
 fn ensure_initialized() {
     init();
 }
