@@ -177,8 +177,11 @@ pub enum Error {
     NoSuchTag(String),
     /// The specified tag already exists.
     TagAlreadyExists(String),
-    /// A socket error occurred.
-    Socket(std::io::Error),
+    /// A socket error occurred. The second field is the original Python
+    /// exception's own string representation (e.g. including the path
+    /// that was missing), since `std::io::Error::from_raw_os_error` alone
+    /// only carries the bare errno and loses that context.
+    Socket(std::io::Error, Option<String>),
     /// Login to the forge is required.
     ForgeLoginRequired,
     /// The specified forge is not supported.
@@ -342,7 +345,8 @@ impl std::fmt::Display for Error {
 
             Self::NoSuchTag(tag) => write!(f, "No such tag: {}", tag),
             Self::TagAlreadyExists(tag) => write!(f, "Tag already exists: {}", tag),
-            Self::Socket(e) => write!(f, "socket error: {}", e),
+            Self::Socket(e, Some(detail)) => write!(f, "socket error: {} ({})", e, detail),
+            Self::Socket(e, None) => write!(f, "socket error: {}", e),
             Self::ForgeLoginRequired => write!(f, "Forge login required"),
             Self::UnsupportedForge(url) => write!(f, "Unsupported forge: {}", url),
             Self::ForgeProjectExists(p) => write!(f, "Forge project exists: {}", p),
@@ -545,9 +549,12 @@ impl From<PyErr> for Error {
             } else if err.is_instance_of::<TagAlreadyExists>(py) {
                 Error::TagAlreadyExists(value.getattr("tag_name").unwrap().extract().unwrap())
             } else if err.is_instance_of::<error>(py) {
-                Error::Socket(std::io::Error::from_raw_os_error(
-                    value.getattr("errno").unwrap().extract().unwrap(),
-                ))
+                Error::Socket(
+                    std::io::Error::from_raw_os_error(
+                        value.getattr("errno").unwrap().extract().unwrap(),
+                    ),
+                    Some(get_exception_msg(value)),
+                )
             } else if err.is_instance_of::<ForgeLoginRequired>(py) {
                 Error::ForgeLoginRequired
             } else if err.is_instance_of::<UnsupportedForge>(py) {
@@ -831,7 +838,7 @@ impl From<Error> for PyErr {
             Error::NoWhoami => NoWhoami::new_err(()),
             Error::NoSuchTag(tag) => NoSuchTag::new_err((tag,)),
             Error::TagAlreadyExists(tag) => TagAlreadyExists::new_err((tag,)),
-            Error::Socket(e) => {
+            Error::Socket(e, _) => {
                 pyo3::import_exception!(socket, error);
                 error::new_err((e.raw_os_error().unwrap(),))
             }
@@ -1183,12 +1190,21 @@ fn test_error_tagalreadyexists() {
 
 #[test]
 fn test_error_socket() {
-    let e = Error::Socket(std::io::Error::from_raw_os_error(0));
+    let e = Error::Socket(std::io::Error::from_raw_os_error(0), None);
     let p: PyErr = e.into();
     // Verify that p is an instance of error
     Python::attach(|py| {
         assert!(p.is_instance_of::<pyo3::exceptions::PyOSError>(py));
     });
+}
+
+#[test]
+fn test_error_socket_display_includes_detail() {
+    let e = Error::Socket(
+        std::io::Error::from_raw_os_error(2),
+        Some("[Errno 2] No such file or directory: '/tmp/example.sock'".to_string()),
+    );
+    assert!(format!("{}", e).contains("/tmp/example.sock"));
 }
 
 #[test]
