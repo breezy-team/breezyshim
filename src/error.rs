@@ -49,7 +49,7 @@ import_exception!(breezy.errors, NotBranchError);
 import_exception!(breezy.errors, ReadOnlyError);
 import_exception!(breezy.controldir, NoColocatedBranchSupport);
 import_exception!(breezy.errors, DependencyNotPresent);
-import_exception!(breezy.errors, PermissionDenied);
+import_exception!(dromedary.errors, PermissionDenied);
 import_exception!(breezy.transport, UnsupportedProtocol);
 import_exception!(breezy.transport, UnusableRedirect);
 import_exception!(breezy.urlutils, InvalidURL);
@@ -480,7 +480,7 @@ impl From<PyErr> for Error {
                     value.getattr("library").unwrap().extract().unwrap(),
                     value.getattr("error").unwrap().extract().unwrap(),
                 )
-            } else if is_versioned_instance(&err, py, "breezy.errors", "PermissionDenied") {
+            } else if is_versioned_instance(&err, py, "dromedary.errors", "PermissionDenied") {
                 Error::PermissionDenied(
                     value.getattr("path").unwrap().extract().unwrap(),
                     value.getattr("extra").unwrap().extract().unwrap(),
