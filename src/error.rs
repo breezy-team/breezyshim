@@ -88,7 +88,7 @@ import_exception!(breezy.errors, BadHttpRequest);
 import_exception!(breezy.errors, TransportNotPossible);
 import_exception!(breezy.errors, IncompatibleFormat);
 import_exception!(breezy.errors, NoSuchRevision);
-import_exception!(breezy.errors, RevisionNotPresent);
+import_exception!(vcsgraph.errors, RevisionNotPresent);
 import_exception!(breezy.forge, NoSuchProject);
 import_exception!(breezy.errors, ObjectNotLocked);
 import_exception!(breezy.plugins.gitlab.forge, ForkingDisabled);
@@ -1569,5 +1569,29 @@ fn test_redirect_requested() {
     // Verify that p is an instance of RedirectRequested
     Python::attach(|py| {
         assert!(p.is_instance_of::<RedirectRequested>(py), "{}", p);
+    });
+}
+
+#[test]
+fn test_revision_not_present_from_pyerr() {
+    crate::init();
+    Python::attach(|py| {
+        let module = match py.import("vcsgraph.errors") {
+            Ok(module) => module,
+            // Skip test if vcsgraph is not installed
+            Err(_) => return,
+        };
+        let cls = module.getattr("RevisionNotPresent").unwrap();
+        let exc = cls
+            .call1((pyo3::types::PyBytes::new(py, b"test-revision-id"), py.None()))
+            .unwrap();
+        let pyerr = PyErr::from_value(exc);
+        let err: Error = pyerr.into();
+        match err {
+            Error::RevisionNotPresent(rev) => {
+                assert_eq!(rev, crate::RevisionId::from(b"test-revision-id".to_vec()))
+            }
+            other => panic!("expected RevisionNotPresent, got {:?}", other),
+        }
     });
 }
