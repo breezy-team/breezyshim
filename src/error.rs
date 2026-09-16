@@ -271,10 +271,7 @@ pub enum Error {
     NoSuchTag(String),
     /// The specified tag already exists.
     TagAlreadyExists(String),
-    /// A socket error occurred. The second field is the original Python
-    /// exception's own string representation (e.g. including the path
-    /// that was missing), since `std::io::Error::from_raw_os_error` alone
-    /// only carries the bare errno and loses that context.
+    /// A socket error occurred, with an optional detail string.
     Socket(std::io::Error, Option<String>),
     /// Login to the forge is required.
     ForgeLoginRequired,
