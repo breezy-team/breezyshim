@@ -153,7 +153,10 @@ impl GroupCompressor {
                 py.None()
             };
 
-            let result = self.0.call_method1(
+            // soft is keyword-only in Breezy 3.4.
+            let kwargs = pyo3::types::PyDict::new(py);
+            kwargs.set_item("soft", soft)?;
+            let result = self.0.call_method(
                 py,
                 "compress",
                 (
@@ -161,8 +164,8 @@ impl GroupCompressor {
                     lines_list,
                     length,
                     expected_sha_arg,
-                    soft,
                 ),
+                Some(&kwargs),
             )?;
 
             let tuple = result
