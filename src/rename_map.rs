@@ -64,8 +64,10 @@ mod tests {
         std::fs::write(tmp_dir2.path().join("file2.txt"), "content1").unwrap();
         wt2.add(&[Path::new("file2.txt")]).unwrap();
 
-        let result = guess_renames(&from_tree, &wt2);
-        assert!(result.is_ok());
+        // guess_renames requires the target tree to be write-locked.
+        let lock = wt2.lock_write().unwrap();
+        guess_renames(&from_tree, &wt2).unwrap();
+        std::mem::drop(lock);
         std::mem::drop(env);
     }
 }

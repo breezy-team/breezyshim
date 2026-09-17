@@ -1347,6 +1347,7 @@ mod repository_tests {
         )
         .unwrap();
         let repo: GenericRepository = crate::repository::open(td.path()).unwrap();
+        let _lock = repo.lock_read().unwrap();
 
         // Test with empty list
         let parent_map = repo.get_parent_map(&[]).unwrap();
