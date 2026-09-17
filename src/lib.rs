@@ -134,6 +134,26 @@ fn ensure_initialized() {
     init();
 }
 
+/// Import the first available of several equivalent Python modules.
+///
+/// Breezy 3.4 moved the bzr format implementations out into the `bzrformats`
+/// distribution, so the same module is reachable under different names
+/// depending on the version in use.
+pub fn import_first<'py>(
+    py: pyo3::Python<'py>,
+    candidates: &[&str],
+) -> pyo3::PyResult<pyo3::Bound<'py, pyo3::types::PyModule>> {
+    let mut last = None;
+    for name in candidates {
+        match py.import(*name) {
+            Ok(m) => return Ok(m),
+            Err(e) => last = Some(e),
+        }
+    }
+    Err(last
+        .unwrap_or_else(|| pyo3::exceptions::PyImportError::new_err("no candidate modules given")))
+}
+
 /// The minimum supported Breezy version.
 const MINIMUM_VERSION: (usize, usize, usize) = (3, 3, 6);
 

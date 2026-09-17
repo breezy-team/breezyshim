@@ -19,7 +19,7 @@ impl WeaveFile {
         mode: Option<&str>,
         create: bool,
     ) -> PyResult<Self> {
-        let weave_mod = py.import("breezy.bzr.weave")?;
+        let weave_mod = crate::import_first(py, &["breezy.bzr.weave", "bzrformats.weave"])?;
         let weave_cls = weave_mod.getattr("WeaveFile")?;
 
         let kwargs = pyo3::types::PyDict::new(py);
@@ -148,7 +148,7 @@ impl Weave {
     }
 
     pub fn new_empty(py: Python) -> PyResult<Self> {
-        let weave_mod = py.import("breezy.bzr.weave")?;
+        let weave_mod = crate::import_first(py, &["breezy.bzr.weave", "bzrformats.weave"])?;
         let weave_cls = weave_mod.getattr("Weave")?;
         let obj = weave_cls.call0()?;
         Ok(Weave(obj.unbind()))

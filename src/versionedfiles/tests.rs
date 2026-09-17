@@ -38,7 +38,7 @@ mod tests {
         init();
         pyo3::Python::attach(|py| {
             // Import the weave module
-            py.import("breezy.bzr.weave").ok();
+            crate::import_first(py, &["breezy.bzr.weave", "bzrformats.weave"]).ok();
             let weave = crate::weave::Weave::new_empty(py).unwrap();
 
             // Add initial version

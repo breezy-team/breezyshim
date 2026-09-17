@@ -20,7 +20,7 @@ impl KnitVersionedFiles {
         dir_mode: Option<u32>,
         access_mode: Option<&str>,
     ) -> PyResult<Self> {
-        let knit_mod = py.import("breezy.bzr.knit")?;
+        let knit_mod = crate::import_first(py, &["breezy.bzr.knit", "bzrformats.knit"])?;
         let kvf_cls = knit_mod.getattr("KnitVersionedFiles")?;
 
         let kwargs = pyo3::types::PyDict::new(py);
@@ -93,7 +93,7 @@ impl<'py> IntoPyObject<'py> for KnitPlainFactory {
     type Error = PyErr;
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        let knit_mod = py.import("breezy.bzr.knit")?;
+        let knit_mod = crate::import_first(py, &["breezy.bzr.knit", "bzrformats.knit"])?;
         let factory_cls = knit_mod.getattr("KnitPlainFactory")?;
 
         // Create empty factory
@@ -143,7 +143,7 @@ impl<'py> IntoPyObject<'py> for KnitAnnotateFactory {
     type Error = PyErr;
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        let knit_mod = py.import("breezy.bzr.knit")?;
+        let knit_mod = crate::import_first(py, &["breezy.bzr.knit", "bzrformats.knit"])?;
         let factory_cls = knit_mod.getattr("KnitAnnotateFactory")?;
 
         // Create empty factory
