@@ -48,7 +48,8 @@ jobs:
   # 3.4 is not on PyPI yet, so install it from the upstream branch. The
   # debian feature is left out here because breezy-debian pulls in breezy
   # from PyPI, which would pull 3.3 back in.
-  breezy-3.4:
+  breezy-3-4:
+    name: breezy 3.4
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
