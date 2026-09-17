@@ -1,6 +1,6 @@
 //! Patching support for Breezy.
 use crate::transform::TreeTransform;
-use patchkit::unified::{HunkLine, UnifiedPatch};
+use patchkit::unified::UnifiedPatch;
 use pyo3::intern;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyList};
@@ -8,51 +8,15 @@ use pyo3::types::{PyBytes, PyList};
 fn py_patches(iter_patches: impl Iterator<Item = UnifiedPatch>) -> PyResult<Py<PyAny>> {
     Python::attach(|py| {
         let m = py.import("breezy.patches")?;
-        let patchc = m.getattr("Patch")?;
-        let hunkc = m.getattr("Hunk")?;
-        let insertlinec = m.getattr("InsertLine")?;
-        let removelinec = m.getattr("RemoveLine")?;
-        let contextlinec = m.getattr("ContextLine")?;
+        let parse_patch = m.getattr("parse_patch")?;
         let mut ret = vec![];
         for patch in iter_patches {
-            let pypatch = patchc.call1((
-                PyBytes::new(py, &patch.orig_name),
-                PyBytes::new(py, &patch.mod_name),
-                patch.orig_ts,
-                patch.mod_ts,
-            ))?;
-            let pyhunks = pypatch.getattr("hunks")?;
-
-            for hunk in patch.hunks {
-                let pyhunk = hunkc.call1((
-                    hunk.orig_pos,
-                    hunk.orig_range,
-                    hunk.mod_pos,
-                    hunk.mod_range,
-                    hunk.tail,
-                ))?;
-                pyhunks.call_method1("append", (&pyhunk,))?;
-
-                let pylines = pyhunk.getattr("lines")?;
-
-                for line in hunk.lines {
-                    pylines.call_method1(
-                        "append",
-                        (match line {
-                            HunkLine::ContextLine(l) => {
-                                contextlinec.call1((PyBytes::new(py, l.as_slice()),))?
-                            }
-                            HunkLine::InsertLine(l) => {
-                                insertlinec.call1((PyBytes::new(py, l.as_slice()),))?
-                            }
-                            HunkLine::RemoveLine(l) => {
-                                removelinec.call1((PyBytes::new(py, l.as_slice()),))?
-                            }
-                        },),
-                    )?;
-                }
-            }
-            ret.push(pypatch);
+            // Round-trip through the serialised form rather than rebuilding the
+            // patch attribute by attribute: in Breezy 3.4 Patch.hunks returns a
+            // fresh list on every access, so appending to it is a no-op.
+            let bytes = PyBytes::new(py, &patch.as_bytes());
+            let lines = bytes.call_method1(intern!(py, "splitlines"), (true,))?;
+            ret.push(parse_patch.call1((lines,))?);
         }
         Ok(PyList::new(py, ret.iter())?.unbind().into())
     })

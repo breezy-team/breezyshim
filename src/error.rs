@@ -3,55 +3,158 @@ use crate::transform::RawConflict;
 use pyo3::import_exception;
 use pyo3::intern;
 use pyo3::prelude::*;
+use pyo3::types::PyTuple;
+use pyo3::IntoPyObjectExt;
 use pyo3::PyErr;
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use url::Url;
 
-/// Dynamic, version-tolerant replacement for `err.is_instance_of::<T>(py)`
-/// for exception types that may or may not exist in the loaded Breezy.
-/// Python-level lookup (`import module` + `getattr(name)`) is cached
-/// so it only runs once per `(module, name)` pair; later calls do a
-/// cheap HashMap probe.
-fn is_versioned_instance(err: &PyErr, py: Python<'_>, module: &str, name: &str) -> bool {
-    static CACHE: OnceLock<Mutex<HashMap<String, Option<Py<PyAny>>>>> = OnceLock::new();
+/// Resolve an exception type by trying several modules in order.
+///
+/// Breezy 3.4 moved a number of exceptions out into the `dromedary` and
+/// `bzrformats` distributions, so the same exception lives in different
+/// modules depending on the version in use. The resolved type is cached.
+fn versioned_exception(py: Python<'_>, candidates: &[(&str, &str)]) -> PyResult<Py<PyAny>> {
+    static CACHE: OnceLock<Mutex<HashMap<String, Py<PyAny>>>> = OnceLock::new();
     let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
 
-    let key = format!("{module}.{name}");
-    {
-        let guard = cache.lock().unwrap();
-        if let Some(slot) = guard.get(&key) {
-            return match slot {
-                Some(ty) => err.is_instance(py, ty.bind(py)),
-                None => false,
-            };
+    let key = candidates
+        .iter()
+        .map(|(m, n)| format!("{m}.{n}"))
+        .collect::<Vec<_>>()
+        .join("|");
+
+    if let Some(ty) = cache.lock().unwrap().get(&key) {
+        return Ok(ty.clone_ref(py));
+    }
+
+    for (module, name) in candidates {
+        if let Ok(ty) = py.import(*module).and_then(|m| m.getattr(*name)) {
+            let ty = ty.unbind();
+            cache.lock().unwrap().insert(key, ty.clone_ref(py));
+            return Ok(ty);
         }
     }
 
-    // Slow path: probe. A missing attribute is an expected condition
-    // when the currently-loaded Breezy has dropped the exception.
-    let resolved: Option<Py<PyAny>> = py
-        .import(module)
-        .ok()
-        .and_then(|m| m.getattr(name).ok())
-        .map(|o| o.unbind());
-
-    let result = match &resolved {
-        Some(ty) => err.is_instance(py, ty.bind(py)),
-        None => false,
-    };
-    cache.lock().unwrap().insert(key, resolved);
-    result
+    Err(pyo3::exceptions::PyAttributeError::new_err(format!(
+        "none of the candidate exceptions {key} are available in the loaded Breezy"
+    )))
 }
 
+/// Declare a version-tolerant exception wrapper.
+///
+/// Generates a type with `new_err` and `matches` methods that resolve the
+/// underlying Python exception lazily from the first available candidate
+/// module, instead of panicking when the first one is missing.
+macro_rules! versioned_exception {
+    ($name:ident, $(($module:expr, $attr:expr)),+ $(,)?) => {
+        #[allow(non_camel_case_types)]
+        pub(crate) struct $name;
+
+        impl $name {
+            const CANDIDATES: &'static [(&'static str, &'static str)] =
+                &[$(($module, $attr)),+];
+
+            pub(crate) fn new_err<A>(args: A) -> PyErr
+            where
+                A: for<'py> IntoPyObject<'py> + Send + Sync + 'static,
+            {
+                Python::attach(|py| {
+                    let ty = match versioned_exception(py, Self::CANDIDATES) {
+                        Ok(ty) => ty,
+                        Err(e) => return e,
+                    };
+                    let args: Bound<'_, PyAny> = match args.into_bound_py_any(py) {
+                        Ok(a) => a,
+                        Err(e) => return e,
+                    };
+                    let args = match args.extract::<Bound<'_, PyTuple>>() {
+                        Ok(t) => t,
+                        Err(_) => PyTuple::new(py, [args]).unwrap(),
+                    };
+                    match ty.bind(py).call1(args) {
+                        Ok(inst) => PyErr::from_value(inst),
+                        Err(e) => e,
+                    }
+                })
+            }
+
+            pub(crate) fn matches(err: &PyErr, py: Python<'_>) -> bool {
+                match versioned_exception(py, Self::CANDIDATES) {
+                    Ok(ty) => err.is_instance(py, ty.bind(py)),
+                    Err(_) => false,
+                }
+            }
+        }
+    };
+}
+
+versioned_exception!(
+    ObjectNotLocked,
+    ("breezy.errors", "ObjectNotLocked"),
+    ("bzrformats.errors", "ObjectNotLocked")
+);
+versioned_exception!(
+    PermissionDenied,
+    ("breezy.errors", "PermissionDenied"),
+    ("dromedary.errors", "PermissionDenied")
+);
+versioned_exception!(
+    UnsupportedProtocol,
+    ("breezy.transport", "UnsupportedProtocol"),
+    ("dromedary.errors", "UnsupportedProtocol")
+);
+versioned_exception!(
+    UnusableRedirect,
+    ("breezy.transport", "UnusableRedirect"),
+    ("dromedary.errors", "UnusableRedirect")
+);
+versioned_exception!(
+    UnexpectedHttpStatus,
+    ("breezy.errors", "UnexpectedHttpStatus"),
+    ("dromedary.errors", "UnexpectedHttpStatus")
+);
+versioned_exception!(
+    BadHttpRequest,
+    ("breezy.errors", "BadHttpRequest"),
+    ("dromedary.errors", "BadHttpRequest")
+);
+versioned_exception!(
+    TransportNotPossible,
+    ("breezy.errors", "TransportNotPossible"),
+    ("dromedary.errors", "TransportNotPossible")
+);
+versioned_exception!(
+    RedirectRequested,
+    ("breezy.errors", "RedirectRequested"),
+    ("dromedary.errors", "RedirectRequested")
+);
+versioned_exception!(
+    RevisionNotPresent,
+    ("breezy.errors", "RevisionNotPresent"),
+    ("bzrformats.errors", "RevisionNotPresent")
+);
+versioned_exception!(
+    NoSuchFile,
+    ("breezy.transport", "NoSuchFile"),
+    ("dromedary.errors", "NoSuchFile")
+);
+versioned_exception!(
+    FileExists,
+    ("breezy.transport", "FileExists"),
+    ("dromedary.errors", "FileExists")
+);
+versioned_exception!(
+    InvalidHttpResponse,
+    ("breezy.errors", "InvalidHttpResponse"),
+    ("dromedary.errors", "InvalidHttpResponse")
+);
 import_exception!(breezy.errors, UnknownFormatError);
 import_exception!(breezy.errors, NotBranchError);
 import_exception!(breezy.errors, ReadOnlyError);
 import_exception!(breezy.controldir, NoColocatedBranchSupport);
 import_exception!(breezy.errors, DependencyNotPresent);
-import_exception!(breezy.errors, PermissionDenied);
-import_exception!(breezy.transport, UnsupportedProtocol);
-import_exception!(breezy.transport, UnusableRedirect);
 import_exception!(breezy.urlutils, InvalidURL);
 import_exception!(breezy.errors, TransportError);
 import_exception!(breezy.errors, UnsupportedFormatError);
@@ -60,12 +163,10 @@ import_exception!(breezy.git.remote, RemoteGitError);
 import_exception!(breezy.git.remote, ProtectedBranchHookDeclined);
 import_exception!(http.client, IncompleteRead);
 import_exception!(breezy.bzr, LineEndingError);
-import_exception!(breezy.errors, InvalidHttpResponse);
 import_exception!(breezy.errors, AlreadyControlDirError);
 import_exception!(breezy.errors, AlreadyBranchError);
 import_exception!(breezy.errors, DivergedBranches);
 import_exception!(breezy.workspace, WorkspaceDirty);
-import_exception!(breezy.transport, NoSuchFile);
 import_exception!(breezy.commit, PointlessCommit);
 import_exception!(breezy.errors, NoWhoami);
 import_exception!(breezy.errors, NoSuchTag);
@@ -77,26 +178,19 @@ import_exception!(breezy.errors, UnsupportedOperation);
 import_exception!(breezy.errors, NoRepositoryPresent);
 import_exception!(breezy.errors, LockFailed);
 import_exception!(breezy.errors, LockContention);
-import_exception!(breezy.transport, FileExists);
 import_exception!(breezy.errors, NoSuchRevisionInTree);
 import_exception!(breezy.tree, MissingNestedTree);
 import_exception!(breezy.transform, ImmortalLimbo);
 import_exception!(breezy.transform, MalformedTransform);
 import_exception!(breezy.transform, TransformRenameFailed);
-import_exception!(breezy.errors, UnexpectedHttpStatus);
-import_exception!(breezy.errors, BadHttpRequest);
-import_exception!(breezy.errors, TransportNotPossible);
 import_exception!(breezy.errors, IncompatibleFormat);
 import_exception!(breezy.errors, NoSuchRevision);
-import_exception!(breezy.errors, RevisionNotPresent);
 import_exception!(breezy.forge, NoSuchProject);
-import_exception!(breezy.errors, ObjectNotLocked);
 import_exception!(breezy.plugins.gitlab.forge, ForkingDisabled);
 import_exception!(breezy.plugins.gitlab.forge, GitLabConflict);
 import_exception!(breezy.plugins.gitlab.forge, ProjectCreationTimeout);
 import_exception!(breezy.forge, SourceNotDerivedFromTarget);
 import_exception!(breezy.controldir, BranchReferenceLoop);
-import_exception!(breezy.errors, RedirectRequested);
 import_exception!(breezy.errors, ConflictsInTree);
 import_exception!(breezy.errors, NoRoundtrippingSupport);
 import_exception!(breezy.inter, NoCompatibleInter);
@@ -480,17 +574,17 @@ impl From<PyErr> for Error {
                     value.getattr("library").unwrap().extract().unwrap(),
                     value.getattr("error").unwrap().extract().unwrap(),
                 )
-            } else if is_versioned_instance(&err, py, "breezy.errors", "PermissionDenied") {
+            } else if PermissionDenied::matches(&err, py) {
                 Error::PermissionDenied(
                     value.getattr("path").unwrap().extract().unwrap(),
                     value.getattr("extra").unwrap().extract().unwrap(),
                 )
-            } else if is_versioned_instance(&err, py, "breezy.transport", "UnsupportedProtocol") {
+            } else if UnsupportedProtocol::matches(&err, py) {
                 Error::UnsupportedProtocol(
                     value.getattr("url").unwrap().extract().unwrap(),
                     value.getattr("extra").unwrap().extract().unwrap(),
                 )
-            } else if is_versioned_instance(&err, py, "breezy.transport", "UnusableRedirect") {
+            } else if UnusableRedirect::matches(&err, py) {
                 Error::UnusableRedirect(
                     value.getattr("source").unwrap().extract().unwrap(),
                     value.getattr("target").unwrap().extract().unwrap(),
@@ -532,7 +626,7 @@ impl From<PyErr> for Error {
                     .extract::<String>(py)
                     .unwrap();
                 Error::WorkspaceDirty(std::path::PathBuf::from(path))
-            } else if is_versioned_instance(&err, py, "breezy.transport", "NoSuchFile") {
+            } else if NoSuchFile::matches(&err, py) {
                 Error::NoSuchFile(std::path::PathBuf::from(
                     value.getattr("path").unwrap().extract::<String>().unwrap(),
                 ))
@@ -587,7 +681,7 @@ impl From<PyErr> for Error {
                     let why = why.call_method0("__str__").unwrap();
                     Error::LockFailed(why.extract().unwrap())
                 }
-            } else if err.is_instance_of::<FileExists>(py) {
+            } else if FileExists::matches(&err, py) {
                 Error::FileExists(
                     std::path::PathBuf::from(
                         value.getattr("path").unwrap().extract::<String>().unwrap(),
@@ -651,7 +745,7 @@ impl From<PyErr> for Error {
                         value.getattr("errno").unwrap().extract::<i32>().unwrap(),
                     ),
                 )
-            } else if is_versioned_instance(&err, py, "breezy.errors", "UnexpectedHttpStatus") {
+            } else if UnexpectedHttpStatus::matches(&err, py) {
                 let headers_obj = value.getattr("headers").unwrap();
                 Error::UnexpectedHttpStatus {
                     url: value
@@ -667,7 +761,7 @@ impl From<PyErr> for Error {
                 }
             } else if err.is_instance_of::<pyo3::exceptions::PyTimeoutError>(py) {
                 Error::Timeout
-            } else if is_versioned_instance(&err, py, "breezy.errors", "BadHttpRequest") {
+            } else if BadHttpRequest::matches(&err, py) {
                 Error::BadHttpRequest(
                     value
                         .getattr("path")
@@ -678,7 +772,7 @@ impl From<PyErr> for Error {
                         .unwrap(),
                     value.getattr("reason").unwrap().extract().unwrap(),
                 )
-            } else if is_versioned_instance(&err, py, "breezy.errors", "TransportNotPossible") {
+            } else if TransportNotPossible::matches(&err, py) {
                 Error::TransportNotPossible(get_exception_msg(value))
             } else if err.is_instance_of::<IncompatibleFormat>(py) {
                 let format = value.getattr("format").unwrap();
@@ -705,7 +799,7 @@ impl From<PyErr> for Error {
                 )
             } else if err.is_instance_of::<NoSuchRevision>(py) {
                 Error::NoSuchRevision(value.getattr("revision").unwrap().extract().unwrap())
-            } else if err.is_instance_of::<RevisionNotPresent>(py) {
+            } else if RevisionNotPresent::matches(&err, py) {
                 Error::RevisionNotPresent(value.getattr("revision_id").unwrap().extract().unwrap())
             } else if err.is_instance_of::<NoSuchProject>(py) {
                 Error::NoSuchProject(value.getattr("project").unwrap().extract().unwrap())
@@ -737,7 +831,7 @@ impl From<PyErr> for Error {
                 Error::ConnectionError(err.to_string())
             } else if err.is_instance_of::<ReadOnlyError>(py) {
                 Error::ReadOnly
-            } else if is_versioned_instance(&err, py, "breezy.errors", "RedirectRequested") {
+            } else if RedirectRequested::matches(&err, py) {
                 Error::RedirectRequested {
                     source: value
                         .getattr("source")
@@ -760,7 +854,7 @@ impl From<PyErr> for Error {
             } else if err.is_instance_of::<NoCompatibleInter>(py) {
                 Error::NoCompatibleInter
             // Intentionally sorted below the more specific errors
-            } else if err.is_instance_of::<InvalidHttpResponse>(py) {
+            } else if InvalidHttpResponse::matches(&err, py) {
                 let headers_obj = value.getattr("headers").unwrap();
                 Error::InvalidHttpResponse(
                     value.getattr("path").unwrap().extract().unwrap(),
@@ -772,7 +866,7 @@ impl From<PyErr> for Error {
                 Error::TransportError(get_exception_msg(value))
             } else if err.is_instance_of::<BranchReferenceLoop>(py) {
                 Error::BranchReferenceLoop
-            } else if err.is_instance_of::<ObjectNotLocked>(py) {
+            } else if ObjectNotLocked::matches(&err, py) {
                 Error::ObjectNotLocked(err.to_string())
             } else {
                 if std::env::var("BRZ_ERROR").is_ok() {
@@ -964,7 +1058,7 @@ fn test_error_permissiondenied() {
     let p: PyErr = e.into();
     // Verify that p is an instance of PermissionDenied
     Python::attach(|py| {
-        assert!(p.is_instance_of::<PermissionDenied>(py));
+        assert!(PermissionDenied::matches(&p, py));
     });
 }
 
@@ -974,7 +1068,7 @@ fn test_error_unsupportedprotocol() {
     let p: PyErr = e.into();
     // Verify that p is an instance of UnsupportedProtocol
     Python::attach(|py| {
-        assert!(p.is_instance_of::<UnsupportedProtocol>(py));
+        assert!(UnsupportedProtocol::matches(&p, py));
     });
 }
 
@@ -984,7 +1078,7 @@ fn test_error_unusableredirect() {
     let p: PyErr = e.into();
     // Verify that p is an instance of UnusableRedirect
     Python::attach(|py| {
-        assert!(p.is_instance_of::<UnusableRedirect>(py));
+        assert!(UnusableRedirect::matches(&p, py));
     });
 }
 
@@ -1096,7 +1190,7 @@ fn test_error_invalidhttpresponse() {
     let p: PyErr = e.into();
     // Verify that p is an instance of InvalidHttpResponse
     Python::attach(|py| {
-        assert!(p.is_instance_of::<InvalidHttpResponse>(py));
+        assert!(InvalidHttpResponse::matches(&p, py));
     });
 }
 
@@ -1137,7 +1231,7 @@ fn test_error_nosuchfile() {
     let p: PyErr = e.into();
     // Verify that p is an instance of NoSuchFile
     Python::attach(|py| {
-        assert!(p.is_instance_of::<NoSuchFile>(py));
+        assert!(NoSuchFile::matches(&p, py));
     });
 }
 
@@ -1293,7 +1387,7 @@ fn test_error_file_exists() {
     let p: PyErr = e.into();
     // Verify that p is an instance of FileExists
     Python::attach(|py| {
-        assert!(p.is_instance_of::<FileExists>(py), "{}", p);
+        assert!(FileExists::matches(&p, py), "{}", p);
     });
 }
 
@@ -1374,7 +1468,7 @@ fn test_unexpected_http_status() {
     let p: PyErr = e.into();
     // Verify that p is an instance of UnexpectedHttpStatus
     Python::attach(|py| {
-        assert!(p.is_instance_of::<UnexpectedHttpStatus>(py), "{}", p);
+        assert!(UnexpectedHttpStatus::matches(&p, py), "{}", p);
     });
 }
 
@@ -1474,7 +1568,7 @@ fn test_bad_http_request() {
     let p: PyErr = e.into();
     // Verify that p is an instance of BadHttpRequest
     Python::attach(|py| {
-        assert!(p.is_instance_of::<BadHttpRequest>(py), "{}", p);
+        assert!(BadHttpRequest::matches(&p, py), "{}", p);
     });
 }
 
@@ -1484,7 +1578,7 @@ fn test_transport_not_possible() {
     let p: PyErr = e.into();
     // Verify that p is an instance of TransportNotPossible
     Python::attach(|py| {
-        assert!(p.is_instance_of::<TransportNotPossible>(py), "{}", p);
+        assert!(TransportNotPossible::matches(&p, py), "{}", p);
     });
 }
 
@@ -1568,6 +1662,6 @@ fn test_redirect_requested() {
     let p: PyErr = e.into();
     // Verify that p is an instance of RedirectRequested
     Python::attach(|py| {
-        assert!(p.is_instance_of::<RedirectRequested>(py), "{}", p);
+        assert!(RedirectRequested::matches(&p, py), "{}", p);
     });
 }

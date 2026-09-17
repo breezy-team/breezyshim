@@ -7,6 +7,32 @@ use pyo3::prelude::*;
 
 pub struct WeaveFile(Py<PyAny>);
 
+/// Version ids are bytes in Breezy. 3.3 also accepted str, 3.4 does not.
+fn vid<'py>(py: Python<'py>, id: &str) -> Bound<'py, pyo3::types::PyBytes> {
+    pyo3::types::PyBytes::new(py, id.as_bytes())
+}
+
+fn vid_list<'py>(
+    py: Python<'py>,
+    ids: impl IntoIterator<Item = impl AsRef<str>>,
+) -> PyResult<Bound<'py, pyo3::types::PyList>> {
+    pyo3::types::PyList::new(
+        py,
+        ids.into_iter()
+            .map(|i| vid(py, i.as_ref()))
+            .collect::<Vec<_>>(),
+    )
+}
+
+/// Decode a version id coming back from Python, which may be bytes or str.
+fn vid_from(obj: &Bound<'_, PyAny>) -> PyResult<String> {
+    if let Ok(b) = obj.extract::<Vec<u8>>() {
+        Ok(String::from_utf8_lossy(&b).into_owned())
+    } else {
+        obj.extract::<String>()
+    }
+}
+
 impl WeaveFile {
     pub fn new(py_obj: Py<PyAny>) -> Self {
         Self(py_obj)
@@ -19,7 +45,7 @@ impl WeaveFile {
         mode: Option<&str>,
         create: bool,
     ) -> PyResult<Self> {
-        let weave_mod = py.import("breezy.bzr.weave")?;
+        let weave_mod = crate::import_first(py, &["breezy.bzr.weave", "bzrformats.weave"])?;
         let weave_cls = weave_mod.getattr("WeaveFile")?;
 
         let kwargs = pyo3::types::PyDict::new(py);
@@ -42,18 +68,35 @@ impl WeaveFile {
         lines: Vec<&str>,
     ) -> Result<(), Error> {
         Python::attach(|py| {
-            let parents_list = pyo3::types::PyList::new(py, parents)?;
+            let parents_list = pyo3::types::PyList::new(
+                py,
+                parents
+                    .iter()
+                    .map(|p| pyo3::types::PyBytes::new(py, p.as_bytes()))
+                    .collect::<Vec<_>>(),
+            )?;
             let lines_list = pyo3::types::PyList::new(py, lines)?;
 
-            self.0
-                .call_method1(py, "add_lines", (version_id, parents_list, lines_list))?;
+            self.0.call_method1(
+                py,
+                "add_lines",
+                (
+                    pyo3::types::PyBytes::new(py, version_id.as_bytes()),
+                    parents_list,
+                    lines_list,
+                ),
+            )?;
             Ok(())
         })
     }
 
     pub fn get_lines(&self, version_id: &str) -> Result<Vec<String>, Error> {
         Python::attach(|py| {
-            let result = self.0.call_method1(py, "get_lines", (version_id,))?;
+            let result = self.0.call_method1(
+                py,
+                "get_lines",
+                (pyo3::types::PyBytes::new(py, version_id.as_bytes()),),
+            )?;
             let lines_list = result
                 .cast_bound::<pyo3::types::PyList>(py)
                 .map_err(|_| pyo3::exceptions::PyTypeError::new_err("Expected list"))?;
@@ -76,7 +119,7 @@ impl WeaveFile {
 
             let mut ancestry = Vec::new();
             for id in ancestry_list {
-                ancestry.push(id.extract::<String>()?);
+                ancestry.push(vid_from(&id)?);
             }
             Ok(ancestry)
         })
@@ -100,14 +143,14 @@ impl WeaveFile {
 
             let mut parent_map = std::collections::HashMap::new();
             for (key, value) in parent_dict {
-                let version_id = key.extract::<String>()?;
+                let version_id = vid_from(&key)?;
                 let parents_list = value
                     .cast::<pyo3::types::PyList>()
                     .map_err(|_| pyo3::exceptions::PyTypeError::new_err("Expected list"))?;
 
                 let mut parents = Vec::new();
                 for parent in parents_list {
-                    parents.push(parent.extract::<String>()?);
+                    parents.push(vid_from(&parent)?);
                 }
                 parent_map.insert(version_id, parents);
             }
@@ -148,7 +191,7 @@ impl Weave {
     }
 
     pub fn new_empty(py: Python) -> PyResult<Self> {
-        let weave_mod = py.import("breezy.bzr.weave")?;
+        let weave_mod = crate::import_first(py, &["breezy.bzr.weave", "bzrformats.weave"])?;
         let weave_cls = weave_mod.getattr("Weave")?;
         let obj = weave_cls.call0()?;
         Ok(Weave(obj.unbind()))
@@ -156,7 +199,7 @@ impl Weave {
 
     pub fn add_lines(&self, name: &str, parents: Vec<&str>, text: Vec<&str>) -> Result<(), Error> {
         Python::attach(|py| {
-            let parents_list = pyo3::types::PyList::new(py, parents)?;
+            let parents_list = vid_list(py, parents)?;
             // Convert text to bytes as required by weave
             let text_bytes: Vec<_> = text
                 .iter()
@@ -165,14 +208,14 @@ impl Weave {
             let text_list = pyo3::types::PyList::new(py, text_bytes)?;
 
             self.0
-                .call_method1(py, "add_lines", (name, parents_list, text_list))?;
+                .call_method1(py, "add_lines", (vid(py, name), parents_list, text_list))?;
             Ok(())
         })
     }
 
     pub fn get_text(&self, name: &str) -> Result<Vec<String>, Error> {
         Python::attach(|py| {
-            let result = self.0.call_method1(py, "get_text", (name,))?;
+            let result = self.0.call_method1(py, "get_text", (vid(py, name),))?;
             let bytes_result = result
                 .cast_bound::<pyo3::types::PyBytes>(py)
                 .map_err(|_| pyo3::exceptions::PyTypeError::new_err("Expected bytes"))?;
@@ -188,7 +231,7 @@ impl Weave {
 
     pub fn get_ancestry(&self, names: Vec<&str>) -> Result<Vec<String>, Error> {
         Python::attach(|py| {
-            let names_list = pyo3::types::PyList::new(py, names)?;
+            let names_list = vid_list(py, names)?;
             let result = self.0.call_method1(py, "get_ancestry", (names_list,))?;
             let ancestry_set = result
                 .cast_bound::<pyo3::types::PySet>(py)
@@ -196,7 +239,7 @@ impl Weave {
 
             let mut ancestry = Vec::new();
             for name in ancestry_set {
-                ancestry.push(name.extract::<String>()?);
+                ancestry.push(vid_from(&name)?);
             }
             Ok(ancestry)
         })

@@ -722,7 +722,14 @@ impl<'py> IntoPyObject<'py> for Key {
     type Error = PyErr;
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        PyTuple::new(py, self.0)
+        // Keys are tuples of bytes in Breezy.
+        PyTuple::new(
+            py,
+            self.0
+                .iter()
+                .map(|s| pyo3::types::PyBytes::new(py, s.as_bytes()))
+                .collect::<Vec<_>>(),
+        )
     }
 }
 
@@ -733,7 +740,10 @@ impl<'a, 'py> FromPyObject<'a, 'py> for Key {
         let tuple = ob.cast::<PyTuple>()?;
         let mut items = Vec::new();
         for item in tuple.iter() {
-            items.push(item.extract::<String>()?);
+            items.push(match item.extract::<Vec<u8>>() {
+                Ok(b) => String::from_utf8_lossy(&b).into_owned(),
+                Err(_) => item.extract::<String>()?,
+            });
         }
         Ok(Key(items))
     }
@@ -742,7 +752,14 @@ impl<'a, 'py> FromPyObject<'a, 'py> for Key {
 /// Implement GraphNode for Key
 impl GraphNode for Key {
     fn to_pyobject<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        Ok(PyTuple::new(py, &self.0)?.into_any())
+        Ok(PyTuple::new(
+            py,
+            self.0
+                .iter()
+                .map(|s| pyo3::types::PyBytes::new(py, s.as_bytes()))
+                .collect::<Vec<_>>(),
+        )?
+        .into_any())
     }
 
     fn from_pyobject(obj: &Bound<PyAny>) -> PyResult<Self> {

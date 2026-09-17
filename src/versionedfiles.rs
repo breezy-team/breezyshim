@@ -39,7 +39,10 @@ impl<'py> IntoPyObject<'py> for FulltextContentFactory {
     type Error = PyErr;
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        let factory_mod = py.import("breezy.bzr.versionedfile")?;
+        let factory_mod = crate::import_first(
+            py,
+            &["breezy.bzr.versionedfile", "bzrformats.versionedfile"],
+        )?;
         let factory_cls = factory_mod.getattr("FulltextContentFactory")?;
 
         let parents_py = if let Some(parents) = self.parents {
@@ -84,7 +87,10 @@ impl<'py> IntoPyObject<'py> for AbsentContentFactory {
     type Error = PyErr;
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        let factory_mod = py.import("breezy.bzr.versionedfile")?;
+        let factory_mod = crate::import_first(
+            py,
+            &["breezy.bzr.versionedfile", "bzrformats.versionedfile"],
+        )?;
         let factory_cls = factory_mod.getattr("AbsentContentFactory")?;
 
         let parent_tuples: Vec<_> = self

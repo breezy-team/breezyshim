@@ -24,7 +24,10 @@ impl GroupCompressVersionedFiles {
         track_anomalous_cross_references: bool,
         use_chk_index: bool,
     ) -> PyResult<Self> {
-        let gc_mod = py.import("breezy.bzr.groupcompress")?;
+        let gc_mod = crate::import_first(
+            py,
+            &["breezy.bzr.groupcompress", "bzrformats.groupcompress"],
+        )?;
         let gcvf_cls = gc_mod.getattr("GroupCompressVersionedFiles")?;
 
         let kwargs = pyo3::types::PyDict::new(py);
@@ -109,7 +112,10 @@ pub struct GroupCompressor(Py<PyAny>);
 
 impl GroupCompressor {
     pub fn new(py: Python) -> PyResult<Self> {
-        let gc_mod = py.import("breezy.bzr.groupcompress")?;
+        let gc_mod = crate::import_first(
+            py,
+            &["breezy.bzr.groupcompress", "bzrformats.groupcompress"],
+        )?;
         let gc_cls = gc_mod.getattr("GroupCompressor")?;
         let obj = gc_cls.call0()?;
         Ok(GroupCompressor(obj.unbind()))
@@ -147,7 +153,10 @@ impl GroupCompressor {
                 py.None()
             };
 
-            let result = self.0.call_method1(
+            // soft is keyword-only in Breezy 3.4.
+            let kwargs = pyo3::types::PyDict::new(py);
+            kwargs.set_item("soft", soft)?;
+            let result = self.0.call_method(
                 py,
                 "compress",
                 (
@@ -155,8 +164,8 @@ impl GroupCompressor {
                     lines_list,
                     length,
                     expected_sha_arg,
-                    soft,
                 ),
+                Some(&kwargs),
             )?;
 
             let tuple = result
