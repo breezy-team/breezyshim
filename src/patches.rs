@@ -79,15 +79,16 @@ impl AppliedPatches {
 
 impl Drop for AppliedPatches {
     fn drop(&mut self) {
-        Python::attach(|py| -> Result<(), PyErr> {
-            self.1.call_method1(
+        Python::attach(|py| {
+            if let Err(e) = self.1.call_method1(
                 py,
                 intern!(py, "__exit__"),
                 (py.None(), py.None(), py.None()),
-            )?;
-            Ok(())
-        })
-        .unwrap();
+            ) {
+                // Drop can't propagate errors, so log instead of panicking.
+                log::warn!("AppliedPatches::__exit__ failed during cleanup: {}", e);
+            }
+        });
     }
 }
 
@@ -148,6 +149,39 @@ mod applied_patches_tests {
             b"b\n".to_vec(),
             newtree.get_file_text(std::path::Path::new("a")).unwrap()
         );
+        std::mem::drop(newtree);
+        std::mem::drop(env);
+    }
+
+    #[test]
+    #[serial]
+    fn test_drop_survives_tree_removed_underneath() {
+        // The source tree already gone by the time Drop runs must not panic.
+        let env = crate::testing::TestEnv::new();
+        let td = tempfile::tempdir().unwrap();
+        let tree = crate::controldir::create_standalone_workingtree(
+            td.path(),
+            &ControlDirFormat::default(),
+        )
+        .unwrap();
+        std::fs::write(td.path().join("a"), "a\n").unwrap();
+        tree.add(&[std::path::Path::new("a")]).unwrap();
+        tree.build_commit()
+            .message("Add a")
+            .reporter(&crate::commit::NullCommitReporter::new())
+            .commit()
+            .unwrap();
+        let patch = UnifiedPatch::parse_patch(patchkit::unified::splitlines(
+            br#"--- a/a
++++ b/a
+@@ -1 +1 @@
+-a
++b
+"#,
+        ))
+        .unwrap();
+        let newtree = crate::patches::AppliedPatches::new(&tree, vec![patch], None).unwrap();
+        std::fs::remove_dir_all(td.path()).unwrap();
         std::mem::drop(newtree);
         std::mem::drop(env);
     }

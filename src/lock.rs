@@ -28,7 +28,32 @@ impl<'py> IntoPyObject<'py> for Lock {
 impl Drop for Lock {
     fn drop(&mut self) {
         Python::attach(|py| {
-            self.0.call_method0(py, "unlock").unwrap();
+            if let Err(e) = self.0.call_method0(py, "unlock") {
+                // Drop can't propagate errors, so log instead of panicking.
+                log::warn!("Lock::unlock failed during drop: {}", e);
+            }
+        });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::controldir::create_standalone_workingtree;
+    use crate::branch::PyBranch;
+    use crate::workingtree::WorkingTree;
+
+    #[test]
+    fn test_lock_drop_survives_already_unlocked() {
+        // A branch already unlocked elsewhere must not panic on drop.
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
+        Python::attach(|py| {
+            let branch = wt.branch().to_object(py);
+            branch.call_method0(py, "lock_write").unwrap();
+            branch.call_method0(py, "unlock").unwrap();
+            let lock = Lock::from(branch);
+            std::mem::drop(lock);
         });
     }
 }
