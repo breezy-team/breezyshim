@@ -340,13 +340,14 @@ impl Apt for RemoteApt {
 impl Drop for RemoteApt {
     fn drop(&mut self) {
         Python::attach(|py| {
-            self.0
-                .call_method1(
-                    py,
-                    intern!(py, "__exit__"),
-                    (py.None(), py.None(), py.None()),
-                )
-                .unwrap();
+            if let Err(e) = self.0.call_method1(
+                py,
+                intern!(py, "__exit__"),
+                (py.None(), py.None(), py.None()),
+            ) {
+                // Drop can't propagate errors, so log instead of panicking.
+                log::warn!("RemoteApt::__exit__ failed during cleanup: {}", e);
+            }
         });
     }
 }
@@ -354,6 +355,38 @@ impl Drop for RemoteApt {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_remote_apt_drop_survives_missing_rootdir() {
+        // A rootdir already gone by the time Drop runs must not panic.
+        let _mutex = apt_mutex.lock().unwrap();
+        let apt = Python::attach(|py| -> Result<RemoteApt, Error> {
+            let m = match PyModule::import(py, "breezy.plugins.debian.apt_repo") {
+                Ok(m) => m,
+                Err(e) if e.is_instance_of::<PyModuleNotFoundError>(py) => {
+                    return Err(Error::DependencyNotPresent(
+                        "breezy.plugins.debian".to_string(),
+                        "Install the brz-debian plugin".to_string(),
+                    ));
+                }
+                Err(e) => return Err(e.into()),
+            };
+            // Construct directly, bypassing __enter__ (which needs real
+            // python-apt + network) - __init__ has no side effects.
+            let cls = m.getattr("RemoteApt")?;
+            let obj = cls.call1(("http://example.invalid/", "unstable", vec!["main"], None::<String>))?;
+            let td = tempfile::tempdir().unwrap();
+            let rootdir = td.path().to_string_lossy().to_string();
+            obj.setattr("_rootdir", &rootdir)?;
+            // Remove the dir out from under it, exactly like the real race.
+            std::fs::remove_dir_all(&rootdir).unwrap();
+            Ok(RemoteApt(obj.into()))
+        })
+        .unwrap();
+
+        // Must not panic.
+        std::mem::drop(apt);
+    }
 
     #[test]
     fn test_local_apt_retrieve_orig() {
