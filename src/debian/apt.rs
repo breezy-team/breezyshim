@@ -232,13 +232,13 @@ impl Default for LocalApt {
 impl Drop for LocalApt {
     fn drop(&mut self) {
         Python::attach(|py| {
-            self.0
-                .call_method1(
-                    py,
-                    intern!(py, "__exit__"),
-                    (py.None(), py.None(), py.None()),
-                )
-                .unwrap();
+            if let Err(e) = self.0.call_method1(
+                py,
+                intern!(py, "__exit__"),
+                (py.None(), py.None(), py.None()),
+            ) {
+                log::warn!("LocalApt::__exit__ failed during cleanup: {}", e);
+            }
         });
     }
 }
