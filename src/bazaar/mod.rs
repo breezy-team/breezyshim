@@ -5,6 +5,7 @@
 use pyo3::exceptions::PyModuleNotFoundError;
 use pyo3::prelude::*;
 
+pub mod smart;
 pub mod tree;
 
 /// A Bazaar file identifier.
