@@ -255,4 +255,16 @@ mod tests {
         let base = transport.base();
         assert!(base.to_string().starts_with("file://"));
     }
+
+    #[test]
+    fn test_get_transport_fills_possible_transports() {
+        let td = tempfile::tempdir().unwrap();
+        let url = url::Url::from_file_path(td.path()).unwrap();
+
+        let mut possible_transports = vec![];
+        let transport = get_transport(&url, Some(&mut possible_transports)).unwrap();
+
+        assert_eq!(possible_transports.len(), 1);
+        assert_eq!(possible_transports[0].base(), transport.base());
+    }
 }

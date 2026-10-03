@@ -1631,6 +1631,21 @@ mod tests {
     }
 
     #[test]
+    fn test_open_fills_possible_transports() {
+        crate::init();
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let url = url::Url::from_directory_path(tmp_dir.path()).unwrap();
+
+        let mut possible_transports = vec![];
+        create(&url, "2a", Some(&mut possible_transports)).unwrap();
+        assert!(!possible_transports.is_empty());
+
+        let mut possible_transports = vec![];
+        open(&url, Some(&mut possible_transports)).unwrap();
+        assert!(!possible_transports.is_empty());
+    }
+
+    #[test]
     fn test_open() {
         crate::init();
         let tmp_dir = tempfile::tempdir().unwrap();
