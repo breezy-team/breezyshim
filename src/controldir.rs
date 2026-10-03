@@ -3,7 +3,7 @@
 use crate::branch::{py_tag_selector, Branch, GenericBranch, PyBranch};
 use crate::error::Error;
 use crate::repository::{GenericRepository, Repository};
-use crate::transport::Transport;
+use crate::transport::{possible_transports_from_py, possible_transports_to_py, Transport};
 use crate::workingtree::GenericWorkingTree;
 
 use crate::location::AsLocation;
@@ -1064,16 +1064,18 @@ pub fn open(
         let m = py.import("breezy.controldir")?;
         let cd = m.getattr("ControlDir")?;
         let kwargs = PyDict::new(py);
-        if let Some(possible_transports) = possible_transports {
-            kwargs.set_item(
-                "possible_transports",
-                possible_transports
-                    .iter()
-                    .map(|t| t.as_pyobject().clone_ref(py))
-                    .collect::<Vec<Py<PyAny>>>(),
-            )?;
+        let list = possible_transports
+            .as_deref()
+            .map(|t| possible_transports_to_py(py, t))
+            .transpose()?;
+        if let Some(list) = list.as_ref() {
+            kwargs.set_item("possible_transports", list)?;
         }
-        let controldir = cd.call_method("open", (url.as_location(),), Some(&kwargs))?;
+        let controldir = cd.call_method("open", (url.as_location(),), Some(&kwargs));
+        if let (Some(list), Some(possible_transports)) = (list.as_ref(), possible_transports) {
+            possible_transports_from_py(list, possible_transports);
+        }
+        let controldir = controldir?;
         Ok(Box::new(GenericControlDir(controldir.unbind()))
             as Box<
                 dyn ControlDir<
@@ -1116,16 +1118,18 @@ pub fn create(
         if let Some(format) = format.as_format() {
             kwargs.set_item("format", format.clone())?;
         }
-        if let Some(possible_transports) = possible_transports {
-            kwargs.set_item(
-                "possible_transports",
-                possible_transports
-                    .iter()
-                    .map(|t| t.as_pyobject().clone_ref(py))
-                    .collect::<Vec<Py<PyAny>>>(),
-            )?;
+        let list = possible_transports
+            .as_deref()
+            .map(|t| possible_transports_to_py(py, t))
+            .transpose()?;
+        if let Some(list) = list.as_ref() {
+            kwargs.set_item("possible_transports", list)?;
         }
-        let controldir = cd.call_method("create", (url.as_location(),), Some(&kwargs))?;
+        let controldir = cd.call_method("create", (url.as_location(),), Some(&kwargs));
+        if let (Some(list), Some(possible_transports)) = (list.as_ref(), possible_transports) {
+            possible_transports_from_py(list, possible_transports);
+        }
+        let controldir = controldir?;
         Ok(Box::new(GenericControlDir(controldir.unbind()))
             as Box<
                 dyn ControlDir<
