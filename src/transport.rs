@@ -1,7 +1,7 @@
 //! Transport module
 use crate::error::Error;
 use pyo3::prelude::*;
-use pyo3::types::PyDict;
+use pyo3::types::{PyDict, PyList};
 use std::path::{Path, PathBuf};
 
 /// A transport represents a way to access content in a branch.
@@ -113,6 +113,23 @@ impl<'py> IntoPyObject<'py> for Transport {
     }
 }
 
+/// Build the Python list that is handed to breezy as `possible_transports`.
+pub(crate) fn possible_transports_to_py<'py>(
+    py: Python<'py>,
+    possible_transports: &[Transport],
+) -> PyResult<Bound<'py, PyList>> {
+    PyList::new(py, possible_transports.iter().map(|t| t.0.clone_ref(py)))
+}
+
+/// Copy the list breezy was given back, so the transports it added are kept.
+pub(crate) fn possible_transports_from_py(
+    list: &Bound<PyList>,
+    possible_transports: &mut Vec<Transport>,
+) {
+    possible_transports.clear();
+    possible_transports.extend(list.iter().map(|t| Transport(t.unbind())));
+}
+
 /// Get a transport for a given URL.
 ///
 /// # Arguments
@@ -125,16 +142,16 @@ pub fn get_transport(
     pyo3::Python::attach(|py| {
         let urlutils = py.import("breezy.transport").unwrap();
         let kwargs = PyDict::new(py);
-        kwargs.set_item(
-            "possible_transports",
-            possible_transports.map(|t| {
-                t.iter()
-                    .map(|t| t.0.clone_ref(py))
-                    .collect::<Vec<Py<PyAny>>>()
-            }),
-        )?;
-        let o = urlutils.call_method("get_transport", (url.to_string(),), Some(&kwargs))?;
-        Ok(Transport(o.unbind()))
+        let list = possible_transports
+            .as_deref()
+            .map(|t| possible_transports_to_py(py, t))
+            .transpose()?;
+        kwargs.set_item("possible_transports", list.as_ref())?;
+        let o = urlutils.call_method("get_transport", (url.to_string(),), Some(&kwargs));
+        if let (Some(list), Some(possible_transports)) = (list.as_ref(), possible_transports) {
+            possible_transports_from_py(list, possible_transports);
+        }
+        Ok(Transport(o?.unbind()))
     })
 }
 
@@ -237,5 +254,17 @@ mod tests {
 
         let base = transport.base();
         assert!(base.to_string().starts_with("file://"));
+    }
+
+    #[test]
+    fn test_get_transport_fills_possible_transports() {
+        let td = tempfile::tempdir().unwrap();
+        let url = url::Url::from_file_path(td.path()).unwrap();
+
+        let mut possible_transports = vec![];
+        let transport = get_transport(&url, Some(&mut possible_transports)).unwrap();
+
+        assert_eq!(possible_transports.len(), 1);
+        assert_eq!(possible_transports[0].base(), transport.base());
     }
 }
