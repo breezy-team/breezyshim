@@ -647,10 +647,14 @@ impl From<PyErr> for Error {
             } else if err.is_instance_of::<UnsupportedForge>(py) {
                 let branch = value.getattr("branch").unwrap();
 
-                if let Ok(url) = branch.getattr("user_url") {
-                    Error::UnsupportedForge(url.extract::<String>().unwrap().parse().unwrap())
-                } else {
-                    Error::UnsupportedForge(branch.extract::<String>().unwrap().parse().unwrap())
+                // Raised with a branch, a URL or just a hostname
+                let url = match branch.getattr("user_url") {
+                    Ok(url) => url.extract::<String>(),
+                    Err(_) => branch.extract::<String>(),
+                };
+                match url.ok().and_then(|url| url.parse().ok()) {
+                    Some(url) => Error::UnsupportedForge(url),
+                    None => Error::Other(err),
                 }
             } else if err.is_instance_of::<MergeProposalExists>(py) {
                 let source_url: String = value.getattr("url").unwrap().extract().unwrap();
