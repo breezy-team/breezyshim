@@ -1604,6 +1604,30 @@ fn test_no_such_project() {
 }
 
 #[test]
+fn test_no_such_project_without_name() {
+    Python::attach(|py| {
+        let cls = py
+            .import("breezy.forge")
+            .unwrap()
+            .getattr("NoSuchProject")
+            .unwrap();
+        for (project, expected) in [
+            (c"None", "None"),
+            (c"1234", "1234"),
+            (c"'foo/bar'", "foo/bar"),
+        ] {
+            let project = py.eval(project, None, None).unwrap();
+            let err_obj = cls.call1((project,)).unwrap();
+            let error: Error = PyErr::from_value(err_obj).into();
+            match error {
+                Error::NoSuchProject(p) => assert_eq!(p, expected),
+                _ => panic!("Expected NoSuchProject, got {:?}", error),
+            }
+        }
+    });
+}
+
+#[test]
 fn test_forking_disabled() {
     let e = Error::ForkingDisabled("foo".to_string());
     let p: PyErr = e.into();
