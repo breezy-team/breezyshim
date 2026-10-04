@@ -343,6 +343,22 @@ impl MergeProposal {
         })
     }
 
+    /// Returns the name of the project the proposal's source branch lives in, if known.
+    pub fn get_source_project(&self) -> Result<Option<String>, crate::error::Error> {
+        Python::attach(|py| {
+            let project = self.0.call_method0(py, "get_source_project")?;
+            project.extract(py).map_err(Into::into)
+        })
+    }
+
+    /// Returns the name of the project the proposal targets, if known.
+    pub fn get_target_project(&self) -> Result<Option<String>, crate::error::Error> {
+        Python::attach(|py| {
+            let project = self.0.call_method0(py, "get_target_project")?;
+            project.extract(py).map_err(Into::into)
+        })
+    }
+
     /// Returns the date and time when this proposal was merged, if it has been merged.
     pub fn get_merged_at(
         &self,
@@ -601,6 +617,33 @@ impl Forge {
                 Err(e) => Some(Err(e.into())),
             })
         }))
+    }
+
+    /// Returns an iterator over the names of the forks owned by the given owner.
+    ///
+    /// Defaults to the current user. Eagerly drains the underlying Python
+    /// iterator; the first per-item error short-circuits and is returned.
+    pub fn iter_my_forks(
+        &self,
+        owner: Option<&str>,
+    ) -> Result<impl Iterator<Item = String>, Error> {
+        let ret: Vec<String> = Python::attach(|py| -> Result<_, Error> {
+            self.0
+                .call_method1(py, "iter_my_forks", (owner,))?
+                .bind(py)
+                .try_iter()?
+                .map(|project| Ok(project?.extract::<String>()?))
+                .collect()
+        })?;
+        Ok(ret.into_iter())
+    }
+
+    /// Deletes the project with the given name, as yielded by [`Forge::iter_my_forks`].
+    pub fn delete_project(&self, project: &str) -> Result<(), Error> {
+        Python::attach(|py| {
+            self.0.call_method1(py, "delete_project", (project,))?;
+            Ok(())
+        })
     }
 
     /// Gets a branch derived from a main branch with the given name and optional owner.
