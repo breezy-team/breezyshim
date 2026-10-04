@@ -570,9 +570,10 @@ impl From<PyErr> for Error {
             } else if err.is_instance_of::<NoColocatedBranchSupport>(py) {
                 Error::NoColocatedBranchSupport
             } else if err.is_instance_of::<DependencyNotPresent>(py) {
+                // The error is often the exception that the import raised
                 Error::DependencyNotPresent(
                     value.getattr("library").unwrap().extract().unwrap(),
-                    value.getattr("error").unwrap().extract().unwrap(),
+                    value.getattr("error").unwrap().str().unwrap().to_string(),
                 )
             } else if PermissionDenied::matches(&err, py) {
                 Error::PermissionDenied(
@@ -1049,6 +1050,28 @@ fn test_error_dependencynotpresent() {
     // Verify that p is an instance of DependencyNotPresent
     Python::attach(|py| {
         assert!(p.is_instance_of::<DependencyNotPresent>(py));
+    });
+}
+
+#[test]
+fn test_error_dependencynotpresent_with_exception() {
+    Python::attach(|py| {
+        let cls = py
+            .import("breezy.errors")
+            .unwrap()
+            .getattr("DependencyNotPresent")
+            .unwrap();
+        let cause = pyo3::exceptions::PyModuleNotFoundError::new_err("No module named 'foo'");
+        let err_obj = cls.call1(("foo", cause.into_value(py))).unwrap();
+
+        let error: Error = PyErr::from_value(err_obj).into();
+        match error {
+            Error::DependencyNotPresent(library, error) => {
+                assert_eq!(library, "foo");
+                assert_eq!(error, "No module named 'foo'");
+            }
+            _ => panic!("Expected DependencyNotPresent, got {:?}", error),
+        }
     });
 }
 
