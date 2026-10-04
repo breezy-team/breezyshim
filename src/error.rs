@@ -1054,6 +1054,28 @@ fn test_error_dependencynotpresent() {
 }
 
 #[test]
+fn test_error_dependencynotpresent_with_exception() {
+    Python::attach(|py| {
+        let cls = py
+            .import("breezy.errors")
+            .unwrap()
+            .getattr("DependencyNotPresent")
+            .unwrap();
+        let cause = pyo3::exceptions::PyModuleNotFoundError::new_err("No module named 'foo'");
+        let err_obj = cls.call1(("foo", cause.into_value(py))).unwrap();
+
+        let error: Error = PyErr::from_value(err_obj).into();
+        match error {
+            Error::DependencyNotPresent(library, error) => {
+                assert_eq!(library, "foo");
+                assert_eq!(error, "No module named 'foo'");
+            }
+            _ => panic!("Expected DependencyNotPresent, got {:?}", error),
+        }
+    });
+}
+
+#[test]
 fn test_error_permissiondenied() {
     let e = Error::PermissionDenied(std::path::PathBuf::from("foo"), Some("bar".to_string()));
     let p: PyErr = e.into();
