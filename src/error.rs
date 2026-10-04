@@ -802,7 +802,8 @@ impl From<PyErr> for Error {
             } else if RevisionNotPresent::matches(&err, py) {
                 Error::RevisionNotPresent(value.getattr("revision_id").unwrap().extract().unwrap())
             } else if err.is_instance_of::<NoSuchProject>(py) {
-                Error::NoSuchProject(value.getattr("project").unwrap().extract().unwrap())
+                // The project is not always a name; the GitLab plugin can pass None
+                Error::NoSuchProject(value.getattr("project").unwrap().str().unwrap().to_string())
             } else if err.is_instance_of::<ForkingDisabled>(py) {
                 Error::ForkingDisabled(value.getattr("project").unwrap().extract().unwrap())
             } else if err.is_instance_of::<ProjectCreationTimeout>(py) {
