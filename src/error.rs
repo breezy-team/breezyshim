@@ -570,9 +570,10 @@ impl From<PyErr> for Error {
             } else if err.is_instance_of::<NoColocatedBranchSupport>(py) {
                 Error::NoColocatedBranchSupport
             } else if err.is_instance_of::<DependencyNotPresent>(py) {
+                // The error is often the exception that the import raised
                 Error::DependencyNotPresent(
                     value.getattr("library").unwrap().extract().unwrap(),
-                    value.getattr("error").unwrap().extract().unwrap(),
+                    value.getattr("error").unwrap().str().unwrap().to_string(),
                 )
             } else if PermissionDenied::matches(&err, py) {
                 Error::PermissionDenied(
