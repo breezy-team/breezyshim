@@ -654,17 +654,21 @@ impl From<PyErr> for Error {
                     Error::UnsupportedForge(branch.extract::<String>().unwrap().parse().unwrap())
                 }
             } else if err.is_instance_of::<MergeProposalExists>(py) {
-                let source_url: String = value.getattr("url").unwrap().extract().unwrap();
+                let parse = |u: Bound<PyAny>| u.extract::<String>().ok()?.parse().ok();
+                let source_url = parse(value.getattr("url").unwrap());
                 let existing_proposal = value.getattr("existing_proposal").unwrap();
-                let target_url: Option<String> = if existing_proposal.is_none() {
-                    None
+                let target_url = if existing_proposal.is_none() {
+                    Some(None)
                 } else {
-                    Some(existing_proposal.getattr("url").unwrap().extract().unwrap())
+                    parse(existing_proposal.getattr("url").unwrap()).map(Some)
                 };
-                Error::MergeProposalExists(
-                    source_url.parse().unwrap(),
-                    target_url.map(|u| u.parse().unwrap()),
-                )
+                match (source_url, target_url) {
+                    (Some(source_url), Some(target_url)) => {
+                        Error::MergeProposalExists(source_url, target_url)
+                    }
+                    // The variant can only hold URLs
+                    _ => Error::Other(err),
+                }
             } else if err.is_instance_of::<UnsupportedOperation>(py) {
                 Error::UnsupportedOperation(
                     value.getattr("mname").unwrap().extract().unwrap(),
