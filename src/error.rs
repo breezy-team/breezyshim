@@ -1366,6 +1366,55 @@ fn test_error_merge_proposal_exists() {
 }
 
 #[test]
+fn test_error_merge_proposal_exists_without_url() {
+    Python::attach(|py| {
+        let cls = py
+            .import("breezy.forge")
+            .unwrap()
+            .getattr("MergeProposalExists")
+            .unwrap();
+        let err_obj = cls.call1(("https://example.com/foo",)).unwrap();
+        match PyErr::from_value(err_obj).into() {
+            Error::MergeProposalExists(url, None) => {
+                assert_eq!(url.as_str(), "https://example.com/foo")
+            }
+            error => panic!("Expected MergeProposalExists, got {:?}", error),
+        }
+
+        for url in [c"None", c"'group/project'"] {
+            let url = py.eval(url, None, None).unwrap();
+            let err_obj = cls.call1((url,)).unwrap();
+
+            let error: Error = PyErr::from_value(err_obj).into();
+            match error {
+                Error::Other(e) => assert!(e.is_instance_of::<MergeProposalExists>(py)),
+                _ => panic!("Expected Other, got {:?}", error),
+            }
+        }
+
+        let proposal = py
+            .eval(
+                c"type('Proposal', (), {'url': 'https://example.com/mp/1'})",
+                None,
+                None,
+            )
+            .unwrap();
+        let err_obj = cls.call1(("https://example.com/foo", &proposal)).unwrap();
+        match PyErr::from_value(err_obj).into() {
+            Error::MergeProposalExists(_, Some(url)) => {
+                assert_eq!(url.as_str(), "https://example.com/mp/1")
+            }
+            error => panic!("Expected MergeProposalExists, got {:?}", error),
+        }
+
+        proposal.setattr("url", py.None()).unwrap();
+        let err_obj = cls.call1(("https://example.com/foo", &proposal)).unwrap();
+        let error: Error = PyErr::from_value(err_obj).into();
+        assert!(matches!(error, Error::Other(_)), "{:?}", error);
+    });
+}
+
+#[test]
 #[ignore] // UnsupportedOperation takes two arguments, which is not implemented
 fn test_error_unsupported_operation() {
     let e = Error::UnsupportedOperation("foo".to_string(), "bar".to_string());
