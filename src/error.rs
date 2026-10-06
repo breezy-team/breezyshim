@@ -807,7 +807,8 @@ impl From<PyErr> for Error {
             } else if RevisionNotPresent::matches(&err, py) {
                 Error::RevisionNotPresent(value.getattr("revision_id").unwrap().extract().unwrap())
             } else if err.is_instance_of::<NoSuchProject>(py) {
-                Error::NoSuchProject(value.getattr("project").unwrap().extract().unwrap())
+                // The project is not always a name; the GitLab plugin can pass None
+                Error::NoSuchProject(value.getattr("project").unwrap().str().unwrap().to_string())
             } else if err.is_instance_of::<ForkingDisabled>(py) {
                 Error::ForkingDisabled(value.getattr("project").unwrap().extract().unwrap())
             } else if err.is_instance_of::<ProjectCreationTimeout>(py) {
@@ -1656,6 +1657,30 @@ fn test_no_such_project() {
     // Verify that p is an instance of NoSuchProject
     Python::attach(|py| {
         assert!(p.is_instance_of::<NoSuchProject>(py), "{}", p);
+    });
+}
+
+#[test]
+fn test_no_such_project_without_name() {
+    Python::attach(|py| {
+        let cls = py
+            .import("breezy.forge")
+            .unwrap()
+            .getattr("NoSuchProject")
+            .unwrap();
+        for (project, expected) in [
+            (c"None", "None"),
+            (c"1234", "1234"),
+            (c"'foo/bar'", "foo/bar"),
+        ] {
+            let project = py.eval(project, None, None).unwrap();
+            let err_obj = cls.call1((project,)).unwrap();
+            let error: Error = PyErr::from_value(err_obj).into();
+            match error {
+                Error::NoSuchProject(p) => assert_eq!(p, expected),
+                _ => panic!("Expected NoSuchProject, got {:?}", error),
+            }
+        }
     });
 }
 
