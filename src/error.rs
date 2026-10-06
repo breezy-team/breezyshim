@@ -582,7 +582,7 @@ impl From<PyErr> for Error {
                 )
             } else if UnsupportedProtocol::matches(&err, py) {
                 Error::UnsupportedProtocol(
-                    value.getattr("url").unwrap().extract().unwrap(),
+                    value.getattr("path").unwrap().extract().unwrap(),
                     value.getattr("extra").unwrap().extract().unwrap(),
                 )
             } else if UnusableRedirect::matches(&err, py) {
