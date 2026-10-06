@@ -1096,6 +1096,27 @@ fn test_error_unsupportedprotocol() {
 }
 
 #[test]
+fn test_error_unsupportedprotocol_from_python() {
+    Python::attach(|py| {
+        let err = py
+            .import("breezy.transport")
+            .unwrap()
+            .call_method1("get_transport", ("nosuch://x/y",))
+            .unwrap_err();
+        assert!(UnsupportedProtocol::matches(&err, py), "{}", err);
+
+        let error: Error = err.into();
+        match error {
+            Error::UnsupportedProtocol(url, extra) => {
+                assert_eq!(url, "nosuch://x/y");
+                assert_eq!(extra.as_deref(), Some(""));
+            }
+            _ => panic!("Expected UnsupportedProtocol, got {:?}", error),
+        }
+    });
+}
+
+#[test]
 fn test_error_unusableredirect() {
     let e = Error::UnusableRedirect("foo".to_string(), "bar".to_string(), "baz".to_string());
     let p: PyErr = e.into();
