@@ -582,7 +582,7 @@ impl From<PyErr> for Error {
                 )
             } else if UnsupportedProtocol::matches(&err, py) {
                 Error::UnsupportedProtocol(
-                    value.getattr("url").unwrap().extract().unwrap(),
+                    value.getattr("path").unwrap().extract().unwrap(),
                     value.getattr("extra").unwrap().extract().unwrap(),
                 )
             } else if UnusableRedirect::matches(&err, py) {
@@ -1092,6 +1092,27 @@ fn test_error_unsupportedprotocol() {
     // Verify that p is an instance of UnsupportedProtocol
     Python::attach(|py| {
         assert!(UnsupportedProtocol::matches(&p, py));
+    });
+}
+
+#[test]
+fn test_error_unsupportedprotocol_from_python() {
+    Python::attach(|py| {
+        let err = py
+            .import("breezy.transport")
+            .unwrap()
+            .call_method1("get_transport", ("nosuch://x/y",))
+            .unwrap_err();
+        assert!(UnsupportedProtocol::matches(&err, py), "{}", err);
+
+        let error: Error = err.into();
+        match error {
+            Error::UnsupportedProtocol(url, extra) => {
+                assert_eq!(url, "nosuch://x/y");
+                assert_eq!(extra.as_deref(), Some(""));
+            }
+            _ => panic!("Expected UnsupportedProtocol, got {:?}", error),
+        }
     });
 }
 
