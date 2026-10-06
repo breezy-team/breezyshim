@@ -343,6 +343,22 @@ impl MergeProposal {
         })
     }
 
+    /// Returns the name of the project the proposal's source branch lives in, if known.
+    pub fn get_source_project(&self) -> Result<Option<String>, crate::error::Error> {
+        Python::attach(|py| {
+            let project = self.0.call_method0(py, "get_source_project")?;
+            project.extract(py).map_err(Into::into)
+        })
+    }
+
+    /// Returns the name of the project the proposal targets, if known.
+    pub fn get_target_project(&self) -> Result<Option<String>, crate::error::Error> {
+        Python::attach(|py| {
+            let project = self.0.call_method0(py, "get_target_project")?;
+            project.extract(py).map_err(Into::into)
+        })
+    }
+
     /// Returns the date and time when this proposal was merged, if it has been merged.
     pub fn get_merged_at(
         &self,
@@ -601,6 +617,33 @@ impl Forge {
                 Err(e) => Some(Err(e.into())),
             })
         }))
+    }
+
+    /// Returns an iterator over the names of the forks owned by the given owner.
+    ///
+    /// Defaults to the current user. Eagerly drains the underlying Python
+    /// iterator; the first per-item error short-circuits and is returned.
+    pub fn iter_my_forks(
+        &self,
+        owner: Option<&str>,
+    ) -> Result<impl Iterator<Item = String>, Error> {
+        let ret: Vec<String> = Python::attach(|py| -> Result<_, Error> {
+            self.0
+                .call_method1(py, "iter_my_forks", (owner,))?
+                .bind(py)
+                .try_iter()?
+                .map(|project| Ok(project?.extract::<String>()?))
+                .collect()
+        })?;
+        Ok(ret.into_iter())
+    }
+
+    /// Deletes the project with the given name, as yielded by [`Forge::iter_my_forks`].
+    pub fn delete_project(&self, project: &str) -> Result<(), Error> {
+        Python::attach(|py| {
+            self.0.call_method1(py, "delete_project", (project,))?;
+            Ok(())
+        })
     }
 
     /// Gets a branch derived from a main branch with the given name and optional owner.
@@ -916,6 +959,124 @@ pub fn get_proposal_by_url(url: &url::Url) -> Result<MergeProposal, Error> {
 
 #[cfg(test)]
 mod tests {
+    use super::{Forge, MergeProposal};
+    use pyo3::prelude::*;
+
+    const FAKES: &std::ffi::CStr = cr#"
+class FakeForge:
+    def __init__(self):
+        self.calls = []
+
+    def iter_my_forks(self, owner=None):
+        self.calls.append(("iter_my_forks", owner))
+        for name in ["one", "two"]:
+            yield "%s/%s" % (owner or "me", name)
+
+    def delete_project(self, name):
+        self.calls.append(("delete_project", name))
+
+
+class BrokenForge:
+    def iter_my_forks(self, owner=None):
+        yield "me/one"
+        raise RuntimeError("no forks")
+
+    def delete_project(self, name):
+        raise RuntimeError("no such project")
+
+
+class FakeProposal:
+    def get_source_project(self):
+        return "me/one"
+
+    def get_target_project(self):
+        return None
+
+
+class BrokenProposal:
+    def get_source_project(self):
+        raise RuntimeError("no source project")
+
+    def get_target_project(self):
+        raise RuntimeError("no target project")
+"#;
+
+    fn fake(py: Python<'_>, name: &str) -> Py<PyAny> {
+        let m = PyModule::from_code(
+            py,
+            FAKES,
+            c"breezyshim_forge_fakes.py",
+            c"breezyshim_forge_fakes",
+        )
+        .unwrap();
+        m.getattr(name).unwrap().call0().unwrap().unbind()
+    }
+
+    fn calls(py: Python<'_>, obj: &Py<PyAny>) -> Vec<(String, Option<String>)> {
+        obj.getattr(py, "calls").unwrap().extract(py).unwrap()
+    }
+
+    #[test]
+    fn test_iter_my_forks() {
+        let obj = Python::attach(|py| fake(py, "FakeForge"));
+        let forge = Forge::from(Python::attach(|py| obj.clone_ref(py)));
+        assert_eq!(
+            forge.iter_my_forks(None).unwrap().collect::<Vec<_>>(),
+            vec!["me/one", "me/two"]
+        );
+        assert_eq!(
+            forge
+                .iter_my_forks(Some("other"))
+                .unwrap()
+                .collect::<Vec<_>>(),
+            vec!["other/one", "other/two"]
+        );
+        assert_eq!(
+            Python::attach(|py| calls(py, &obj)),
+            vec![
+                ("iter_my_forks".to_string(), None),
+                ("iter_my_forks".to_string(), Some("other".to_string())),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_iter_my_forks_error() {
+        let forge = Forge::from(Python::attach(|py| fake(py, "BrokenForge")));
+        assert!(forge.iter_my_forks(None).is_err());
+    }
+
+    #[test]
+    fn test_delete_project() {
+        let obj = Python::attach(|py| fake(py, "FakeForge"));
+        let forge = Forge::from(Python::attach(|py| obj.clone_ref(py)));
+        forge.delete_project("me/one").unwrap();
+        assert_eq!(
+            Python::attach(|py| calls(py, &obj)),
+            vec![("delete_project".to_string(), Some("me/one".to_string()))]
+        );
+    }
+
+    #[test]
+    fn test_delete_project_error() {
+        let forge = Forge::from(Python::attach(|py| fake(py, "BrokenForge")));
+        assert!(forge.delete_project("me/one").is_err());
+    }
+
+    #[test]
+    fn test_get_source_and_target_project() {
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "FakeProposal")));
+        assert_eq!(mp.get_source_project().unwrap(), Some("me/one".to_string()));
+        assert_eq!(mp.get_target_project().unwrap(), None);
+    }
+
+    #[test]
+    fn test_get_source_and_target_project_error() {
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "BrokenProposal")));
+        assert!(mp.get_source_project().is_err());
+        assert!(mp.get_target_project().is_err());
+    }
+
     #[test]
     fn test_determine_title() {
         let description = "This is a test description";
