@@ -1211,4 +1211,24 @@ mod tests {
 
         assert_eq!(branch.last_revision(), RevisionId::null());
     }
+
+    #[test]
+    fn test_open_unknown_format() {
+        crate::init();
+        let td = tempfile::tempdir().unwrap();
+        let url = url::Url::from_directory_path(td.path()).unwrap();
+        crate::controldir::create_branch_convenience_as_generic(
+            &url,
+            None,
+            &crate::controldir::ControlDirFormat::default(),
+        )
+        .unwrap();
+        std::fs::write(td.path().join(".bzr/branch/format"), b"garbage\n").unwrap();
+
+        match open_as_generic(&url) {
+            Err(Error::UnknownFormat(format)) => assert_eq!(format, "garbage\n"),
+            Err(e) => panic!("unexpected error: {:?}", e),
+            Ok(_) => panic!("expected UnknownFormat error"),
+        }
+    }
 }

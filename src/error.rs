@@ -1,7 +1,6 @@
 //! Error handling for the Breezy Python bindings
 use crate::transform::RawConflict;
 use pyo3::import_exception;
-use pyo3::intern;
 use pyo3::prelude::*;
 use pyo3::types::PyTuple;
 use pyo3::IntoPyObjectExt;
@@ -555,13 +554,27 @@ fn get_exception_msg(value: &Bound<PyAny>) -> String {
         .unwrap_or_else(|| value.str().unwrap().to_string())
 }
 
+/// Convert a format attribute of a breezy exception to a string.
+///
+/// Breezy sets these to bytes (format strings read from disk), str or format
+/// objects, depending on where the exception is raised.
+fn format_to_string(obj: &Bound<PyAny>) -> PyResult<String> {
+    if let Ok(b) = obj.cast::<pyo3::types::PyBytes>() {
+        return Ok(String::from_utf8_lossy(b.as_bytes()).into_owned());
+    }
+    obj.str()?.extract()
+}
+
 impl From<PyErr> for Error {
     fn from(err: PyErr) -> Self {
         pyo3::import_exception!(socket, error);
         pyo3::Python::attach(|py| {
             let value = err.value(py);
             if err.is_instance_of::<UnknownFormatError>(py) {
-                Error::UnknownFormat(value.getattr("format").unwrap().extract().unwrap())
+                match value.getattr("format").and_then(|f| format_to_string(&f)) {
+                    Ok(format) => Error::UnknownFormat(format),
+                    Err(_) => Error::Other(err.clone_ref(py)),
+                }
             } else if err.is_instance_of::<NotBranchError>(py) {
                 Error::NotBranchError(
                     value.getattr("path").unwrap().extract().unwrap(),
@@ -598,10 +611,14 @@ impl From<PyErr> for Error {
                 )
             } else if err.is_instance_of::<pyo3::exceptions::PyConnectionError>(py) {
                 Error::ConnectionError(err.to_string())
-            } else if err.is_instance_of::<UnsupportedFormatError>(py) {
-                Error::UnsupportedFormat(value.getattr("format").unwrap().extract().unwrap())
             } else if err.is_instance_of::<UnsupportedVcs>(py) {
+                // Checked before UnsupportedFormatError, which it subclasses.
                 Error::UnsupportedVcs(value.getattr("vcs").unwrap().extract().unwrap())
+            } else if err.is_instance_of::<UnsupportedFormatError>(py) {
+                match value.getattr("format").and_then(|f| format_to_string(&f)) {
+                    Ok(format) => Error::UnsupportedFormat(format),
+                    Err(_) => Error::Other(err.clone_ref(py)),
+                }
             } else if err.is_instance_of::<RemoteGitError>(py) {
                 Error::RemoteGitError(get_exception_msg(value))
             } else if err.is_instance_of::<IncompleteRead>(py) {
@@ -776,30 +793,20 @@ impl From<PyErr> for Error {
             } else if TransportNotPossible::matches(&err, py) {
                 Error::TransportNotPossible(get_exception_msg(value))
             } else if err.is_instance_of::<IncompatibleFormat>(py) {
-                let format = value.getattr("format").unwrap();
-                let controldir = value.getattr("controldir").unwrap();
-                Error::IncompatibleFormat(
-                    if let Ok(format) = format.extract::<String>() {
-                        format
-                    } else {
-                        format
-                            .call_method0(intern!(py, "get_format_string"))
-                            .unwrap()
-                            .extract()
-                            .unwrap()
-                    },
-                    if let Ok(controldir) = controldir.extract::<String>() {
-                        controldir
-                    } else {
-                        controldir
-                            .call_method0(intern!(py, "get_format_string"))
-                            .unwrap()
-                            .extract()
-                            .unwrap()
-                    },
-                )
+                let format = value.getattr("format").and_then(|f| format_to_string(&f));
+                let controldir = value
+                    .getattr("controldir")
+                    .and_then(|f| format_to_string(&f));
+                match (format, controldir) {
+                    (Ok(format), Ok(controldir)) => Error::IncompatibleFormat(format, controldir),
+                    _ => Error::Other(err.clone_ref(py)),
+                }
             } else if err.is_instance_of::<NoSuchRevision>(py) {
-                Error::NoSuchRevision(value.getattr("revision").unwrap().extract().unwrap())
+                // Breezy sometimes sets revision to a revno or a key tuple.
+                match value.getattr("revision").and_then(|r| r.extract()) {
+                    Ok(revision) => Error::NoSuchRevision(revision),
+                    Err(_) => Error::Other(err.clone_ref(py)),
+                }
             } else if RevisionNotPresent::matches(&err, py) {
                 Error::RevisionNotPresent(value.getattr("revision_id").unwrap().extract().unwrap())
             } else if err.is_instance_of::<NoSuchProject>(py) {
@@ -1687,4 +1694,78 @@ fn test_redirect_requested() {
     Python::attach(|py| {
         assert!(RedirectRequested::matches(&p, py), "{}", p);
     });
+}
+
+#[cfg(test)]
+fn py_error_from(code: &std::ffi::CStr) -> Error {
+    Python::attach(|py| {
+        let err = py.run(code, None, None).unwrap_err();
+        err.into()
+    })
+}
+
+#[test]
+fn test_from_unknownformat_bytes() {
+    let e = py_error_from(
+        c"import breezy.errors; raise breezy.errors.UnknownFormatError(format=b'garbage\\n')",
+    );
+    match e {
+        Error::UnknownFormat(format) => assert_eq!(format, "garbage\n"),
+        e => panic!("Expected UnknownFormat, got {:?}", e),
+    }
+}
+
+#[test]
+fn test_from_unsupportedformat_object() {
+    let e = py_error_from(
+        c"import breezy.errors
+from breezy.plugins.weave_fmt.bzrdir import BzrDirFormat6
+raise breezy.errors.UnsupportedFormatError(format=BzrDirFormat6())",
+    );
+    match e {
+        Error::UnsupportedFormat(format) => assert_eq!(format, "All-in-one format 6"),
+        e => panic!("Expected UnsupportedFormat, got {:?}", e),
+    }
+}
+
+#[test]
+fn test_from_unsupportedvcs() {
+    let e = py_error_from(
+        c"import breezy.errors
+class SvnUnsupported(breezy.errors.UnsupportedVcs):
+    vcs = 'svn'
+raise SvnUnsupported(format=object())",
+    );
+    match e {
+        Error::UnsupportedVcs(vcs) => assert_eq!(vcs, "svn"),
+        e => panic!("Expected UnsupportedVcs, got {:?}", e),
+    }
+}
+
+#[test]
+fn test_from_incompatibleformat_objects() {
+    let e = py_error_from(
+        c"import breezy.errors, breezy.bzr
+from breezy import controldir
+f = controldir.format_registry.make_controldir('default')
+raise breezy.errors.IncompatibleFormat(f.get_branch_format(), f)",
+    );
+    match e {
+        Error::IncompatibleFormat(format, controldir) => {
+            assert_eq!(format, "Branch format 7");
+            assert_eq!(controldir, "Meta directory format 1");
+        }
+        e => panic!("Expected IncompatibleFormat, got {:?}", e),
+    }
+}
+
+#[test]
+fn test_from_nosuchrevision_revno() {
+    let e = py_error_from(c"import breezy.errors; raise breezy.errors.NoSuchRevision(None, 5)");
+    match e {
+        Error::Other(e) => {
+            Python::attach(|py| assert!(e.is_instance_of::<NoSuchRevision>(py)));
+        }
+        e => panic!("Expected Other, got {:?}", e),
+    }
 }
