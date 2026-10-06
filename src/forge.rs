@@ -945,4 +945,107 @@ mod tests {
             super::determine_title(description).unwrap_err()
         );
     }
+
+    /// Takes a forge a test registered back out of breezy's registry.
+    struct Unregister(&'static str);
+
+    impl Drop for Unregister {
+        fn drop(&mut self) {
+            use pyo3::prelude::*;
+            // Nothing here may panic: a panic while unwinding aborts the whole suite.
+            Python::attach(|py| {
+                if let Ok(m) = py.import("breezy.forge") {
+                    if let Ok(forges) = m.getattr("forges") {
+                        let _ = forges.call_method1("remove", (self.0,));
+                    }
+                }
+            });
+        }
+    }
+
+    fn probe_count() -> usize {
+        use pyo3::prelude::*;
+        Python::attach(|py| {
+            let m = py.import("breezy.forge").unwrap();
+            let forges = m.getattr("forges").unwrap();
+            let cls = forges.call_method1("get", ("aaaprobe",)).unwrap();
+            cls.getattr("probed").unwrap().len().unwrap()
+        })
+    }
+
+    #[test]
+    fn test_forge_instance_iter_stops_at_error() {
+        use pyo3::prelude::*;
+        Python::attach(|py| {
+            let instances = py
+                .eval(c"(x if x != 2 else {}[x] for x in range(4))", None, None)
+                .unwrap();
+            let iter = super::ForgeInstanceIter(instances.try_iter().unwrap().into_any().unbind());
+            assert_eq!(iter.count(), 2);
+
+            let instances = py.eval(c"iter([1, 2, 3])", None, None).unwrap();
+            let iter = super::ForgeInstanceIter(instances.try_iter().unwrap().into_any().unbind());
+            assert_eq!(iter.count(), 3);
+        });
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_iter_forge_instances_with_failing_forge() {
+        use pyo3::prelude::*;
+        crate::init();
+        Python::attach(|py| {
+            let code = c"
+from breezy.forge import Forge, forges
+
+class FailingForge(Forge):
+    @classmethod
+    def iter_instances(cls):
+        raise RuntimeError('can not list instances')
+
+forges.register('failing', FailingForge)
+";
+            let globals = pyo3::types::PyDict::new(py);
+            py.run(code, Some(&globals), None).unwrap();
+        });
+        let _unregister = Unregister("failing");
+
+        // The failing forge must not turn into a panic.
+        let _ = super::iter_forge_instances().count();
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_iter_forge_instances_does_not_probe_until_iterated() {
+        use pyo3::prelude::*;
+        crate::init();
+        Python::attach(|py| {
+            // The name sorts before every real forge on purpose. Registry::keys is
+            // sorted, and a forge that raises ends the shared iteration, so a probe
+            // registered later could never be reached.
+            let code = c"
+from breezy.forge import Forge, forges
+
+class ProbeForge(Forge):
+    probed = []
+
+    @classmethod
+    def iter_instances(cls):
+        cls.probed.append(1)
+        yield object()
+
+forges.register('aaaprobe', ProbeForge)
+";
+            let globals = pyo3::types::PyDict::new(py);
+            py.run(code, Some(&globals), None).unwrap();
+        });
+        let _unregister = Unregister("aaaprobe");
+
+        let iter = super::iter_forge_instances();
+        assert_eq!(probe_count(), 0);
+
+        // Advancing it does probe, so the assertion above is not vacuous.
+        assert!(iter.count() >= 1);
+        assert_eq!(probe_count(), 1);
+    }
 }
