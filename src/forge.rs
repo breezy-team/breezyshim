@@ -2,7 +2,7 @@
 use crate::branch::{py_tag_selector, Branch, GenericBranch, PyBranch};
 use crate::error::Error;
 use crate::revisionid::RevisionId;
-use pyo3::exceptions::PyValueError;
+use pyo3::exceptions::{PyStopIteration, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use std::hash::Hash;
@@ -881,19 +881,33 @@ pub fn determine_title(description: &str) -> Result<String, String> {
     })
 }
 
+/// Iterator over the forges yielded by `breezy.forge.iter_forge_instances`.
+struct ForgeInstanceIter(Py<PyAny>);
+
+impl Iterator for ForgeInstanceIter {
+    type Item = Forge;
+
+    fn next(&mut self) -> Option<Forge> {
+        Python::attach(|py| match self.0.call_method0(py, "__next__") {
+            Ok(instance) => Some(Forge(instance)),
+            Err(e) if e.is_instance_of::<PyStopIteration>(py) => None,
+            Err(e) => {
+                log::warn!("Unable to list all forge instances: {}", e);
+                None
+            }
+        })
+    }
+}
+
 /// Returns an iterator over all available forge instances.
+///
+/// A forge that fails to list its instances ends the iteration. The error is logged.
 pub fn iter_forge_instances() -> impl Iterator<Item = Forge> {
-    let ret = Python::attach(|py| {
+    ForgeInstanceIter(Python::attach(|py| {
         let m = py.import("breezy.forge").unwrap();
-        let f = m.getattr("iter_forge_instances").unwrap();
-        let instances = f.call0().unwrap();
-        instances
-            .try_iter()
-            .unwrap()
-            .map(|i| Forge(i.unwrap().unbind()))
-            .collect::<Vec<_>>()
-    });
-    ret.into_iter()
+        let instances = m.getattr("iter_forge_instances").unwrap().call0().unwrap();
+        instances.try_iter().unwrap().into_any().unbind()
+    }))
 }
 
 /// Creates a new project on a forge with the given name and optional summary.
