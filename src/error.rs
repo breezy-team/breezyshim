@@ -816,7 +816,18 @@ impl From<PyErr> for Error {
                     value.getattr("timeout").unwrap().extract().unwrap(),
                 )
             } else if err.is_instance_of::<GitLabConflict>(py) {
-                Error::GitLabConflict(value.getattr("reason").unwrap().extract().unwrap())
+                // GitLab sends the message as a string, a list or a mapping
+                let reason = match value.getattr("reason") {
+                    Ok(reason) if !reason.is_none() => match reason.extract::<String>() {
+                        Ok(reason) => reason,
+                        Err(_) => reason
+                            .str()
+                            .map(|reason| reason.to_string())
+                            .unwrap_or_default(),
+                    },
+                    _ => String::new(),
+                };
+                Error::GitLabConflict(reason)
             } else if err.is_instance_of::<ConflictsInTree>(py) {
                 Error::ConflictsInTree
             } else if err.is_instance_of::<SourceNotDerivedFromTarget>(py) {
