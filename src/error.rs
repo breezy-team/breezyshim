@@ -1691,6 +1691,35 @@ fn test_gitlab_conflict() {
 }
 
 #[test]
+fn test_gitlab_conflict_with_non_string_reason() {
+    Python::attach(|py| {
+        let cls = py
+            .import("breezy.plugins.gitlab.forge")
+            .unwrap()
+            .getattr("GitLabConflict")
+            .unwrap();
+        for (reason, expected) in [
+            (c"'has already been taken'", "has already been taken"),
+            (c"None", ""),
+            (c"['has already been taken']", "['has already been taken']"),
+            (
+                c"{'path': ['has already been taken']}",
+                "{'path': ['has already been taken']}",
+            ),
+        ] {
+            let reason = py.eval(reason, None, None).unwrap();
+            let err_obj = cls.call1((reason,)).unwrap();
+
+            let error: Error = PyErr::from_value(err_obj).into();
+            match error {
+                Error::GitLabConflict(reason) => assert_eq!(reason, expected),
+                _ => panic!("Expected GitLabConflict, got {:?}", error),
+            }
+        }
+    });
+}
+
+#[test]
 fn test_conflicts_in_tree() {
     let e = Error::ConflictsInTree;
     let p: PyErr = e.into();
