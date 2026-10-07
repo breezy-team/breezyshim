@@ -640,12 +640,21 @@ impl From<PyErr> for Error {
                 Error::NoSuchTag(value.getattr("tag_name").unwrap().extract().unwrap())
             } else if err.is_instance_of::<TagAlreadyExists>(py) {
                 Error::TagAlreadyExists(value.getattr("tag_name").unwrap().extract().unwrap())
+            } else if err.is_instance_of::<pyo3::exceptions::PyTimeoutError>(py) {
+                // TimeoutError is an OSError, so it has to come first
+                Error::Timeout
             } else if err.is_instance_of::<error>(py) {
+                let msg = get_exception_msg(value);
+                let errno = value
+                    .getattr("errno")
+                    .ok()
+                    .and_then(|errno| errno.extract::<i32>().ok());
                 Error::Socket(
-                    std::io::Error::from_raw_os_error(
-                        value.getattr("errno").unwrap().extract().unwrap(),
-                    ),
-                    Some(get_exception_msg(value)),
+                    match errno {
+                        Some(errno) => std::io::Error::from_raw_os_error(errno),
+                        None => std::io::Error::other(msg.clone()),
+                    },
+                    Some(msg),
                 )
             } else if err.is_instance_of::<ForgeLoginRequired>(py) {
                 Error::ForgeLoginRequired
@@ -764,8 +773,6 @@ impl From<PyErr> for Error {
                     extra: value.getattr("extra").unwrap().extract().unwrap(),
                     headers: extract_headers(&headers_obj),
                 }
-            } else if err.is_instance_of::<pyo3::exceptions::PyTimeoutError>(py) {
-                Error::Timeout
             } else if BadHttpRequest::matches(&err, py) {
                 Error::BadHttpRequest(
                     value
@@ -930,9 +937,12 @@ impl From<Error> for PyErr {
             Error::NoWhoami => NoWhoami::new_err(()),
             Error::NoSuchTag(tag) => NoSuchTag::new_err((tag,)),
             Error::TagAlreadyExists(tag) => TagAlreadyExists::new_err((tag,)),
-            Error::Socket(e, _) => {
+            Error::Socket(e, detail) => {
                 pyo3::import_exception!(socket, error);
-                error::new_err((e.raw_os_error().unwrap(),))
+                match e.raw_os_error() {
+                    Some(errno) => error::new_err((errno,)),
+                    None => error::new_err((detail.unwrap_or_else(|| e.to_string()),)),
+                }
             }
             Error::ForgeLoginRequired => {
                 Python::attach(|py| ForgeLoginRequired::new_err((py.None(),)))
