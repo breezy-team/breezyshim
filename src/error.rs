@@ -1215,6 +1215,82 @@ fn test_error_unsupportedvcs() {
 }
 
 #[test]
+fn test_unsupported_vcs_from_python() {
+    Python::attach(|py| {
+        let cls = py
+            .import("breezy.plugins.svn")
+            .unwrap()
+            .getattr("SubversionUnsupportedError")
+            .unwrap();
+
+        // The plugins raise it with no arguments at all
+        let error: Error = PyErr::from_value(cls.call0().unwrap()).into();
+        match error {
+            Error::UnsupportedVcs(vcs) => assert_eq!(vcs, "svn"),
+            other => panic!("Expected UnsupportedVcs, got {:?}", other),
+        }
+
+        // And with the format object
+        let format = py
+            .import("breezy.plugins.svn")
+            .unwrap()
+            .getattr("SvnWorkingTreeDirFormat")
+            .unwrap()
+            .call0()
+            .unwrap();
+        let kwargs = pyo3::types::PyDict::new(py);
+        kwargs.set_item("format", format).unwrap();
+        let error: Error = PyErr::from_value(cls.call((), Some(&kwargs)).unwrap()).into();
+        match error {
+            Error::UnsupportedVcs(vcs) => assert_eq!(vcs, "svn"),
+            other => panic!("Expected UnsupportedVcs, got {:?}", other),
+        }
+    });
+}
+
+#[test]
+fn test_unsupported_format_with_format_object() {
+    Python::attach(|py| {
+        let format = py
+            .import("breezy.plugins.svn")
+            .unwrap()
+            .getattr("SvnWorkingTreeDirFormat")
+            .unwrap()
+            .call0()
+            .unwrap();
+        let kwargs = pyo3::types::PyDict::new(py);
+        kwargs.set_item("format", format).unwrap();
+        let cls = py
+            .import("breezy.errors")
+            .unwrap()
+            .getattr("UnsupportedFormatError")
+            .unwrap();
+        let error: Error = PyErr::from_value(cls.call((), Some(&kwargs)).unwrap()).into();
+        match error {
+            Error::UnsupportedFormat(format) => {
+                assert_eq!(format, "Subversion working directory")
+            }
+            other => panic!("Expected UnsupportedFormat, got {:?}", other),
+        }
+    });
+}
+
+#[test]
+fn test_unsupported_vcs_roundtrip() {
+    let p: PyErr = Error::UnsupportedVcs("svn".to_string()).into();
+    Python::attach(|py| {
+        assert_eq!(
+            p.value(py).str().unwrap().to_string(),
+            "Unsupported version control system: svn"
+        );
+    });
+    match Error::from(p) {
+        Error::UnsupportedVcs(vcs) => assert_eq!(vcs, "svn"),
+        other => panic!("Expected UnsupportedVcs, got {:?}", other),
+    }
+}
+
+#[test]
 fn test_error_remotegiterror() {
     let e = Error::RemoteGitError("foo".to_string());
     let p: PyErr = e.into();
