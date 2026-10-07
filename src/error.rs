@@ -650,12 +650,18 @@ impl From<PyErr> for Error {
             } else if err.is_instance_of::<ForgeLoginRequired>(py) {
                 Error::ForgeLoginRequired
             } else if err.is_instance_of::<UnsupportedForge>(py) {
-                let branch = value.getattr("branch").unwrap();
-
-                if let Ok(url) = branch.getattr("user_url") {
-                    Error::UnsupportedForge(url.extract::<String>().unwrap().parse().unwrap())
-                } else {
-                    Error::UnsupportedForge(branch.extract::<String>().unwrap().parse().unwrap())
+                // The branch is a Branch, a URL or a bare hostname
+                let url = value.getattr("branch").ok().and_then(|branch| {
+                    branch
+                        .getattr("user_url")
+                        .unwrap_or(branch)
+                        .extract::<String>()
+                        .ok()
+                        .and_then(|url| url.parse().ok())
+                });
+                match url {
+                    Some(url) => Error::UnsupportedForge(url),
+                    None => Error::Other(err),
                 }
             } else if err.is_instance_of::<MergeProposalExists>(py) {
                 let source_url: String = value.getattr("url").unwrap().extract().unwrap();
