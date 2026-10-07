@@ -1575,6 +1575,32 @@ fn test_unexpected_http_status_with_httpmessage() {
 }
 
 #[test]
+fn test_bad_http_request_from_python() {
+    let err = BadHttpRequest::new_err(("http://example.com/foo", "Bad Request"));
+    let error: Error = err.into();
+    match error {
+        Error::BadHttpRequest(url, reason) => {
+            assert_eq!(url.as_str(), "http://example.com/foo");
+            assert_eq!(reason, "Bad Request");
+        }
+        other => panic!("Expected BadHttpRequest, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_unexpected_http_status_with_relative_path() {
+    // The forge plugins report the API path they asked for, which is relative
+    let err = UnexpectedHttpStatus::new_err(("repos/owner/repo", 500));
+    let error: Error = err.into();
+    match error {
+        Error::Other(e) => {
+            Python::attach(|py| assert!(UnexpectedHttpStatus::matches(&e, py), "{}", e))
+        }
+        other => panic!("Expected Other, got {:?}", other),
+    }
+}
+
+#[test]
 fn test_invalid_http_response_with_httpmessage() {
     // Test that we can convert InvalidHttpResponse with HTTPMessage headers
     Python::attach(|py| {
