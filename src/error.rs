@@ -1726,6 +1726,72 @@ fn test_project_creation_timeout() {
 }
 
 #[test]
+fn test_project_creation_timeout_from_python() {
+    Python::attach(|py| {
+        let cls = py
+            .import("breezy.plugins.gitlab.forge")
+            .unwrap()
+            .getattr("ProjectCreationTimeout")
+            .unwrap();
+
+        let build =
+            |timeout: &Bound<PyAny>| PyErr::from_value(cls.call1(("myproject", timeout)).unwrap());
+
+        // fork_project passes a number of seconds
+        let seconds = 50i64.into_pyobject(py).unwrap();
+        let error: Error = build(seconds.as_any()).into();
+        match error {
+            Error::ProjectCreationTimeout(project, timeout) => {
+                assert_eq!(project, "myproject");
+                assert_eq!(timeout, chrono::Duration::seconds(50));
+            }
+            other => panic!("Expected ProjectCreationTimeout, got {:?}", other),
+        }
+
+        // A timedelta keeps working
+        let delta = chrono::Duration::seconds(50).into_pyobject(py).unwrap();
+        let error: Error = build(delta.as_any()).into();
+        match error {
+            Error::ProjectCreationTimeout(_, timeout) => {
+                assert_eq!(timeout, chrono::Duration::seconds(50))
+            }
+            other => panic!("Expected ProjectCreationTimeout, got {:?}", other),
+        }
+
+        // Anything else keeps the original exception
+        let bogus = py.eval(c"'soon'", None, None).unwrap();
+        let error: Error = build(&bogus).into();
+        match error {
+            Error::Other(e) => {
+                assert!(e.is_instance_of::<ProjectCreationTimeout>(py), "{}", e)
+            }
+            other => panic!("Expected Other, got {:?}", other),
+        }
+    });
+}
+
+#[test]
+fn test_project_creation_timeout_display() {
+    let e = Error::ProjectCreationTimeout("myproject".to_string(), chrono::Duration::seconds(50));
+    assert_eq!(
+        e.to_string(),
+        "Project creation timeout: myproject after 50 seconds"
+    );
+}
+
+#[test]
+fn test_project_creation_timeout_renders_in_python() {
+    let e = Error::ProjectCreationTimeout("myproject".to_string(), chrono::Duration::seconds(50));
+    let p: PyErr = e.into();
+    Python::attach(|py| {
+        assert_eq!(
+            p.value(py).str().unwrap().to_string(),
+            "Timeout (50s) while waiting for project myproject to be created."
+        );
+    });
+}
+
+#[test]
 fn test_already_branch() {
     let e = Error::AlreadyBranch(std::path::PathBuf::from("foo"));
     let p: PyErr = e.into();
