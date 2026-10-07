@@ -1389,6 +1389,48 @@ fn test_error_forge_project_exists() {
 }
 
 #[test]
+fn test_unsupported_forge_from_python() {
+    Python::attach(|py| {
+        let cls = py
+            .import("breezy.forge")
+            .unwrap()
+            .getattr("UnsupportedForge")
+            .unwrap();
+
+        // get_forge raises it with the branch
+        let branch = py
+            .eval(
+                c"type('B', (), {'user_url': 'https://example.com/repo'})()",
+                None,
+                None,
+            )
+            .unwrap();
+        match Error::from(PyErr::from_value(cls.call1((branch,)).unwrap())) {
+            Error::UnsupportedForge(url) => {
+                assert_eq!(url.as_str(), "https://example.com/repo")
+            }
+            other => panic!("Expected UnsupportedForge, got {:?}", other),
+        }
+
+        // probe_from_url raises it with a URL
+        match Error::from(PyErr::from_value(
+            cls.call1(("https://example.com/repo",)).unwrap(),
+        )) {
+            Error::UnsupportedForge(url) => {
+                assert_eq!(url.as_str(), "https://example.com/repo")
+            }
+            other => panic!("Expected UnsupportedForge, got {:?}", other),
+        }
+
+        // get_forge_by_hostname raises it with a bare hostname
+        match Error::from(PyErr::from_value(cls.call1(("example.com",)).unwrap())) {
+            Error::Other(e) => assert!(e.is_instance_of::<UnsupportedForge>(py), "{}", e),
+            other => panic!("Expected Other, got {:?}", other),
+        }
+    });
+}
+
+#[test]
 fn test_error_merge_proposal_exists() {
     let e = Error::MergeProposalExists(
         "http://source.com".parse().unwrap(),
