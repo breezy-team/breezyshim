@@ -1334,6 +1334,47 @@ fn test_error_tagalreadyexists() {
 }
 
 #[test]
+fn test_timeout_from_python() {
+    // TimeoutError is an OSError, so the socket arm used to claim it
+    let err = pyo3::exceptions::PyTimeoutError::new_err("timed out");
+    match Error::from(err) {
+        Error::Timeout => {}
+        other => panic!("Expected Timeout, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_socket_error_without_errno() {
+    Python::attach(|py| {
+        let err = PyErr::from_value(
+            py.import("socket")
+                .unwrap()
+                .getattr("gaierror")
+                .unwrap()
+                .call1(("Name or service not known",))
+                .unwrap(),
+        );
+        match Error::from(err) {
+            Error::Socket(e, detail) => {
+                assert!(e.raw_os_error().is_none());
+                assert_eq!(detail.as_deref(), Some("Name or service not known"));
+            }
+            other => panic!("Expected Socket, got {:?}", other),
+        }
+    });
+}
+
+#[test]
+fn test_socket_error_without_errno_to_pyerr() {
+    let e = Error::Socket(std::io::Error::other("boom"), Some("boom".to_string()));
+    let p: PyErr = e.into();
+    Python::attach(|py| {
+        assert!(p.is_instance_of::<pyo3::exceptions::PyOSError>(py), "{}", p);
+        assert_eq!(p.value(py).str().unwrap().to_string(), "boom");
+    });
+}
+
+#[test]
 fn test_error_socket() {
     let e = Error::Socket(std::io::Error::from_raw_os_error(0), None);
     let p: PyErr = e.into();
