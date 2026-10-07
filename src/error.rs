@@ -837,22 +837,26 @@ impl From<PyErr> for Error {
             } else if err.is_instance_of::<ReadOnlyError>(py) {
                 Error::ReadOnly
             } else if RedirectRequested::matches(&err, py) {
-                Error::RedirectRequested {
-                    source: value
-                        .getattr("source")
-                        .unwrap()
-                        .extract::<String>()
-                        .unwrap()
-                        .parse()
-                        .unwrap(),
-                    target: value
-                        .getattr("target")
-                        .unwrap()
-                        .extract::<String>()
-                        .unwrap()
-                        .parse()
-                        .unwrap(),
-                    is_permanent: value.getattr("is_permanent").unwrap().extract().unwrap(),
+                let url = |attr| {
+                    value
+                        .getattr(attr)
+                        .ok()
+                        .and_then(|value| value.extract::<String>().ok())
+                        .and_then(|value| value.parse::<url::Url>().ok())
+                };
+                // The flag is kept as the message fragment it prints
+                let is_permanent = value
+                    .getattr("permanently")
+                    .ok()
+                    .and_then(|permanently| permanently.extract::<String>().ok())
+                    .is_some_and(|permanently| !permanently.is_empty());
+                match (url("source"), url("target")) {
+                    (Some(source), Some(target)) => Error::RedirectRequested {
+                        source,
+                        target,
+                        is_permanent,
+                    },
+                    _ => Error::Other(err),
                 }
             } else if err.is_instance_of::<NoRoundtrippingSupport>(py) {
                 Error::NoRoundtrippingSupport
