@@ -1714,6 +1714,64 @@ fn test_already_branch() {
 }
 
 #[test]
+fn test_redirect_requested_from_python() {
+    Python::attach(|py| {
+        let cls = py
+            .import("breezy.errors")
+            .unwrap()
+            .getattr("RedirectRequested")
+            .unwrap();
+
+        let err = PyErr::from_value(
+            cls.call1(("http://example.com/a", "http://example.com/b", true))
+                .unwrap(),
+        );
+        match Error::from(err) {
+            Error::RedirectRequested {
+                source,
+                target,
+                is_permanent,
+            } => {
+                assert_eq!(source.as_str(), "http://example.com/a");
+                assert_eq!(target.as_str(), "http://example.com/b");
+                assert!(is_permanent);
+            }
+            other => panic!("Expected RedirectRequested, got {:?}", other),
+        }
+
+        let err = PyErr::from_value(
+            cls.call1(("http://example.com/a", "http://example.com/b"))
+                .unwrap(),
+        );
+        match Error::from(err) {
+            Error::RedirectRequested { is_permanent, .. } => assert!(!is_permanent),
+            other => panic!("Expected RedirectRequested, got {:?}", other),
+        }
+    });
+}
+
+#[test]
+fn test_redirect_requested_roundtrip() {
+    let e = Error::RedirectRequested {
+        source: "http://example.com/a".parse().unwrap(),
+        target: "http://example.com/b".parse().unwrap(),
+        is_permanent: true,
+    };
+    let p: PyErr = e.into();
+    Python::attach(|py| {
+        assert!(RedirectRequested::matches(&p, py), "{}", p);
+        assert_eq!(
+            p.value(py).str().unwrap().to_string(),
+            "http://example.com/a is permanently redirected to http://example.com/b"
+        );
+    });
+    match Error::from(p) {
+        Error::RedirectRequested { is_permanent, .. } => assert!(is_permanent),
+        other => panic!("Expected RedirectRequested, got {:?}", other),
+    }
+}
+
+#[test]
 fn test_redirect_requested() {
     let e = Error::RedirectRequested {
         source: "http://example.com".parse().unwrap(),
