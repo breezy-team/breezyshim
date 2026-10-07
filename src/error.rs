@@ -529,11 +529,26 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-/// Convert a Python headers object (dict or HTTPMessage) to a HashMap<String, String>
+/// Render headers the way the raise sites pass them, as a list of pairs
+fn headers_to_pairs(headers: std::collections::HashMap<String, String>) -> Vec<(String, String)> {
+    headers.into_iter().collect()
+}
+
+/// Convert a Python headers object to a HashMap<String, String>
+///
+/// The raise sites pass a list of pairs, a dict, an `HTTPMessage` or nothing.
 fn extract_headers(headers_obj: &Bound<PyAny>) -> std::collections::HashMap<String, String> {
+    if headers_obj.is_none() {
+        return std::collections::HashMap::new();
+    }
+
     // Try to extract as a dict first
     if let Ok(headers) = headers_obj.extract::<std::collections::HashMap<String, String>>() {
         return headers;
+    }
+
+    if let Ok(pairs) = headers_obj.extract::<Vec<(String, String)>>() {
+        return pairs.into_iter().collect();
     }
 
     // Otherwise, try to get items() method (works for HTTPMessage and other dict-like objects)
@@ -913,7 +928,7 @@ impl From<Error> for PyErr {
             }),
             Error::LineEndingError(e) => LineEndingError::new_err((e,)),
             Error::InvalidHttpResponse(status, msg, orig_error, headers) => {
-                InvalidHttpResponse::new_err((status, msg, orig_error, headers))
+                InvalidHttpResponse::new_err((status, msg, orig_error, headers_to_pairs(headers)))
             }
             Error::AlreadyControlDir(path) => {
                 AlreadyControlDirError::new_err((path.to_string_lossy().to_string(),))
@@ -982,7 +997,12 @@ impl From<Error> for PyErr {
                 code,
                 extra,
                 headers,
-            } => UnexpectedHttpStatus::new_err((url.to_string(), code, extra, headers)),
+            } => UnexpectedHttpStatus::new_err((
+                url.to_string(),
+                code,
+                extra,
+                headers_to_pairs(headers),
+            )),
             Error::Timeout => pyo3::exceptions::PyTimeoutError::new_err(()),
             Error::BadHttpRequest(url, reason) => {
                 BadHttpRequest::new_err((url.to_string(), reason))
