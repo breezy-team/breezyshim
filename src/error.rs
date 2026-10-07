@@ -1359,6 +1359,63 @@ fn test_error_socket_display_includes_detail() {
 }
 
 #[test]
+fn test_unsupported_operation_roundtrip() {
+    let e = Error::UnsupportedOperation("iter_changes".to_string(), "GitTree".to_string());
+    let p: PyErr = e.into();
+    Python::attach(|py| {
+        assert!(p.is_instance_of::<UnsupportedOperation>(py), "{}", p);
+        assert_eq!(
+            p.value(py).str().unwrap().to_string(),
+            "The method iter_changes is not supported on objects of type GitTree."
+        );
+    });
+    match Error::from(p) {
+        Error::UnsupportedOperation(mname, tname) => {
+            assert_eq!(mname, "iter_changes");
+            assert_eq!(tname, "GitTree");
+        }
+        other => panic!("Expected UnsupportedOperation, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_revision_not_present_roundtrip() {
+    let e = Error::RevisionNotPresent(crate::RevisionId::from(b"rev123".to_vec()));
+    let p: PyErr = e.into();
+    Python::attach(|py| {
+        assert!(RevisionNotPresent::matches(&p, py), "{}", p);
+        assert_eq!(
+            p.value(py).str().unwrap().to_string(),
+            "Revision {b'rev123'} not present in \"None\"."
+        );
+    });
+    match Error::from(p) {
+        Error::RevisionNotPresent(rev) => assert_eq!(rev.to_string(), "rev123"),
+        other => panic!("Expected RevisionNotPresent, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_no_such_revision_roundtrip() {
+    let e = Error::NoSuchRevision(crate::RevisionId::from(b"rev123".to_vec()));
+    let p: PyErr = e.into();
+    match Error::from(p) {
+        Error::NoSuchRevision(rev) => assert_eq!(rev.to_string(), "rev123"),
+        other => panic!("Expected NoSuchRevision, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_no_such_revision_in_tree_roundtrip() {
+    let e = Error::NoSuchRevisionInTree(crate::RevisionId::from(b"rev123".to_vec()));
+    let p: PyErr = e.into();
+    match Error::from(p) {
+        Error::NoSuchRevisionInTree(rev) => assert_eq!(rev.to_string(), "rev123"),
+        other => panic!("Expected NoSuchRevisionInTree, got {:?}", other),
+    }
+}
+
+#[test]
 fn test_error_other() {
     let e = Error::Other(PyErr::new::<UnknownFormatError, _>((("foo",),)));
     let p: PyErr = e.into();
