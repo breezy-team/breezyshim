@@ -600,9 +600,29 @@ impl From<PyErr> for Error {
             } else if err.is_instance_of::<pyo3::exceptions::PyConnectionError>(py) {
                 Error::ConnectionError(err.to_string())
             } else if err.is_instance_of::<UnsupportedFormatError>(py) {
-                Error::UnsupportedFormat(value.getattr("format").unwrap().extract().unwrap())
-            } else if err.is_instance_of::<UnsupportedVcs>(py) {
-                Error::UnsupportedVcs(value.getattr("vcs").unwrap().extract().unwrap())
+                // UnsupportedVcs is a subclass, so it has to be told apart here
+                let vcs = if err.is_instance_of::<UnsupportedVcs>(py) {
+                    value
+                        .getattr("vcs")
+                        .ok()
+                        .and_then(|vcs| vcs.extract::<String>().ok())
+                } else {
+                    None
+                };
+                match vcs {
+                    Some(vcs) => Error::UnsupportedVcs(vcs),
+                    // The raise sites pass the format object
+                    None => Error::UnsupportedFormat(match value.getattr("format") {
+                        Ok(format) => match format.extract::<String>() {
+                            Ok(format) => format,
+                            Err(_) => format
+                                .str()
+                                .map(|format| format.to_string())
+                                .unwrap_or_default(),
+                        },
+                        Err(_) => String::new(),
+                    }),
+                }
             } else if err.is_instance_of::<RemoteGitError>(py) {
                 Error::RemoteGitError(get_exception_msg(value))
             } else if err.is_instance_of::<IncompleteRead>(py) {
@@ -905,7 +925,21 @@ impl From<Error> for PyErr {
             Error::InvalidURL(path, reason) => InvalidURL::new_err((path, reason)),
             Error::TransportError(e) => TransportError::new_err((e,)),
             Error::UnsupportedFormat(s) => UnsupportedFormatError::new_err((s,)),
-            Error::UnsupportedVcs(s) => UnsupportedVcs::new_err((s,)),
+            Error::UnsupportedVcs(vcs) => Python::attach(|py| {
+                // UnsupportedVcs takes the name as a keyword
+                let kwargs = pyo3::types::PyDict::new(py);
+                if let Err(e) = kwargs.set_item("vcs", vcs) {
+                    return e;
+                }
+                match py
+                    .import("breezy.errors")
+                    .and_then(|m| m.getattr("UnsupportedVcs"))
+                    .and_then(|cls| cls.call((), Some(&kwargs)))
+                {
+                    Ok(inst) => PyErr::from_value(inst),
+                    Err(e) => e,
+                }
+            }),
             Error::RemoteGitError(e) => RemoteGitError::new_err((e,)),
             Error::IncompleteRead(partial, expected) => Python::attach(|py| {
                 let bytes = pyo3::types::PyBytes::new(py, partial.as_slice());
