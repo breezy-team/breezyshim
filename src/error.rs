@@ -548,6 +548,14 @@ fn extract_headers(headers_obj: &Bound<PyAny>) -> std::collections::HashMap<Stri
     headers
 }
 
+fn parse_url_attr(value: &Bound<PyAny>, attr: &str) -> Option<url::Url> {
+    value
+        .getattr(attr)
+        .ok()
+        .and_then(|value| value.extract::<String>().ok())
+        .and_then(|value| value.parse().ok())
+}
+
 fn get_exception_msg(value: &Bound<PyAny>) -> String {
     value
         .getattr("msg")
@@ -750,33 +758,26 @@ impl From<PyErr> for Error {
                         value.getattr("errno").unwrap().extract::<i32>().unwrap(),
                     ),
                 )
+            } else if BadHttpRequest::matches(&err, py) {
+                match parse_url_attr(value, "path") {
+                    Some(url) => Error::BadHttpRequest(url, get_exception_msg(value)),
+                    None => Error::Other(err),
+                }
             } else if UnexpectedHttpStatus::matches(&err, py) {
-                let headers_obj = value.getattr("headers").unwrap();
-                Error::UnexpectedHttpStatus {
-                    url: value
-                        .getattr("path")
-                        .unwrap()
-                        .extract::<String>()
-                        .unwrap()
-                        .parse()
-                        .unwrap(),
-                    code: value.getattr("code").unwrap().extract().unwrap(),
-                    extra: value.getattr("extra").unwrap().extract().unwrap(),
-                    headers: extract_headers(&headers_obj),
+                match parse_url_attr(value, "path") {
+                    Some(url) => {
+                        let headers_obj = value.getattr("headers").unwrap();
+                        Error::UnexpectedHttpStatus {
+                            url,
+                            code: value.getattr("code").unwrap().extract().unwrap(),
+                            extra: value.getattr("extra").unwrap().extract().unwrap(),
+                            headers: extract_headers(&headers_obj),
+                        }
+                    }
+                    None => Error::Other(err),
                 }
             } else if err.is_instance_of::<pyo3::exceptions::PyTimeoutError>(py) {
                 Error::Timeout
-            } else if BadHttpRequest::matches(&err, py) {
-                Error::BadHttpRequest(
-                    value
-                        .getattr("path")
-                        .unwrap()
-                        .extract::<String>()
-                        .unwrap()
-                        .parse()
-                        .unwrap(),
-                    value.getattr("reason").unwrap().extract().unwrap(),
-                )
             } else if TransportNotPossible::matches(&err, py) {
                 Error::TransportNotPossible(get_exception_msg(value))
             } else if err.is_instance_of::<IncompatibleFormat>(py) {
@@ -1575,6 +1576,32 @@ fn test_unexpected_http_status_with_httpmessage() {
             _ => panic!("Expected UnexpectedHttpStatus error, got {:?}", rust_err),
         }
     });
+}
+
+#[test]
+fn test_bad_http_request_from_python() {
+    let err = BadHttpRequest::new_err(("http://example.com/foo", "Bad Request"));
+    let error: Error = err.into();
+    match error {
+        Error::BadHttpRequest(url, reason) => {
+            assert_eq!(url.as_str(), "http://example.com/foo");
+            assert_eq!(reason, "Bad Request");
+        }
+        other => panic!("Expected BadHttpRequest, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_unexpected_http_status_with_relative_path() {
+    // The forge plugins report the API path they asked for, which is relative
+    let err = UnexpectedHttpStatus::new_err(("repos/owner/repo", 500));
+    let error: Error = err.into();
+    match error {
+        Error::Other(e) => {
+            Python::attach(|py| assert!(UnexpectedHttpStatus::matches(&e, py), "{}", e))
+        }
+        other => panic!("Expected Other, got {:?}", other),
+    }
 }
 
 #[test]
