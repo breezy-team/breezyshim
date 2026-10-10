@@ -816,7 +816,18 @@ impl From<PyErr> for Error {
                     value.getattr("timeout").unwrap().extract().unwrap(),
                 )
             } else if err.is_instance_of::<GitLabConflict>(py) {
-                Error::GitLabConflict(value.getattr("reason").unwrap().extract().unwrap())
+                // GitLab sends the message as a string, a list or a mapping
+                let reason = match value.getattr("reason") {
+                    Ok(reason) if !reason.is_none() => match reason.extract::<String>() {
+                        Ok(reason) => reason,
+                        Err(_) => reason
+                            .str()
+                            .map(|reason| reason.to_string())
+                            .unwrap_or_default(),
+                    },
+                    _ => String::new(),
+                };
+                Error::GitLabConflict(reason)
             } else if err.is_instance_of::<ConflictsInTree>(py) {
                 Error::ConflictsInTree
             } else if err.is_instance_of::<SourceNotDerivedFromTarget>(py) {
@@ -1680,6 +1691,35 @@ fn test_gitlab_conflict() {
     // Verify that p is an instance of GitLabConflict
     Python::attach(|py| {
         assert!(p.is_instance_of::<GitLabConflict>(py), "{}", p);
+    });
+}
+
+#[test]
+fn test_gitlab_conflict_with_non_string_reason() {
+    Python::attach(|py| {
+        let cls = py
+            .import("breezy.plugins.gitlab.forge")
+            .unwrap()
+            .getattr("GitLabConflict")
+            .unwrap();
+        for (reason, expected) in [
+            (c"'has already been taken'", "has already been taken"),
+            (c"None", ""),
+            (c"['has already been taken']", "['has already been taken']"),
+            (
+                c"{'path': ['has already been taken']}",
+                "{'path': ['has already been taken']}",
+            ),
+        ] {
+            let reason = py.eval(reason, None, None).unwrap();
+            let err_obj = cls.call1((reason,)).unwrap();
+
+            let error: Error = PyErr::from_value(err_obj).into();
+            match error {
+                Error::GitLabConflict(reason) => assert_eq!(reason, expected),
+                _ => panic!("Expected GitLabConflict, got {:?}", error),
+            }
+        }
     });
 }
 
