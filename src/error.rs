@@ -502,7 +502,12 @@ impl std::fmt::Display for Error {
             Self::NoSuchProject(p) => write!(f, "No such project: {}", p),
             Self::ForkingDisabled(p) => write!(f, "Forking disabled: {}", p),
             Self::ProjectCreationTimeout(p, t) => {
-                write!(f, "Project creation timeout: {} after {} seconds", p, t)
+                write!(
+                    f,
+                    "Project creation timeout: {} after {} seconds",
+                    p,
+                    t.num_seconds()
+                )
             }
             Self::GitLabConflict(p) => write!(f, "GitLab conflict: {}", p),
             Self::ConflictsInTree => write!(f, "Conflicts in tree"),
@@ -554,6 +559,19 @@ fn get_exception_msg(value: &Bound<PyAny>) -> String {
         .ok()
         .and_then(|m| m.extract().ok())
         .unwrap_or_else(|| value.str().unwrap().to_string())
+}
+
+// breezy's fork_project passes a number of seconds, not a timedelta.
+fn extract_timeout(value: &Bound<PyAny>, attr: &str) -> Option<chrono::Duration> {
+    let value = value.getattr(attr).ok()?;
+    if let Ok(duration) = value.extract::<chrono::Duration>() {
+        return Some(duration);
+    }
+    let seconds = value.extract::<f64>().ok()?;
+    if !seconds.is_finite() {
+        return None;
+    }
+    chrono::Duration::try_milliseconds((seconds * 1000.0) as i64)
 }
 
 impl From<PyErr> for Error {
@@ -811,10 +829,16 @@ impl From<PyErr> for Error {
             } else if err.is_instance_of::<ForkingDisabled>(py) {
                 Error::ForkingDisabled(value.getattr("project").unwrap().extract().unwrap())
             } else if err.is_instance_of::<ProjectCreationTimeout>(py) {
-                Error::ProjectCreationTimeout(
-                    value.getattr("project").unwrap().extract().unwrap(),
-                    value.getattr("timeout").unwrap().extract().unwrap(),
-                )
+                let project = value
+                    .getattr("project")
+                    .ok()
+                    .and_then(|project| project.extract::<String>().ok());
+                match (project, extract_timeout(value, "timeout")) {
+                    (Some(project), Some(timeout)) => {
+                        Error::ProjectCreationTimeout(project, timeout)
+                    }
+                    _ => Error::Other(err),
+                }
             } else if err.is_instance_of::<GitLabConflict>(py) {
                 Error::GitLabConflict(value.getattr("reason").unwrap().extract().unwrap())
             } else if err.is_instance_of::<ConflictsInTree>(py) {
@@ -999,7 +1023,9 @@ impl From<Error> for PyErr {
             Error::RevisionNotPresent(rev) => RevisionNotPresent::new_err((rev.to_string(),)),
             Error::NoSuchProject(p) => NoSuchProject::new_err((p,)),
             Error::ForkingDisabled(p) => ForkingDisabled::new_err((p,)),
-            Error::ProjectCreationTimeout(p, t) => ProjectCreationTimeout::new_err((p, t)),
+            Error::ProjectCreationTimeout(p, t) => {
+                ProjectCreationTimeout::new_err((p, t.num_seconds()))
+            }
             Error::GitLabConflict(p) => GitLabConflict::new_err((p,)),
             Error::ConflictsInTree => ConflictsInTree::new_err(()),
             Error::SourceNotDerivedFromTarget => SourceNotDerivedFromTarget::new_err(()),
@@ -1700,6 +1726,72 @@ fn test_project_creation_timeout() {
     // Verify that p is an instance of ProjectCreationTimeout
     Python::attach(|py| {
         assert!(p.is_instance_of::<ProjectCreationTimeout>(py), "{}", p);
+    });
+}
+
+#[test]
+fn test_project_creation_timeout_from_python() {
+    Python::attach(|py| {
+        let cls = py
+            .import("breezy.plugins.gitlab.forge")
+            .unwrap()
+            .getattr("ProjectCreationTimeout")
+            .unwrap();
+
+        let build =
+            |timeout: &Bound<PyAny>| PyErr::from_value(cls.call1(("myproject", timeout)).unwrap());
+
+        // fork_project passes a number of seconds
+        let seconds = 50i64.into_pyobject(py).unwrap();
+        let error: Error = build(seconds.as_any()).into();
+        match error {
+            Error::ProjectCreationTimeout(project, timeout) => {
+                assert_eq!(project, "myproject");
+                assert_eq!(timeout, chrono::Duration::seconds(50));
+            }
+            other => panic!("Expected ProjectCreationTimeout, got {:?}", other),
+        }
+
+        // A timedelta keeps working
+        let delta = chrono::Duration::seconds(50).into_pyobject(py).unwrap();
+        let error: Error = build(delta.as_any()).into();
+        match error {
+            Error::ProjectCreationTimeout(_, timeout) => {
+                assert_eq!(timeout, chrono::Duration::seconds(50))
+            }
+            other => panic!("Expected ProjectCreationTimeout, got {:?}", other),
+        }
+
+        // Anything else keeps the original exception
+        let bogus = py.eval(c"'soon'", None, None).unwrap();
+        let error: Error = build(&bogus).into();
+        match error {
+            Error::Other(e) => {
+                assert!(e.is_instance_of::<ProjectCreationTimeout>(py), "{}", e)
+            }
+            other => panic!("Expected Other, got {:?}", other),
+        }
+    });
+}
+
+#[test]
+fn test_project_creation_timeout_display() {
+    let e = Error::ProjectCreationTimeout("myproject".to_string(), chrono::Duration::seconds(50));
+    assert_eq!(
+        e.to_string(),
+        "Project creation timeout: myproject after 50 seconds"
+    );
+}
+
+#[test]
+fn test_project_creation_timeout_renders_in_python() {
+    let e = Error::ProjectCreationTimeout("myproject".to_string(), chrono::Duration::seconds(50));
+    let p: PyErr = e.into();
+    Python::attach(|py| {
+        assert_eq!(
+            p.value(py).str().unwrap().to_string(),
+            "Timeout (50s) while waiting for project myproject to be created."
+        );
     });
 }
 
