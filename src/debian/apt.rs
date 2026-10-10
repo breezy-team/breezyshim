@@ -232,13 +232,13 @@ impl Default for LocalApt {
 impl Drop for LocalApt {
     fn drop(&mut self) {
         Python::attach(|py| {
-            self.0
-                .call_method1(
-                    py,
-                    intern!(py, "__exit__"),
-                    (py.None(), py.None(), py.None()),
-                )
-                .unwrap();
+            if let Err(e) = self.0.call_method1(
+                py,
+                intern!(py, "__exit__"),
+                (py.None(), py.None(), py.None()),
+            ) {
+                log::warn!("LocalApt::__exit__ failed during cleanup: {}", e);
+            }
         });
     }
 }
@@ -340,13 +340,14 @@ impl Apt for RemoteApt {
 impl Drop for RemoteApt {
     fn drop(&mut self) {
         Python::attach(|py| {
-            self.0
-                .call_method1(
-                    py,
-                    intern!(py, "__exit__"),
-                    (py.None(), py.None(), py.None()),
-                )
-                .unwrap();
+            if let Err(e) = self.0.call_method1(
+                py,
+                intern!(py, "__exit__"),
+                (py.None(), py.None(), py.None()),
+            ) {
+                // Drop can't propagate errors, so log instead of panicking.
+                log::warn!("RemoteApt::__exit__ failed during cleanup: {}", e);
+            }
         });
     }
 }
@@ -354,6 +355,34 @@ impl Drop for RemoteApt {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_remote_apt_drop_survives_exit_error() {
+        let (stub, apt) = Python::attach(|py| {
+            let m = PyModule::from_code(
+                py,
+                c"calls = []
+
+
+class RaisingExit:
+    def __exit__(self, *args):
+        calls.append(1)
+        raise FileNotFoundError(2, 'No such file or directory')
+",
+                c"breezyshim_remote_apt_drop_stub.py",
+                c"breezyshim_remote_apt_drop_stub",
+            )
+            .unwrap();
+            let apt = RemoteApt(m.getattr("RaisingExit").unwrap().call0().unwrap().unbind());
+            (m.unbind(), apt)
+        });
+
+        std::mem::drop(apt);
+
+        Python::attach(|py| {
+            assert_eq!(stub.bind(py).getattr("calls").unwrap().len().unwrap(), 1);
+        });
+    }
 
     #[test]
     fn test_local_apt_retrieve_orig() {

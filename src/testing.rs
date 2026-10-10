@@ -92,12 +92,15 @@ impl Drop for TestEnv {
                 std::env::remove_var(&key);
             }
             Python::attach(|py| {
-                let os = py.import("os").unwrap();
-                let environ = os.getattr("environ").unwrap();
-                if let Some(value) = value {
-                    environ.set_item(key, value).unwrap();
-                } else {
-                    environ.del_item(key).unwrap();
+                let restore = || -> PyResult<()> {
+                    let environ = py.import("os")?.getattr("environ")?;
+                    match value.as_ref() {
+                        Some(value) => environ.set_item(&key, value),
+                        None => environ.del_item(&key),
+                    }
+                };
+                if let Err(e) = restore() {
+                    log::warn!("failed to restore os.environ[{}] on teardown: {}", key, e);
                 }
             });
         }

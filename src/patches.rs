@@ -79,15 +79,15 @@ impl AppliedPatches {
 
 impl Drop for AppliedPatches {
     fn drop(&mut self) {
-        Python::attach(|py| -> Result<(), PyErr> {
-            self.1.call_method1(
+        Python::attach(|py| {
+            if let Err(e) = self.1.call_method1(
                 py,
                 intern!(py, "__exit__"),
                 (py.None(), py.None(), py.None()),
-            )?;
-            Ok(())
-        })
-        .unwrap();
+            ) {
+                log::warn!("AppliedPatches::__exit__ failed during cleanup: {}", e);
+            }
+        });
     }
 }
 
@@ -150,6 +150,39 @@ mod applied_patches_tests {
         );
         std::mem::drop(newtree);
         std::mem::drop(env);
+    }
+
+    #[test]
+    fn test_drop_survives_exit_error() {
+        let (stub, applied) = Python::attach(|py| {
+            let m = PyModule::from_code(
+                py,
+                c"from breezy.transform import ImmortalLimbo
+
+calls = []
+
+
+class RaisingExit:
+    def __exit__(self, *args):
+        calls.append(1)
+        raise ImmortalLimbo('/nonexistent')
+",
+                c"breezyshim_applied_patches_drop_stub.py",
+                c"breezyshim_applied_patches_drop_stub",
+            )
+            .unwrap();
+            let applied = AppliedPatches(
+                py.None(),
+                m.getattr("RaisingExit").unwrap().call0().unwrap().unbind(),
+            );
+            (m.unbind(), applied)
+        });
+
+        std::mem::drop(applied);
+
+        Python::attach(|py| {
+            assert_eq!(stub.bind(py).getattr("calls").unwrap().len().unwrap(), 1);
+        });
     }
 
     #[test]
