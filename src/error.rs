@@ -946,9 +946,23 @@ impl From<Error> for PyErr {
             Error::MergeProposalExists(source, _target) => {
                 Python::attach(|py| MergeProposalExists::new_err((source.to_string(), py.None())))
             }
-            Error::UnsupportedOperation(mname, tname) => {
-                UnsupportedOperation::new_err((mname, tname))
-            }
+            Error::UnsupportedOperation(mname, tname) => Python::attach(|py| {
+                // UnsupportedOperation derives both names from the objects it
+                // is given, so set them directly
+                let build = || -> PyResult<PyErr> {
+                    let cls = py
+                        .import("breezy.errors")?
+                        .getattr("UnsupportedOperation")?;
+                    let inst = cls.call_method1("__new__", (&cls,))?;
+                    inst.setattr("mname", mname)?;
+                    inst.setattr("tname", tname)?;
+                    Ok(PyErr::from_value(inst))
+                };
+                match build() {
+                    Ok(err) => err,
+                    Err(e) => e,
+                }
+            }),
             Error::ProtectedBranchHookDeclined(msg) => ProtectedBranchHookDeclined::new_err((msg,)),
             Error::NoRepositoryPresent => {
                 Python::attach(|py| NoRepositoryPresent::new_err((py.None(),)))
@@ -962,7 +976,7 @@ impl From<Error> for PyErr {
             }
             Error::NotImplemented => pyo3::exceptions::PyNotImplementedError::new_err(()),
             Error::NoSuchRevisionInTree(rev) => {
-                Python::attach(|py| NoSuchRevisionInTree::new_err((py.None(), rev.to_string())))
+                Python::attach(|py| NoSuchRevisionInTree::new_err((py.None(), rev)))
             }
             Error::MissingNestedTree(p) => {
                 MissingNestedTree::new_err((p.to_string_lossy().to_string(),))
@@ -994,9 +1008,11 @@ impl From<Error> for PyErr {
             Error::TransportNotPossible(e) => TransportNotPossible::new_err((e,)),
             Error::IncompatibleFormat(a, b) => IncompatibleFormat::new_err((a, b)),
             Error::NoSuchRevision(rev) => {
-                Python::attach(|py| NoSuchRevision::new_err((py.None(), rev.to_string())))
+                Python::attach(|py| NoSuchRevision::new_err((py.None(), rev)))
             }
-            Error::RevisionNotPresent(rev) => RevisionNotPresent::new_err((rev.to_string(),)),
+            Error::RevisionNotPresent(rev) => {
+                Python::attach(|py| RevisionNotPresent::new_err((rev, py.None())))
+            }
             Error::NoSuchProject(p) => NoSuchProject::new_err((p,)),
             Error::ForkingDisabled(p) => ForkingDisabled::new_err((p,)),
             Error::ProjectCreationTimeout(p, t) => ProjectCreationTimeout::new_err((p, t)),
@@ -1347,6 +1363,63 @@ fn test_error_socket_display_includes_detail() {
 }
 
 #[test]
+fn test_unsupported_operation_roundtrip() {
+    let e = Error::UnsupportedOperation("iter_changes".to_string(), "GitTree".to_string());
+    let p: PyErr = e.into();
+    Python::attach(|py| {
+        assert!(p.is_instance_of::<UnsupportedOperation>(py), "{}", p);
+        assert_eq!(
+            p.value(py).str().unwrap().to_string(),
+            "The method iter_changes is not supported on objects of type GitTree."
+        );
+    });
+    match Error::from(p) {
+        Error::UnsupportedOperation(mname, tname) => {
+            assert_eq!(mname, "iter_changes");
+            assert_eq!(tname, "GitTree");
+        }
+        other => panic!("Expected UnsupportedOperation, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_revision_not_present_roundtrip() {
+    let e = Error::RevisionNotPresent(crate::RevisionId::from(b"rev123".to_vec()));
+    let p: PyErr = e.into();
+    Python::attach(|py| {
+        assert!(RevisionNotPresent::matches(&p, py), "{}", p);
+        assert_eq!(
+            p.value(py).str().unwrap().to_string(),
+            "Revision {b'rev123'} not present in \"None\"."
+        );
+    });
+    match Error::from(p) {
+        Error::RevisionNotPresent(rev) => assert_eq!(rev.to_string(), "rev123"),
+        other => panic!("Expected RevisionNotPresent, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_no_such_revision_roundtrip() {
+    let e = Error::NoSuchRevision(crate::RevisionId::from(b"rev123".to_vec()));
+    let p: PyErr = e.into();
+    match Error::from(p) {
+        Error::NoSuchRevision(rev) => assert_eq!(rev.to_string(), "rev123"),
+        other => panic!("Expected NoSuchRevision, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_no_such_revision_in_tree_roundtrip() {
+    let e = Error::NoSuchRevisionInTree(crate::RevisionId::from(b"rev123".to_vec()));
+    let p: PyErr = e.into();
+    match Error::from(p) {
+        Error::NoSuchRevisionInTree(rev) => assert_eq!(rev.to_string(), "rev123"),
+        other => panic!("Expected NoSuchRevisionInTree, got {:?}", other),
+    }
+}
+
+#[test]
 fn test_error_other() {
     let e = Error::Other(PyErr::new::<UnknownFormatError, _>((("foo",),)));
     let p: PyErr = e.into();
@@ -1400,7 +1473,6 @@ fn test_error_merge_proposal_exists() {
 }
 
 #[test]
-#[ignore] // UnsupportedOperation takes two arguments, which is not implemented
 fn test_error_unsupported_operation() {
     let e = Error::UnsupportedOperation("foo".to_string(), "bar".to_string());
     let p: PyErr = e.into();
