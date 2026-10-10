@@ -652,10 +652,14 @@ impl From<PyErr> for Error {
             } else if err.is_instance_of::<UnsupportedForge>(py) {
                 let branch = value.getattr("branch").unwrap();
 
-                if let Ok(url) = branch.getattr("user_url") {
-                    Error::UnsupportedForge(url.extract::<String>().unwrap().parse().unwrap())
-                } else {
-                    Error::UnsupportedForge(branch.extract::<String>().unwrap().parse().unwrap())
+                // Raised with a branch, a URL or just a hostname
+                let url = match branch.getattr("user_url") {
+                    Ok(url) => url.extract::<String>(),
+                    Err(_) => branch.extract::<String>(),
+                };
+                match url.ok().and_then(|url| url.parse().ok()) {
+                    Some(url) => Error::UnsupportedForge(url),
+                    None => Error::Other(err),
                 }
             } else if err.is_instance_of::<MergeProposalExists>(py) {
                 let source_url: String = value.getattr("url").unwrap().extract().unwrap();
@@ -1373,6 +1377,32 @@ fn test_error_unsupported_forge() {
     // Verify that p is an instance of UnsupportedForge
     Python::attach(|py| {
         assert!(p.is_instance_of::<UnsupportedForge>(py));
+    });
+}
+
+#[test]
+fn test_error_unsupported_forge_from_python() {
+    Python::attach(|py| {
+        let cls = py
+            .import("breezy.forge")
+            .unwrap()
+            .getattr("UnsupportedForge")
+            .unwrap();
+
+        let err_obj = cls.call1(("https://example.com/foo",)).unwrap();
+        let error: Error = PyErr::from_value(err_obj).into();
+        match error {
+            Error::UnsupportedForge(url) => assert_eq!(url.as_str(), "https://example.com/foo"),
+            _ => panic!("Expected UnsupportedForge, got {:?}", error),
+        }
+
+        // A hostname is not a URL
+        let err_obj = cls.call1(("example.com",)).unwrap();
+        let error: Error = PyErr::from_value(err_obj).into();
+        match error {
+            Error::Other(e) => assert!(e.is_instance_of::<UnsupportedForge>(py)),
+            _ => panic!("Expected Other, got {:?}", error),
+        }
     });
 }
 
