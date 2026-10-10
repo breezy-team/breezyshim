@@ -837,22 +837,26 @@ impl From<PyErr> for Error {
             } else if err.is_instance_of::<ReadOnlyError>(py) {
                 Error::ReadOnly
             } else if RedirectRequested::matches(&err, py) {
-                Error::RedirectRequested {
-                    source: value
-                        .getattr("source")
-                        .unwrap()
-                        .extract::<String>()
-                        .unwrap()
-                        .parse()
-                        .unwrap(),
-                    target: value
-                        .getattr("target")
-                        .unwrap()
-                        .extract::<String>()
-                        .unwrap()
-                        .parse()
-                        .unwrap(),
-                    is_permanent: value.getattr("is_permanent").unwrap().extract().unwrap(),
+                let url = |attr| {
+                    value
+                        .getattr(attr)
+                        .ok()
+                        .and_then(|value| value.extract::<String>().ok())
+                        .and_then(|value| value.parse::<url::Url>().ok())
+                };
+                // The flag is kept as the message fragment it prints
+                let is_permanent = value
+                    .getattr("permanently")
+                    .ok()
+                    .and_then(|permanently| permanently.extract::<String>().ok())
+                    .is_some_and(|permanently| !permanently.is_empty());
+                match (url("source"), url("target")) {
+                    (Some(source), Some(target)) => Error::RedirectRequested {
+                        source,
+                        target,
+                        is_permanent,
+                    },
+                    _ => Error::Other(err),
                 }
             } else if err.is_instance_of::<NoRoundtrippingSupport>(py) {
                 Error::NoRoundtrippingSupport
@@ -1707,6 +1711,64 @@ fn test_already_branch() {
     Python::attach(|py| {
         assert!(p.is_instance_of::<AlreadyBranchError>(py), "{}", p);
     });
+}
+
+#[test]
+fn test_redirect_requested_from_python() {
+    Python::attach(|py| {
+        let cls = py
+            .import("breezy.errors")
+            .unwrap()
+            .getattr("RedirectRequested")
+            .unwrap();
+
+        let err = PyErr::from_value(
+            cls.call1(("http://example.com/a", "http://example.com/b", true))
+                .unwrap(),
+        );
+        match Error::from(err) {
+            Error::RedirectRequested {
+                source,
+                target,
+                is_permanent,
+            } => {
+                assert_eq!(source.as_str(), "http://example.com/a");
+                assert_eq!(target.as_str(), "http://example.com/b");
+                assert!(is_permanent);
+            }
+            other => panic!("Expected RedirectRequested, got {:?}", other),
+        }
+
+        let err = PyErr::from_value(
+            cls.call1(("http://example.com/a", "http://example.com/b"))
+                .unwrap(),
+        );
+        match Error::from(err) {
+            Error::RedirectRequested { is_permanent, .. } => assert!(!is_permanent),
+            other => panic!("Expected RedirectRequested, got {:?}", other),
+        }
+    });
+}
+
+#[test]
+fn test_redirect_requested_roundtrip() {
+    let e = Error::RedirectRequested {
+        source: "http://example.com/a".parse().unwrap(),
+        target: "http://example.com/b".parse().unwrap(),
+        is_permanent: true,
+    };
+    let p: PyErr = e.into();
+    Python::attach(|py| {
+        assert!(RedirectRequested::matches(&p, py), "{}", p);
+        assert_eq!(
+            p.value(py).str().unwrap().to_string(),
+            "http://example.com/a is permanently redirected to http://example.com/b"
+        );
+    });
+    match Error::from(p) {
+        Error::RedirectRequested { is_permanent, .. } => assert!(is_permanent),
+        other => panic!("Expected RedirectRequested, got {:?}", other),
+    }
 }
 
 #[test]
