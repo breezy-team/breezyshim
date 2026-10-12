@@ -532,10 +532,19 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-/// Convert a Python headers object (dict or HTTPMessage) to a HashMap<String, String>
+/// Render headers the way the raise sites pass them, as a list of pairs
 ///
-/// A raise site that passed nothing gives `None`, which is not the same as a
-/// response that carried no headers.
+/// `None` is passed back as `None`, so a raise site that recorded no headers
+/// is not turned into one that recorded an empty set.
+fn headers_to_pairs(
+    headers: Option<std::collections::HashMap<String, String>>,
+) -> Option<Vec<(String, String)>> {
+    headers.map(|h| h.into_iter().collect())
+}
+
+/// Convert a Python headers object to a HashMap<String, String>
+///
+/// The raise sites pass a list of pairs, a dict, an `HTTPMessage` or nothing.
 fn extract_headers(
     headers_obj: &Bound<PyAny>,
 ) -> Option<std::collections::HashMap<String, String>> {
@@ -548,16 +557,23 @@ fn extract_headers(
         return Some(headers);
     }
 
-    // Otherwise, try to get items() method (works for HTTPMessage and other dict-like objects)
-    let mut headers = std::collections::HashMap::new();
-    if let Ok(items) = headers_obj.call_method0("items") {
-        if let Ok(items_list) = items.extract::<Vec<(String, String)>>() {
-            for (key, value) in items_list {
-                headers.insert(key, value);
-            }
+    if let Ok(pairs) = headers_obj.extract::<Vec<(String, String)>>() {
+        return Some(pairs.into_iter().collect());
+    }
+
+    // Otherwise try items(), which works for HTTPMessage and other dict-like
+    // objects. Headers we cannot read at all are reported as `None`, because
+    // an empty set would claim the response carried no headers.
+    match headers_obj
+        .call_method0("items")
+        .and_then(|items| items.extract::<Vec<(String, String)>>())
+    {
+        Ok(pairs) => Some(pairs.into_iter().collect()),
+        Err(e) => {
+            log::warn!("could not read the headers on this error: {}", e);
+            None
         }
     }
-    Some(headers)
 }
 
 fn get_exception_msg(value: &Bound<PyAny>) -> String {
@@ -936,7 +952,7 @@ impl From<Error> for PyErr {
             }),
             Error::LineEndingError(e) => LineEndingError::new_err((e,)),
             Error::InvalidHttpResponse(status, msg, orig_error, headers) => {
-                InvalidHttpResponse::new_err((status, msg, orig_error, headers))
+                InvalidHttpResponse::new_err((status, msg, orig_error, headers_to_pairs(headers)))
             }
             Error::AlreadyControlDir(path) => {
                 AlreadyControlDirError::new_err((path.to_string_lossy().to_string(),))
@@ -1008,7 +1024,12 @@ impl From<Error> for PyErr {
                 code,
                 extra,
                 headers,
-            } => UnexpectedHttpStatus::new_err((url.to_string(), code, extra, headers)),
+            } => UnexpectedHttpStatus::new_err((
+                url.to_string(),
+                code,
+                extra,
+                headers_to_pairs(headers),
+            )),
             Error::Timeout => pyo3::exceptions::PyTimeoutError::new_err(()),
             Error::BadHttpRequest(url, reason) => {
                 BadHttpRequest::new_err((url.to_string(), reason))
