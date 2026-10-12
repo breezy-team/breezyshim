@@ -694,21 +694,19 @@ impl From<PyErr> for Error {
                     value.getattr("extra").unwrap().extract().unwrap(),
                 )
             } else if err.is_instance_of::<LockContention>(py) {
-                Error::LockContention(
-                    value
-                        .getattr("lock")
-                        .unwrap()
-                        .call_method0("__str__")
-                        .unwrap()
-                        .extract()
-                        .unwrap(),
-                    value
-                        .getattr("msg")
-                        .ok()
-                        .and_then(|m| m.call_method0("__str__").ok())
-                        .and_then(|m| m.extract().ok())
-                        .unwrap_or_else(|| "".to_string()),
-                )
+                // Keep the Python error if lock or msg cannot be read as a string.
+                let lock = value
+                    .getattr("lock")
+                    .and_then(|lock| lock.str())
+                    .and_then(|lock| lock.extract::<String>());
+                let msg = value
+                    .getattr("msg")
+                    .and_then(|msg| msg.str())
+                    .and_then(|msg| msg.extract::<String>());
+                match (lock, msg) {
+                    (Ok(lock), Ok(msg)) => Error::LockContention(lock, msg),
+                    _ => Self::Other(err),
+                }
             } else if err.is_instance_of::<pyo3::exceptions::PyNotImplementedError>(py) {
                 Error::NotImplemented
             } else if err.is_instance_of::<NoSuchRevisionInTree>(py) {
