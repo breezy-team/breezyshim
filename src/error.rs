@@ -253,7 +253,7 @@ pub enum Error {
         String,
         String,
         Option<String>,
-        std::collections::HashMap<String, String>,
+        Option<std::collections::HashMap<String, String>>,
     ),
     /// A control directory already exists at the specified path.
     AlreadyControlDir(std::path::PathBuf),
@@ -320,8 +320,11 @@ pub enum Error {
         code: u16,
         /// Additional information about the error.
         extra: Option<String>,
-        /// The HTTP headers that were received.
-        headers: std::collections::HashMap<String, String>,
+        /// The HTTP headers the raise site recorded, if it recorded any.
+        ///
+        /// `None` means no headers were passed, which is not the same as a
+        /// response that carried none.
+        headers: Option<std::collections::HashMap<String, String>>,
     },
     /// A timeout occurred.
     Timeout,
@@ -539,10 +542,19 @@ impl std::fmt::Display for Error {
 impl std::error::Error for Error {}
 
 /// Convert a Python headers object (dict or HTTPMessage) to a HashMap<String, String>
-fn extract_headers(headers_obj: &Bound<PyAny>) -> std::collections::HashMap<String, String> {
+///
+/// A raise site that passed nothing gives `None`, which is not the same as a
+/// response that carried no headers.
+fn extract_headers(
+    headers_obj: &Bound<PyAny>,
+) -> Option<std::collections::HashMap<String, String>> {
+    if headers_obj.is_none() {
+        return None;
+    }
+
     // Try to extract as a dict first
     if let Ok(headers) = headers_obj.extract::<std::collections::HashMap<String, String>>() {
-        return headers;
+        return Some(headers);
     }
 
     // Otherwise, try to get items() method (works for HTTPMessage and other dict-like objects)
@@ -554,7 +566,7 @@ fn extract_headers(headers_obj: &Bound<PyAny>) -> std::collections::HashMap<Stri
             }
         }
     }
-    headers
+    Some(headers)
 }
 
 fn get_exception_msg(value: &Bound<PyAny>) -> String {
@@ -1359,7 +1371,7 @@ fn test_error_invalidhttpresponse() {
         "foo".to_string(),
         "bar".to_string(),
         Some("baz".to_string()),
-        std::collections::HashMap::new(),
+        None,
     );
     let p: PyErr = e.into();
     // Verify that p is an instance of InvalidHttpResponse
@@ -1687,7 +1699,7 @@ fn test_unexpected_http_status() {
         url: url::Url::parse("http://example.com").unwrap(),
         code: 404,
         extra: Some("bar".to_string()),
-        headers: std::collections::HashMap::new(),
+        headers: None,
     };
     let p: PyErr = e.into();
     // Verify that p is an instance of UnexpectedHttpStatus
@@ -1732,6 +1744,7 @@ fn test_unexpected_http_status_with_httpmessage() {
                 assert_eq!(code, 404);
                 assert_eq!(extra, Some("Not Found".to_string()));
                 // Verify headers were extracted (at least the ones we set)
+                let headers = headers.expect("the raise site passed headers");
                 assert_eq!(headers.get("Content-Type"), Some(&"text/html".to_string()));
                 assert_eq!(headers.get("Server"), Some(&"TestServer".to_string()));
             }
@@ -1769,6 +1782,7 @@ fn test_invalid_http_response_with_httpmessage() {
                 assert_eq!(path, "http://example.com");
                 assert_eq!(msg, "Invalid response");
                 // The key test: verify HTTPMessage headers were properly extracted without panicking
+                let headers = headers.expect("the raise site passed headers");
                 assert_eq!(headers.get("X-Custom"), Some(&"value".to_string()));
             }
             _ => panic!("Expected InvalidHttpResponse error, got {:?}", rust_err),
