@@ -1680,6 +1680,38 @@ fn test_gitlab_conflict() {
 }
 
 #[test]
+fn test_gitlab_conflict_without_a_reason() {
+    Python::attach(|py| {
+        let cls = py
+            .import("breezy.plugins.gitlab.forge")
+            .unwrap()
+            .getattr("GitLabConflict")
+            .unwrap();
+        let err_obj = cls.call1((py.None(),)).unwrap();
+        let error: Error = PyErr::from_value(err_obj).into();
+        match error {
+            Error::GitLabConflict(_) => {}
+            other => panic!("Expected GitLabConflict, got {:?}", other),
+        }
+    });
+}
+
+#[test]
+#[should_panic(expected = "cannot read the reason of a GitLabConflict")]
+fn test_gitlab_conflict_without_the_reason_attribute() {
+    Python::attach(|py| {
+        let cls = py
+            .import("breezy.plugins.gitlab.forge")
+            .unwrap()
+            .getattr("GitLabConflict")
+            .unwrap();
+        let err_obj = cls.call1((py.None(),)).unwrap();
+        err_obj.delattr("reason").unwrap();
+        let _: Error = PyErr::from_value(err_obj).into();
+    });
+}
+
+#[test]
 fn test_conflicts_in_tree() {
     let e = Error::ConflictsInTree;
     let p: PyErr = e.into();
