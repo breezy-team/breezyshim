@@ -1442,6 +1442,45 @@ fn test_error_unsupported_forge() {
 }
 
 #[test]
+fn test_unsupported_forge_from_python() {
+    Python::attach(|py| {
+        let cls = py
+            .import("breezy.forge")
+            .unwrap()
+            .getattr("UnsupportedForge")
+            .unwrap();
+        // probe_from_hostname raises with a bare hostname, which is not a URL
+        let err_obj = cls.call1(("example.com",)).unwrap();
+        let error: Error = PyErr::from_value(err_obj).into();
+        match error {
+            Error::UnsupportedForgeNamed(got) => assert_eq!(got, "example.com"),
+            other => panic!("Expected UnsupportedForgeNamed, got {:?}", other),
+        }
+        // A URL still converts to the url::Url variant, so existing matches hold
+        let err_obj = cls.call1(("https://example.com/foo",)).unwrap();
+        let error: Error = PyErr::from_value(err_obj).into();
+        match error {
+            Error::UnsupportedForge(got) => assert_eq!(got.as_str(), "https://example.com/foo"),
+            other => panic!("Expected UnsupportedForge, got {:?}", other),
+        }
+    });
+}
+
+#[test]
+fn test_unsupported_forge_named_round_trip() {
+    let e = Error::UnsupportedForgeNamed("example.com".to_string());
+    let p: PyErr = e.into();
+    Python::attach(|py| {
+        assert!(p.is_instance_of::<UnsupportedForge>(py), "{}", p);
+        let error: Error = p.into();
+        match error {
+            Error::UnsupportedForgeNamed(got) => assert_eq!(got, "example.com"),
+            other => panic!("Expected UnsupportedForgeNamed, got {:?}", other),
+        }
+    });
+}
+
+#[test]
 fn test_error_forge_project_exists() {
     let e = Error::ForgeProjectExists("foo".to_string());
     let p: PyErr = e.into();
