@@ -1512,6 +1512,106 @@ fn test_error_lock_contention() {
 }
 
 #[test]
+fn test_error_lock_contention_from_pyerr() {
+    Python::attach(|py| {
+        let cls = py
+            .import("breezy.errors")
+            .unwrap()
+            .getattr("LockContention")
+            .unwrap();
+
+        // breezy leaves `msg` as an empty string when only a lock is given.
+        let obj = cls.call1(("alock",)).unwrap();
+        let error: Error = PyErr::from_value(obj).into();
+        match error {
+            Error::LockContention(lock, msg) => {
+                assert_eq!(lock, "alock");
+                assert_eq!(msg, "");
+            }
+            other => panic!("Expected LockContention, got {:?}", other),
+        }
+
+        let obj = cls.call1(("alock", "held by another process")).unwrap();
+        let error: Error = PyErr::from_value(obj).into();
+        match error {
+            Error::LockContention(lock, msg) => {
+                assert_eq!(lock, "alock");
+                assert_eq!(msg, "held by another process");
+            }
+            other => panic!("Expected LockContention, got {:?}", other),
+        }
+
+        // `lock` can be any object.
+        let obj = cls.call1((42,)).unwrap();
+        let error: Error = PyErr::from_value(obj).into();
+        match error {
+            Error::LockContention(lock, msg) => {
+                assert_eq!(lock, "42");
+                assert_eq!(msg, "");
+            }
+            other => panic!("Expected LockContention, got {:?}", other),
+        }
+
+        // `msg` can be any object too.
+        let exc = py
+            .import("builtins")
+            .unwrap()
+            .getattr("ValueError")
+            .unwrap()
+            .call1(("boom",))
+            .unwrap();
+        let obj = cls.call1(("alock", exc)).unwrap();
+        let error: Error = PyErr::from_value(obj).into();
+        match error {
+            Error::LockContention(lock, msg) => {
+                assert_eq!(lock, "alock");
+                assert_eq!(msg, "boom");
+            }
+            other => panic!("Expected LockContention, got {:?}", other),
+        }
+    });
+}
+
+#[test]
+fn test_error_lock_contention_without_msg() {
+    Python::attach(|py| {
+        let cls = py
+            .import("breezy.errors")
+            .unwrap()
+            .getattr("LockContention")
+            .unwrap();
+
+        // No `msg` attribute means there is no message, not an empty one.
+        let obj = cls.call1(("alock",)).unwrap();
+        obj.delattr("msg").unwrap();
+        let error: Error = PyErr::from_value(obj).into();
+        match error {
+            Error::Other(_) => {}
+            other => panic!("Expected Other, got {:?}", other),
+        }
+    });
+}
+
+#[test]
+fn test_error_lock_contention_without_lock() {
+    Python::attach(|py| {
+        let cls = py
+            .import("breezy.errors")
+            .unwrap()
+            .getattr("LockContention")
+            .unwrap();
+
+        let obj = cls.call1(("alock",)).unwrap();
+        obj.delattr("lock").unwrap();
+        let error: Error = PyErr::from_value(obj).into();
+        match error {
+            Error::Other(_) => {}
+            other => panic!("Expected Other, got {:?}", other),
+        }
+    });
+}
+
+#[test]
 fn test_error_notimplementederror() {
     let e = Error::NotImplemented;
     let p: PyErr = e.into();
