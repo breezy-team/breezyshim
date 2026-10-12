@@ -277,6 +277,11 @@ pub enum Error {
     ForgeLoginRequired,
     /// The specified forge is not supported.
     UnsupportedForge(url::Url),
+    /// The specified forge is not supported, named by a value that is not a URL.
+    ///
+    /// `probe_from_hostname` raises with a bare hostname, so there is no URL to
+    /// report.
+    UnsupportedForgeNamed(String),
     /// A project already exists on the forge.
     ForgeProjectExists(String),
     /// A merge proposal already exists.
@@ -440,6 +445,7 @@ impl std::fmt::Display for Error {
             Self::Socket(e, None) => write!(f, "socket error: {}", e),
             Self::ForgeLoginRequired => write!(f, "Forge login required"),
             Self::UnsupportedForge(url) => write!(f, "Unsupported forge: {}", url),
+            Self::UnsupportedForgeNamed(named) => write!(f, "Unsupported forge: {}", named),
             Self::ForgeProjectExists(p) => write!(f, "Forge project exists: {}", p),
             Self::MergeProposalExists(p, r) => {
                 if let Some(r) = r {
@@ -651,11 +657,18 @@ impl From<PyErr> for Error {
                 Error::ForgeLoginRequired
             } else if err.is_instance_of::<UnsupportedForge>(py) {
                 let branch = value.getattr("branch").unwrap();
-
-                if let Ok(url) = branch.getattr("user_url") {
-                    Error::UnsupportedForge(url.extract::<String>().unwrap().parse().unwrap())
-                } else {
-                    Error::UnsupportedForge(branch.extract::<String>().unwrap().parse().unwrap())
+                // A branch, a URL or a bare hostname
+                let named = match branch.getattr("user_url") {
+                    Ok(url) => url.extract::<String>(),
+                    Err(_) => branch.extract::<String>(),
+                };
+                let named = match named {
+                    Ok(named) => named,
+                    Err(_) => branch.str().map(|s| s.to_string()).unwrap_or_default(),
+                };
+                match named.parse::<url::Url>() {
+                    Ok(url) => Error::UnsupportedForge(url),
+                    Err(_) => Error::UnsupportedForgeNamed(named),
                 }
             } else if err.is_instance_of::<MergeProposalExists>(py) {
                 let source_url: String = value.getattr("url").unwrap().extract().unwrap();
@@ -938,6 +951,7 @@ impl From<Error> for PyErr {
                 Python::attach(|py| ForgeLoginRequired::new_err((py.None(),)))
             }
             Error::UnsupportedForge(url) => UnsupportedForge::new_err((url.to_string(),)),
+            Error::UnsupportedForgeNamed(named) => UnsupportedForge::new_err((named,)),
             Error::ForgeProjectExists(name) => AlreadyControlDirError::new_err((name.to_string(),)),
             Error::MergeProposalExists(source, _target) => {
                 Python::attach(|py| MergeProposalExists::new_err((source.to_string(), py.None())))
