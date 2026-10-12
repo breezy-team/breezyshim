@@ -1720,6 +1720,157 @@ fn test_bad_http_request() {
 }
 
 #[test]
+fn test_unexpected_http_status_with_getheaders_list() {
+    // breezy passes response.getheaders(), a list of pairs
+    Python::attach(|py| {
+        let headers = py
+            .eval(
+                c"[('Content-Type', 'application/json'), ('Server', 'nginx')]",
+                None,
+                None,
+            )
+            .unwrap();
+        let err = UnexpectedHttpStatus::new_err((
+            "http://example.com/",
+            500,
+            py.None(),
+            headers.unbind(),
+        ));
+        let error: Error = err.into();
+        match error {
+            Error::UnexpectedHttpStatus { headers, .. } => {
+                let headers = headers.expect("the raise site passed headers");
+                assert_eq!(
+                    headers.get("Content-Type"),
+                    Some(&"application/json".to_string())
+                );
+                assert_eq!(headers.get("Server"), Some(&"nginx".to_string()));
+            }
+            other => panic!("Expected UnexpectedHttpStatus, got {:?}", other),
+        }
+    });
+}
+
+#[test]
+fn test_unexpected_http_status_without_headers() {
+    let err = UnexpectedHttpStatus::new_err(("http://example.com/", 500));
+    let error: Error = err.into();
+    match error {
+        Error::UnexpectedHttpStatus { headers, .. } => assert_eq!(headers, None),
+        other => panic!("Expected UnexpectedHttpStatus, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_unexpected_http_status_with_empty_headers() {
+    // A raise site that passed an empty set is not the same as one that
+    // passed nothing, so this must be `Some` and empty.
+    Python::attach(|py| {
+        let empty = pyo3::types::PyDict::new(py);
+        let err =
+            UnexpectedHttpStatus::new_err(("http://example.com/", 500, py.None(), empty.unbind()));
+        let error: Error = err.into();
+        match error {
+            Error::UnexpectedHttpStatus { headers, .. } => {
+                assert_eq!(headers, Some(std::collections::HashMap::new()))
+            }
+            other => panic!("Expected UnexpectedHttpStatus, got {:?}", other),
+        }
+    });
+}
+
+#[test]
+fn test_unexpected_http_status_with_unreadable_headers() {
+    // Headers that cannot be read are not reported as an empty set
+    Python::attach(|py| {
+        let headers = py.eval(c"object()", None, None).unwrap();
+        let err = UnexpectedHttpStatus::new_err((
+            "http://example.com/",
+            500,
+            py.None(),
+            headers.unbind(),
+        ));
+        let error: Error = err.into();
+        match error {
+            Error::UnexpectedHttpStatus { headers, .. } => assert_eq!(headers, None),
+            other => panic!("Expected UnexpectedHttpStatus, got {:?}", other),
+        }
+    });
+}
+
+#[test]
+fn test_unexpected_http_status_none_headers_reach_python_as_none() {
+    let e = Error::UnexpectedHttpStatus {
+        url: url::Url::parse("http://example.com/").unwrap(),
+        code: 500,
+        extra: None,
+        headers: None,
+    };
+    let p: PyErr = e.into();
+    Python::attach(|py| {
+        assert!(p.value(py).getattr("headers").unwrap().is_none());
+    });
+}
+
+#[test]
+fn test_unexpected_http_status_headers_roundtrip() {
+    let mut headers = std::collections::HashMap::new();
+    headers.insert("Retry-After".to_string(), "120".to_string());
+    let e = Error::UnexpectedHttpStatus {
+        url: url::Url::parse("http://example.com/").unwrap(),
+        code: 429,
+        extra: None,
+        headers: Some(headers),
+    };
+    let p: PyErr = e.into();
+    Python::attach(|py| {
+        // The raise sites pass a list of pairs, so this one does too
+        let got = p.value(py).getattr("headers").unwrap();
+        assert_eq!(
+            got.extract::<Vec<(String, String)>>().unwrap(),
+            vec![("Retry-After".to_string(), "120".to_string())]
+        );
+    });
+    let error: Error = p.into();
+    match error {
+        Error::UnexpectedHttpStatus { headers, .. } => {
+            assert_eq!(
+                headers
+                    .expect("round trip kept the headers")
+                    .get("Retry-After"),
+                Some(&"120".to_string())
+            )
+        }
+        other => panic!("Expected UnexpectedHttpStatus, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_invalid_http_response_with_getheaders_list() {
+    Python::attach(|py| {
+        let headers = py.eval(c"[('X-Custom', 'value')]", None, None).unwrap();
+        let err = InvalidHttpResponse::new_err((
+            "http://example.com",
+            "Invalid response",
+            py.None(),
+            headers.unbind(),
+        ));
+        let error: Error = err.into();
+        match error {
+            Error::InvalidHttpResponse(_, _, _, headers) => {
+                assert_eq!(
+                    headers
+                        .expect("the raise site passed headers")
+                        .get("X-Custom"),
+                    Some(&"value".to_string())
+                )
+            }
+            other => panic!("Expected InvalidHttpResponse, got {:?}", other),
+        }
+    });
+}
+
+#[test]
 fn test_transport_not_possible() {
     let e = Error::TransportNotPossible("foo".to_string());
     let p: PyErr = e.into();
