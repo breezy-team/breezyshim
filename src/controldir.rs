@@ -1,6 +1,6 @@
 //! The `ControlDir` class provides a high-level interface to control directories,
 //! e.g. ".bzr" or ".git" directories.
-use crate::branch::{py_tag_selector, Branch, GenericBranch, PyBranch};
+use crate::branch::{depth_error, py_tag_selector, Branch, GenericBranch, PyBranch};
 use crate::error::Error;
 use crate::repository::{GenericRepository, Repository};
 use crate::transport::{possible_transports_from_py, possible_transports_to_py, Transport};
@@ -234,6 +234,50 @@ pub trait ControlDir: std::fmt::Debug {
         >,
         Error,
     >;
+    /// Like `sprout`, but fetch at most `depth` revisions of history.
+    ///
+    /// # Parameters
+    ///
+    /// * `depth` - How many revisions deep to fetch (1 is only the tip), or None for all.
+    ///
+    /// The other parameters are those of `sprout`.
+    ///
+    /// # Returns
+    ///
+    /// The new control directory, or `Error::UnsupportedOperation` if the
+    /// format or the installed Breezy (before 3.4) can not fetch with a depth.
+    fn sprout_with_depth(
+        &self,
+        target: url::Url,
+        source_branch: Option<&dyn PyBranch>,
+        create_tree_if_local: Option<bool>,
+        stacked: Option<bool>,
+        revision_id: Option<&crate::RevisionId>,
+        depth: Option<u32>,
+    ) -> Result<
+        Box<
+            dyn ControlDir<
+                Branch = GenericBranch,
+                Repository = GenericRepository,
+                WorkingTree = crate::workingtree::GenericWorkingTree,
+            >,
+        >,
+        Error,
+    > {
+        if depth.is_some() {
+            return Err(Error::UnsupportedOperation(
+                "sprout_with_depth".to_string(),
+                std::any::type_name::<Self>().to_string(),
+            ));
+        }
+        self.sprout(
+            target,
+            source_branch,
+            create_tree_if_local,
+            stacked,
+            revision_id,
+        )
+    }
     /// Check if this control directory has a working tree.
     ///
     /// # Returns
@@ -595,6 +639,34 @@ impl<T: PyControlDir> ControlDir for T {
         >,
         Error,
     > {
+        self.sprout_with_depth(
+            target,
+            source_branch,
+            create_tree_if_local,
+            stacked,
+            revision_id,
+            None,
+        )
+    }
+
+    fn sprout_with_depth(
+        &self,
+        target: url::Url,
+        source_branch: Option<&dyn PyBranch>,
+        create_tree_if_local: Option<bool>,
+        stacked: Option<bool>,
+        revision_id: Option<&crate::RevisionId>,
+        depth: Option<u32>,
+    ) -> Result<
+        Box<
+            dyn ControlDir<
+                Branch = GenericBranch,
+                Repository = GenericRepository,
+                WorkingTree = crate::workingtree::GenericWorkingTree,
+            >,
+        >,
+        Error,
+    > {
         Python::attach(|py| {
             let kwargs = PyDict::new(py);
             if let Some(create_tree_if_local) = create_tree_if_local {
@@ -613,13 +685,14 @@ impl<T: PyControlDir> ControlDir for T {
             if let Some(revision_id) = revision_id {
                 kwargs.set_item("revision_id", revision_id.clone()).unwrap();
             }
+            if let Some(depth) = depth {
+                kwargs.set_item("depth", depth)?;
+            }
 
-            let cd = self.to_object(py).call_method(
-                py,
-                "sprout",
-                (target.to_string(),),
-                Some(&kwargs),
-            )?;
+            let this = self.to_object(py);
+            let cd = this
+                .call_method(py, "sprout", (target.to_string(),), Some(&kwargs))
+                .map_err(|e| depth_error(py, e, depth, "sprout_with_depth", &this))?;
             Ok(Box::new(GenericControlDir(cd))
                 as Box<
                     dyn ControlDir<
