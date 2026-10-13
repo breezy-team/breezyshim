@@ -1898,4 +1898,170 @@ mod tests {
         controldir.create_branch(None).unwrap();
         assert_eq!(controldir.branch_names().unwrap(), vec!["".to_string()]);
     }
+
+    // A new tree with three commits; returns the revision ids, oldest first.
+    fn tree_with_history(
+        path: &std::path::Path,
+        format: &str,
+    ) -> (GenericWorkingTree, Vec<crate::RevisionId>) {
+        let wt = create_standalone_workingtree(path, format).unwrap();
+        let revs = (0..3)
+            .map(|i| {
+                wt.build_commit()
+                    .message(&format!("commit {}", i))
+                    .committer("Test <test@example.com>")
+                    .allow_pointless(true)
+                    .commit()
+                    .unwrap()
+            })
+            .collect();
+        (wt, revs)
+    }
+
+    // Whether the installed Breezy knows `depth` (3.4 and later).
+    fn breezy_has_depth() -> bool {
+        Python::attach(|py| {
+            let sprout = py
+                .import("breezy.controldir")
+                .unwrap()
+                .getattr("ControlDir")
+                .unwrap()
+                .getattr("sprout")
+                .unwrap();
+            let names = sprout.getattr("__code__").unwrap();
+            names
+                .getattr("co_varnames")
+                .unwrap()
+                .contains("depth")
+                .unwrap()
+        })
+    }
+
+    fn is_unsupported<T>(result: &Result<T, Error>, method: &str) -> bool {
+        matches!(result, Err(Error::UnsupportedOperation(m, _)) if m == method)
+    }
+
+    #[test]
+    // Ignored on Windows due to dulwich permission errors when creating .git directories in CI
+    #[cfg_attr(target_os = "windows", ignore)]
+    fn test_sprout_with_depth_git() {
+        crate::init();
+        let src = tempfile::tempdir().unwrap();
+        let dst = tempfile::tempdir().unwrap();
+        let (wt, revs) = tree_with_history(src.path(), "git");
+
+        let result = wt.controldir().sprout_with_depth(
+            url::Url::from_directory_path(dst.path()).unwrap(),
+            None,
+            None,
+            None,
+            None,
+            Some(1),
+        );
+
+        if breezy_has_depth() {
+            let repo = result.unwrap().open_repository().unwrap();
+            assert_eq!(repo.all_revision_ids().unwrap(), vec![revs[2].clone()]);
+            assert!(!repo.has_revision(&revs[1]).unwrap());
+            assert!(dst.path().join(".git/shallow").exists());
+        } else {
+            assert!(is_unsupported(&result, "sprout_with_depth"), "{:?}", result);
+        }
+    }
+
+    #[test]
+    // Ignored on Windows due to dulwich permission errors when creating .git directories in CI
+    #[cfg_attr(target_os = "windows", ignore)]
+    fn test_sprout_with_depth_none() {
+        crate::init();
+        let src = tempfile::tempdir().unwrap();
+        let dst = tempfile::tempdir().unwrap();
+        let (wt, revs) = tree_with_history(src.path(), "git");
+
+        let cd = wt
+            .controldir()
+            .sprout_with_depth(
+                url::Url::from_directory_path(dst.path()).unwrap(),
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+
+        let repo = cd.open_repository().unwrap();
+        for rev in &revs {
+            assert!(repo.has_revision(rev).unwrap());
+        }
+        assert!(!dst.path().join(".git/shallow").exists());
+    }
+
+    #[test]
+    fn test_sprout_with_depth_bzr() {
+        crate::init();
+        let src = tempfile::tempdir().unwrap();
+        let dst = tempfile::tempdir().unwrap();
+        let (wt, _revs) = tree_with_history(src.path(), "2a");
+
+        let result = wt.controldir().sprout_with_depth(
+            url::Url::from_directory_path(dst.path()).unwrap(),
+            None,
+            None,
+            None,
+            None,
+            Some(1),
+        );
+
+        assert!(is_unsupported(&result, "sprout_with_depth"), "{:?}", result);
+    }
+
+    #[test]
+    // Ignored on Windows due to dulwich permission errors when creating .git directories in CI
+    #[cfg_attr(target_os = "windows", ignore)]
+    fn test_fetch_with_depth_git() {
+        crate::init();
+        let src = tempfile::tempdir().unwrap();
+        let dst = tempfile::tempdir().unwrap();
+        let (wt, revs) = tree_with_history(src.path(), "git");
+        let depth = if breezy_has_depth() { Some(1) } else { None };
+        let cd = wt
+            .controldir()
+            .sprout_with_depth(
+                url::Url::from_directory_path(dst.path()).unwrap(),
+                None,
+                None,
+                None,
+                None,
+                depth,
+            )
+            .unwrap();
+        let branch = cd.open_branch(None).unwrap();
+
+        let result = branch.fetch_with_depth(&wt.branch(), Some(&revs[2]), i32::MAX as u32);
+
+        if breezy_has_depth() {
+            result.unwrap();
+            let repo = cd.open_repository().unwrap();
+            for rev in &revs {
+                assert!(repo.has_revision(rev).unwrap());
+            }
+            assert!(!dst.path().join(".git/shallow").exists());
+        } else {
+            assert!(is_unsupported(&result, "fetch_with_depth"), "{:?}", result);
+        }
+    }
+
+    #[test]
+    fn test_fetch_with_depth_bzr() {
+        crate::init();
+        let src = tempfile::tempdir().unwrap();
+        let dst = tempfile::tempdir().unwrap();
+        let (wt, _revs) = tree_with_history(src.path(), "2a");
+        let other = create_standalone_workingtree(dst.path(), "2a").unwrap();
+
+        let result = other.branch().fetch_with_depth(&wt.branch(), None, 1);
+
+        assert!(is_unsupported(&result, "fetch_with_depth"), "{:?}", result);
+    }
 }
