@@ -1766,39 +1766,25 @@ fn test_already_branch() {
 
 #[test]
 fn test_redirect_requested_from_python() {
-    Python::attach(|py| {
-        let cls = py
-            .import("breezy.errors")
-            .unwrap()
-            .getattr("RedirectRequested")
-            .unwrap();
-
-        let err = PyErr::from_value(
-            cls.call1(("http://example.com/a", "http://example.com/b", true))
-                .unwrap(),
-        );
-        match Error::from(err) {
-            Error::RedirectRequested {
-                source,
-                target,
-                is_permanent,
-            } => {
-                assert_eq!(source.as_str(), "http://example.com/a");
-                assert_eq!(target.as_str(), "http://example.com/b");
-                assert!(is_permanent);
-            }
-            other => panic!("Expected RedirectRequested, got {:?}", other),
+    let err = RedirectRequested::new_err(("http://example.com/a", "http://example.com/b", true));
+    match Error::from(err) {
+        Error::RedirectRequested {
+            source,
+            target,
+            is_permanent,
+        } => {
+            assert_eq!(source.as_str(), "http://example.com/a");
+            assert_eq!(target.as_str(), "http://example.com/b");
+            assert!(is_permanent);
         }
+        other => panic!("Expected RedirectRequested, got {:?}", other),
+    }
 
-        let err = PyErr::from_value(
-            cls.call1(("http://example.com/a", "http://example.com/b"))
-                .unwrap(),
-        );
-        match Error::from(err) {
-            Error::RedirectRequested { is_permanent, .. } => assert!(!is_permanent),
-            other => panic!("Expected RedirectRequested, got {:?}", other),
-        }
-    });
+    let err = RedirectRequested::new_err(("http://example.com/a", "http://example.com/b"));
+    match Error::from(err) {
+        Error::RedirectRequested { is_permanent, .. } => assert!(!is_permanent),
+        other => panic!("Expected RedirectRequested, got {:?}", other),
+    }
 }
 
 #[test]
