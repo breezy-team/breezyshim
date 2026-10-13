@@ -870,7 +870,7 @@ impl<T: PyBranch> Branch for T {
         Python::attach(|py| {
             let kwargs = PyDict::new(py);
             if let Some(rev) = last_revision {
-                kwargs.set_item("last_revision", rev.clone())?;
+                kwargs.set_item("stop_revision", rev.clone())?;
             }
 
             // Try to downcast to concrete PyBranch types
