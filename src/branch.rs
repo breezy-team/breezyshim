@@ -390,6 +390,35 @@ pub trait Branch {
         from_branch: &dyn Branch,
         stop_revision: Option<&RevisionId>,
     ) -> Result<(), Error>;
+    /// Copy at most `depth` revisions of history from another branch into this branch.
+    ///
+    /// A large `depth` on a shallow branch fetches the history that is missing.
+    ///
+    /// # Parameters
+    ///
+    /// * `from_branch` - The branch to fetch revisions from.
+    /// * `stop_revision` - The last revision to fetch, or None for the tip.
+    /// * `depth` - How many revisions deep to fetch (1 is only the tip), or None for all.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or the error from Breezy: Breezy before 3.4 does
+    /// not take `depth`, and formats that can not fetch with a depth raise
+    /// `UnsupportedOperation`.
+    fn fetch_with_depth(
+        &self,
+        from_branch: &dyn Branch,
+        stop_revision: Option<&RevisionId>,
+        depth: Option<u32>,
+    ) -> Result<(), Error> {
+        if depth.is_some() {
+            return Err(Error::UnsupportedOperation(
+                "fetch_with_depth".to_string(),
+                std::any::type_name::<Self>().to_string(),
+            ));
+        }
+        self.fetch(from_branch, stop_revision)
+    }
     /// Update this branch to match the master branch.
     ///
     /// This is used when the branch is bound to synchronize changes.
@@ -867,10 +896,22 @@ impl<T: PyBranch> Branch for T {
         from_branch: &dyn Branch,
         stop_revision: Option<&RevisionId>,
     ) -> Result<(), Error> {
+        self.fetch_with_depth(from_branch, stop_revision, None)
+    }
+
+    fn fetch_with_depth(
+        &self,
+        from_branch: &dyn Branch,
+        stop_revision: Option<&RevisionId>,
+        depth: Option<u32>,
+    ) -> Result<(), Error> {
         Python::attach(|py| {
             let kwargs = PyDict::new(py);
             if let Some(rev) = stop_revision {
                 kwargs.set_item("stop_revision", rev.clone())?;
+            }
+            if let Some(depth) = depth {
+                kwargs.set_item("depth", depth)?;
             }
 
             // Try to downcast to concrete PyBranch types
