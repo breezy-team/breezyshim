@@ -1624,6 +1624,39 @@ fn test_unexpected_http_status_with_httpmessage() {
 }
 
 #[test]
+fn test_unexpected_http_status_with_relative_path() {
+    let err = UnexpectedHttpStatus::new_err(("repos/owner/repo", 500, Some("boom")));
+    let error: Error = err.into();
+    match error {
+        Error::UnexpectedHttpStatus {
+            url,
+            code,
+            extra,
+            headers,
+        } => {
+            assert_eq!(url, "repos/owner/repo");
+            assert_eq!(code, 500);
+            assert_eq!(extra, Some("boom".to_string()));
+            assert!(headers.is_empty(), "{:?}", headers);
+        }
+        other => panic!("Expected UnexpectedHttpStatus, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_bad_http_request_from_python() {
+    let err = BadHttpRequest::new_err(("repos/owner/repo", "Bad Request"));
+    let error: Error = err.into();
+    match error {
+        Error::BadHttpRequest(url, reason) => {
+            assert_eq!(url, "repos/owner/repo");
+            assert_eq!(reason, "Bad Request");
+        }
+        other => panic!("Expected BadHttpRequest, got {:?}", other),
+    }
+}
+
+#[test]
 fn test_invalid_http_response_with_httpmessage() {
     // Test that we can convert InvalidHttpResponse with HTTPMessage headers
     Python::attach(|py| {
