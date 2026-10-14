@@ -1,6 +1,6 @@
 //! The `ControlDir` class provides a high-level interface to control directories,
 //! e.g. ".bzr" or ".git" directories.
-use crate::branch::{py_tag_selector, Branch, GenericBranch, PyBranch};
+use crate::branch::{depth_error, py_tag_selector, Branch, GenericBranch, PyBranch};
 use crate::error::Error;
 use crate::repository::{GenericRepository, Repository};
 use crate::transport::{possible_transports_from_py, possible_transports_to_py, Transport};
@@ -234,6 +234,50 @@ pub trait ControlDir: std::fmt::Debug {
         >,
         Error,
     >;
+    /// Like `sprout`, but fetch at most `depth` revisions of history.
+    ///
+    /// # Parameters
+    ///
+    /// * `depth` - How many revisions deep to fetch (1 is only the tip), or None for all.
+    ///
+    /// The other parameters are those of `sprout`.
+    ///
+    /// # Returns
+    ///
+    /// The new control directory, or `Error::UnsupportedOperation` if the
+    /// format or the installed Breezy (before 3.4) can not fetch with a depth.
+    fn sprout_with_depth(
+        &self,
+        target: url::Url,
+        source_branch: Option<&dyn PyBranch>,
+        create_tree_if_local: Option<bool>,
+        stacked: Option<bool>,
+        revision_id: Option<&crate::RevisionId>,
+        depth: Option<u32>,
+    ) -> Result<
+        Box<
+            dyn ControlDir<
+                Branch = GenericBranch,
+                Repository = GenericRepository,
+                WorkingTree = crate::workingtree::GenericWorkingTree,
+            >,
+        >,
+        Error,
+    > {
+        if depth.is_some() {
+            return Err(Error::UnsupportedOperation(
+                "sprout_with_depth".to_string(),
+                std::any::type_name::<Self>().to_string(),
+            ));
+        }
+        self.sprout(
+            target,
+            source_branch,
+            create_tree_if_local,
+            stacked,
+            revision_id,
+        )
+    }
     /// Check if this control directory has a working tree.
     ///
     /// # Returns
@@ -595,6 +639,34 @@ impl<T: PyControlDir> ControlDir for T {
         >,
         Error,
     > {
+        self.sprout_with_depth(
+            target,
+            source_branch,
+            create_tree_if_local,
+            stacked,
+            revision_id,
+            None,
+        )
+    }
+
+    fn sprout_with_depth(
+        &self,
+        target: url::Url,
+        source_branch: Option<&dyn PyBranch>,
+        create_tree_if_local: Option<bool>,
+        stacked: Option<bool>,
+        revision_id: Option<&crate::RevisionId>,
+        depth: Option<u32>,
+    ) -> Result<
+        Box<
+            dyn ControlDir<
+                Branch = GenericBranch,
+                Repository = GenericRepository,
+                WorkingTree = crate::workingtree::GenericWorkingTree,
+            >,
+        >,
+        Error,
+    > {
         Python::attach(|py| {
             let kwargs = PyDict::new(py);
             if let Some(create_tree_if_local) = create_tree_if_local {
@@ -613,13 +685,14 @@ impl<T: PyControlDir> ControlDir for T {
             if let Some(revision_id) = revision_id {
                 kwargs.set_item("revision_id", revision_id.clone()).unwrap();
             }
+            if let Some(depth) = depth {
+                kwargs.set_item("depth", depth)?;
+            }
 
-            let cd = self.to_object(py).call_method(
-                py,
-                "sprout",
-                (target.to_string(),),
-                Some(&kwargs),
-            )?;
+            let this = self.to_object(py);
+            let cd = this
+                .call_method(py, "sprout", (target.to_string(),), Some(&kwargs))
+                .map_err(|e| depth_error(py, e, depth, "sprout_with_depth", &this))?;
             Ok(Box::new(GenericControlDir(cd))
                 as Box<
                     dyn ControlDir<
@@ -1824,5 +1897,171 @@ mod tests {
         controldir.create_repository(None).unwrap();
         controldir.create_branch(None).unwrap();
         assert_eq!(controldir.branch_names().unwrap(), vec!["".to_string()]);
+    }
+
+    // A new tree with three commits; returns the revision ids, oldest first.
+    fn tree_with_history(
+        path: &std::path::Path,
+        format: &str,
+    ) -> (GenericWorkingTree, Vec<crate::RevisionId>) {
+        let wt = create_standalone_workingtree(path, format).unwrap();
+        let revs = (0..3)
+            .map(|i| {
+                wt.build_commit()
+                    .message(&format!("commit {}", i))
+                    .committer("Test <test@example.com>")
+                    .allow_pointless(true)
+                    .commit()
+                    .unwrap()
+            })
+            .collect();
+        (wt, revs)
+    }
+
+    // Whether the installed Breezy knows `depth` (3.4 and later).
+    fn breezy_has_depth() -> bool {
+        Python::attach(|py| {
+            let sprout = py
+                .import("breezy.controldir")
+                .unwrap()
+                .getattr("ControlDir")
+                .unwrap()
+                .getattr("sprout")
+                .unwrap();
+            let names = sprout.getattr("__code__").unwrap();
+            names
+                .getattr("co_varnames")
+                .unwrap()
+                .contains("depth")
+                .unwrap()
+        })
+    }
+
+    fn is_unsupported<T>(result: &Result<T, Error>, method: &str) -> bool {
+        matches!(result, Err(Error::UnsupportedOperation(m, _)) if m == method)
+    }
+
+    #[test]
+    // Ignored on Windows due to dulwich permission errors when creating .git directories in CI
+    #[cfg_attr(target_os = "windows", ignore)]
+    fn test_sprout_with_depth_git() {
+        crate::init();
+        let src = tempfile::tempdir().unwrap();
+        let dst = tempfile::tempdir().unwrap();
+        let (wt, revs) = tree_with_history(src.path(), "git");
+
+        let result = wt.controldir().sprout_with_depth(
+            url::Url::from_directory_path(dst.path()).unwrap(),
+            None,
+            None,
+            None,
+            None,
+            Some(1),
+        );
+
+        if breezy_has_depth() {
+            let repo = result.unwrap().open_repository().unwrap();
+            assert_eq!(repo.all_revision_ids().unwrap(), vec![revs[2].clone()]);
+            assert!(!repo.has_revision(&revs[1]).unwrap());
+            assert!(dst.path().join(".git/shallow").exists());
+        } else {
+            assert!(is_unsupported(&result, "sprout_with_depth"), "{:?}", result);
+        }
+    }
+
+    #[test]
+    // Ignored on Windows due to dulwich permission errors when creating .git directories in CI
+    #[cfg_attr(target_os = "windows", ignore)]
+    fn test_sprout_with_depth_none() {
+        crate::init();
+        let src = tempfile::tempdir().unwrap();
+        let dst = tempfile::tempdir().unwrap();
+        let (wt, revs) = tree_with_history(src.path(), "git");
+
+        let cd = wt
+            .controldir()
+            .sprout_with_depth(
+                url::Url::from_directory_path(dst.path()).unwrap(),
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+
+        let repo = cd.open_repository().unwrap();
+        for rev in &revs {
+            assert!(repo.has_revision(rev).unwrap());
+        }
+        assert!(!dst.path().join(".git/shallow").exists());
+    }
+
+    #[test]
+    fn test_sprout_with_depth_bzr() {
+        crate::init();
+        let src = tempfile::tempdir().unwrap();
+        let dst = tempfile::tempdir().unwrap();
+        let (wt, _revs) = tree_with_history(src.path(), "2a");
+
+        let result = wt.controldir().sprout_with_depth(
+            url::Url::from_directory_path(dst.path()).unwrap(),
+            None,
+            None,
+            None,
+            None,
+            Some(1),
+        );
+
+        assert!(is_unsupported(&result, "sprout_with_depth"), "{:?}", result);
+    }
+
+    #[test]
+    // Ignored on Windows due to dulwich permission errors when creating .git directories in CI
+    #[cfg_attr(target_os = "windows", ignore)]
+    fn test_fetch_with_depth_git() {
+        crate::init();
+        let src = tempfile::tempdir().unwrap();
+        let dst = tempfile::tempdir().unwrap();
+        let (wt, revs) = tree_with_history(src.path(), "git");
+        let depth = if breezy_has_depth() { Some(1) } else { None };
+        let cd = wt
+            .controldir()
+            .sprout_with_depth(
+                url::Url::from_directory_path(dst.path()).unwrap(),
+                None,
+                None,
+                None,
+                None,
+                depth,
+            )
+            .unwrap();
+        let branch = cd.open_branch(None).unwrap();
+
+        let result = branch.fetch_with_depth(&wt.branch(), Some(&revs[2]), i32::MAX as u32);
+
+        if breezy_has_depth() {
+            result.unwrap();
+            let repo = cd.open_repository().unwrap();
+            for rev in &revs {
+                assert!(repo.has_revision(rev).unwrap());
+            }
+            assert!(!dst.path().join(".git/shallow").exists());
+        } else {
+            assert!(is_unsupported(&result, "fetch_with_depth"), "{:?}", result);
+        }
+    }
+
+    #[test]
+    fn test_fetch_with_depth_bzr() {
+        crate::init();
+        let src = tempfile::tempdir().unwrap();
+        let dst = tempfile::tempdir().unwrap();
+        let (wt, _revs) = tree_with_history(src.path(), "2a");
+        let other = create_standalone_workingtree(dst.path(), "2a").unwrap();
+
+        let result = other.branch().fetch_with_depth(&wt.branch(), None, 1);
+
+        assert!(is_unsupported(&result, "fetch_with_depth"), "{:?}", result);
     }
 }

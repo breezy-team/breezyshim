@@ -390,6 +390,31 @@ pub trait Branch {
         from_branch: &dyn Branch,
         last_revision: Option<&RevisionId>,
     ) -> Result<(), Error>;
+    /// Copy at most `depth` revisions of history from another branch into this branch.
+    ///
+    /// A large `depth` on a shallow branch fetches the history that is missing.
+    ///
+    /// # Parameters
+    ///
+    /// * `from_branch` - The branch to fetch revisions from.
+    /// * `stop_revision` - The last revision to fetch, or None for the tip.
+    /// * `depth` - How many revisions deep to fetch (1 is only the tip).
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or `Error::UnsupportedOperation` if the format
+    /// or the installed Breezy (before 3.4) can not fetch with a depth.
+    fn fetch_with_depth(
+        &self,
+        _from_branch: &dyn Branch,
+        _stop_revision: Option<&RevisionId>,
+        _depth: u32,
+    ) -> Result<(), Error> {
+        Err(Error::UnsupportedOperation(
+            "fetch_with_depth".to_string(),
+            std::any::type_name::<Self>().to_string(),
+        ))
+    }
     /// Update this branch to match the master branch.
     ///
     /// This is used when the branch is bound to synchronize changes.
@@ -889,6 +914,35 @@ impl<T: PyBranch> Branch for T {
         })
     }
 
+    fn fetch_with_depth(
+        &self,
+        from_branch: &dyn Branch,
+        stop_revision: Option<&RevisionId>,
+        depth: u32,
+    ) -> Result<(), Error> {
+        Python::attach(|py| {
+            let kwargs = PyDict::new(py);
+            if let Some(rev) = stop_revision {
+                kwargs.set_item("stop_revision", rev.clone())?;
+            }
+            kwargs.set_item("depth", depth)?;
+
+            let from = if let Some(gb) = from_branch.as_any().downcast_ref::<GenericBranch>() {
+                gb.to_object(py)
+            } else if let Some(mb) = from_branch.as_any().downcast_ref::<MemoryBranch>() {
+                mb.to_object(py)
+            } else {
+                return Err(Error::Other(pyo3::exceptions::PyTypeError::new_err(
+                    "Branch must be a PyBranch",
+                )));
+            };
+            let this = self.to_object(py);
+            this.call_method(py, "fetch", (from,), Some(&kwargs))
+                .map_err(|e| depth_error(py, e, Some(depth), "fetch_with_depth", &this))?;
+            Ok(())
+        })
+    }
+
     fn update(&self) -> Result<(), Error> {
         Python::attach(|py| {
             self.to_object(py).call_method0(py, "update")?;
@@ -1024,6 +1078,36 @@ impl MemoryBranch {
             MemoryBranch(o.unbind())
         })
     }
+}
+
+/// Turn the errors Breezy raises for an unsupported `depth` into `UnsupportedOperation`.
+pub(crate) fn depth_error(
+    py: Python,
+    err: PyErr,
+    depth: Option<u32>,
+    mname: &str,
+    obj: &Py<PyAny>,
+) -> Error {
+    let unsupported = if err.is_instance_of::<pyo3::exceptions::PyTypeError>(py) {
+        // Breezy before 3.4 does not know the keyword.
+        err.value(py)
+            .to_string()
+            .contains("unexpected keyword argument 'depth'")
+    } else {
+        // Breezy 3.4 raises this for formats that can not fetch with a depth.
+        err.get_type(py)
+            .name()
+            .is_ok_and(|n| n == "FetchDepthUnsupported")
+    };
+    if depth.is_none() || !unsupported {
+        return err.into();
+    }
+    let tname = obj
+        .bind(py)
+        .get_type()
+        .name()
+        .map_or_else(|_| "object".to_string(), |n| n.to_string());
+    Error::UnsupportedOperation(mname.to_string(), tname)
 }
 
 pub(crate) fn py_tag_selector(
