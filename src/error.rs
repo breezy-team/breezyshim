@@ -562,7 +562,12 @@ impl From<PyErr> for Error {
         pyo3::Python::attach(|py| {
             let value = err.value(py);
             if err.is_instance_of::<UnknownFormatError>(py) {
-                Error::UnknownFormat(value.getattr("format").unwrap().extract().unwrap())
+                let format = value.getattr("format").unwrap();
+                // Breezy passes the format line it read from disk as bytes
+                Error::UnknownFormat(match format.extract::<Vec<u8>>() {
+                    Ok(format) => String::from_utf8_lossy(&format).into_owned(),
+                    Err(_) => format.extract().unwrap(),
+                })
             } else if err.is_instance_of::<NotBranchError>(py) {
                 Error::NotBranchError(
                     value.getattr("path").unwrap().extract().unwrap(),
