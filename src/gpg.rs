@@ -245,11 +245,16 @@ impl GPGContext {
     /// A vector of GPG keys.
     pub fn keylist(&self, secret: bool) -> Vec<GPGKey> {
         Python::attach(|py| {
+            let kwargs = pyo3::types::PyDict::new(py);
+            kwargs.set_item("secret", secret).unwrap();
             self.0
-                .call_method1(py, "keylist", (secret,))
+                .call_method(py, "keylist", (), Some(&kwargs))
                 .unwrap()
-                .extract::<Vec<GPGKey>>(py)
+                .bind(py)
+                .try_iter()
                 .unwrap()
+                .map(|key| key.unwrap().extract::<GPGKey>().unwrap())
+                .collect()
         })
     }
 
@@ -272,3 +277,4 @@ impl GPGContext {
         })
     }
 }
+
