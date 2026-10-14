@@ -92,12 +92,15 @@ impl Drop for TestEnv {
                 std::env::remove_var(&key);
             }
             Python::attach(|py| {
-                let os = py.import("os").unwrap();
-                let environ = os.getattr("environ").unwrap();
-                if let Some(value) = value {
-                    environ.set_item(key, value).unwrap();
-                } else {
-                    environ.del_item(key).unwrap();
+                let restore = || -> PyResult<()> {
+                    let environ = py.import("os")?.getattr("environ")?;
+                    match value.as_ref() {
+                        Some(value) => environ.set_item(&key, value),
+                        None => environ.del_item(&key),
+                    }
+                };
+                if let Err(e) = restore() {
+                    log::warn!("failed to restore os.environ[{}] on teardown: {}", key, e);
                 }
             });
         }
@@ -166,5 +169,31 @@ mod tests {
                 "Joe Tester <joe@example.com>"
             );
         });
+    }
+
+    #[test]
+    #[serial]
+    fn test_testenv_drop_survives_missing_env_var() {
+        let old_cwd = std::env::current_dir().unwrap();
+        std::env::remove_var("BRZ_EMAIL");
+        let env = TestEnv::new();
+        // BRZ_EMAIL was unset, so drop restores it with del_item, which raises
+        // KeyError once the variable is gone.
+        Python::attach(|py| {
+            py.import("os")
+                .unwrap()
+                .getattr("environ")
+                .unwrap()
+                .del_item("BRZ_EMAIL")
+                .unwrap();
+        });
+
+        std::mem::drop(env);
+
+        assert!(std::env::var("BRZ_EMAIL").is_err());
+        assert_eq!(
+            std::env::current_dir().unwrap().canonicalize().unwrap(),
+            old_cwd.canonicalize().unwrap()
+        );
     }
 }
