@@ -1850,3 +1850,40 @@ fn test_redirect_requested() {
         assert!(RedirectRequested::matches(&p, py), "{}", p);
     });
 }
+
+#[test]
+fn test_fetch_depth_unsupported_from_python() {
+    Python::attach(|py| {
+        // Breezy 3.3 has no FetchDepthUnsupported.
+        let errors = py.import("breezy.errors").unwrap();
+        let Ok(cls) = errors.getattr("FetchDepthUnsupported") else {
+            return;
+        };
+        let interbranch = py
+            .eval(c"type('InterProbe', (), {})()", None, None)
+            .unwrap();
+        let err = PyErr::from_value(cls.call1((interbranch,)).unwrap());
+        match Error::from(err) {
+            Error::FetchDepthUnsupported(tname) => assert_eq!(tname, "InterProbe"),
+            other => panic!("Expected FetchDepthUnsupported, got {:?}", other),
+        }
+    });
+}
+
+#[test]
+fn test_fetch_depth_unsupported_roundtrip() {
+    Python::attach(|py| {
+        // Breezy 3.3 has no FetchDepthUnsupported.
+        let errors = py.import("breezy.errors").unwrap();
+        if errors.getattr("FetchDepthUnsupported").is_err() {
+            return;
+        }
+        let p: PyErr = Error::FetchDepthUnsupported("InterProbe".to_string()).into();
+        assert!(FetchDepthUnsupported::matches(&p, py), "{}", p);
+        assert!(p.is_instance_of::<UnsupportedOperation>(py), "{}", p);
+        match Error::from(p) {
+            Error::FetchDepthUnsupported(tname) => assert_eq!(tname, "InterProbe"),
+            other => panic!("Expected FetchDepthUnsupported, got {:?}", other),
+        }
+    });
+}
