@@ -8,7 +8,6 @@ use pyo3::IntoPyObjectExt;
 use pyo3::PyErr;
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
-use url::Url;
 
 /// Resolve an exception type by trying several modules in order.
 ///
@@ -312,8 +311,8 @@ pub enum Error {
     ),
     /// An unexpected HTTP status code was received.
     UnexpectedHttpStatus {
-        /// The URL that was requested.
-        url: url::Url,
+        /// The URL or path that was requested.
+        url: String,
         /// The HTTP status code that was received.
         code: u16,
         /// Additional information about the error.
@@ -324,7 +323,7 @@ pub enum Error {
     /// A timeout occurred.
     Timeout,
     /// A bad HTTP request was made.
-    BadHttpRequest(Url, String),
+    BadHttpRequest(String, String),
     /// The transport is not possible.
     TransportNotPossible(String),
     /// The format is not compatible.
@@ -548,6 +547,12 @@ fn extract_headers(headers_obj: &Bound<PyAny>) -> std::collections::HashMap<Stri
     headers
 }
 
+fn get_exception_path(value: &Bound<PyAny>) -> String {
+    let path = value.getattr("path").unwrap();
+    path.extract::<String>()
+        .unwrap_or_else(|_| path.to_string())
+}
+
 fn get_exception_msg(value: &Bound<PyAny>) -> String {
     value
         .getattr("msg")
@@ -759,31 +764,23 @@ impl From<PyErr> for Error {
                         value.getattr("errno").unwrap().extract::<i32>().unwrap(),
                     ),
                 )
+            } else if BadHttpRequest::matches(&err, py) {
+                Error::BadHttpRequest(
+                    get_exception_path(value),
+                    value
+                        .getattr("reason")
+                        .ok()
+                        .and_then(|reason| reason.extract().ok())
+                        .unwrap_or_else(|| get_exception_msg(value)),
+                )
             } else if UnexpectedHttpStatus::matches(&err, py) {
                 let headers_obj = value.getattr("headers").unwrap();
                 Error::UnexpectedHttpStatus {
-                    url: value
-                        .getattr("path")
-                        .unwrap()
-                        .extract::<String>()
-                        .unwrap()
-                        .parse()
-                        .unwrap(),
+                    url: get_exception_path(value),
                     code: value.getattr("code").unwrap().extract().unwrap(),
                     extra: value.getattr("extra").unwrap().extract().unwrap(),
                     headers: extract_headers(&headers_obj),
                 }
-            } else if BadHttpRequest::matches(&err, py) {
-                Error::BadHttpRequest(
-                    value
-                        .getattr("path")
-                        .unwrap()
-                        .extract::<String>()
-                        .unwrap()
-                        .parse()
-                        .unwrap(),
-                    value.getattr("reason").unwrap().extract().unwrap(),
-                )
             } else if TransportNotPossible::matches(&err, py) {
                 Error::TransportNotPossible(get_exception_msg(value))
             } else if err.is_instance_of::<IncompatibleFormat>(py) {
@@ -996,11 +993,9 @@ impl From<Error> for PyErr {
                 code,
                 extra,
                 headers,
-            } => UnexpectedHttpStatus::new_err((url.to_string(), code, extra, headers)),
+            } => UnexpectedHttpStatus::new_err((url, code, extra, headers)),
             Error::Timeout => pyo3::exceptions::PyTimeoutError::new_err(()),
-            Error::BadHttpRequest(url, reason) => {
-                BadHttpRequest::new_err((url.to_string(), reason))
-            }
+            Error::BadHttpRequest(url, reason) => BadHttpRequest::new_err((url, reason)),
             Error::TransportNotPossible(e) => TransportNotPossible::new_err((e,)),
             Error::IncompatibleFormat(a, b) => IncompatibleFormat::new_err((a, b)),
             Error::NoSuchRevision(rev) => {
@@ -1572,7 +1567,7 @@ fn test_transform_rename_failed() {
 #[test]
 fn test_unexpected_http_status() {
     let e = Error::UnexpectedHttpStatus {
-        url: url::Url::parse("http://example.com").unwrap(),
+        url: "http://example.com".to_string(),
         code: 404,
         extra: Some("bar".to_string()),
         headers: std::collections::HashMap::new(),
@@ -1616,7 +1611,7 @@ fn test_unexpected_http_status_with_httpmessage() {
                 extra,
                 headers,
             } => {
-                assert_eq!(url.to_string(), "http://example.com/");
+                assert_eq!(url, "http://example.com");
                 assert_eq!(code, 404);
                 assert_eq!(extra, Some("Not Found".to_string()));
                 // Verify headers were extracted (at least the ones we set)
@@ -1626,6 +1621,39 @@ fn test_unexpected_http_status_with_httpmessage() {
             _ => panic!("Expected UnexpectedHttpStatus error, got {:?}", rust_err),
         }
     });
+}
+
+#[test]
+fn test_unexpected_http_status_with_relative_path() {
+    let err = UnexpectedHttpStatus::new_err(("repos/owner/repo", 500, Some("boom")));
+    let error: Error = err.into();
+    match error {
+        Error::UnexpectedHttpStatus {
+            url,
+            code,
+            extra,
+            headers,
+        } => {
+            assert_eq!(url, "repos/owner/repo");
+            assert_eq!(code, 500);
+            assert_eq!(extra, Some("boom".to_string()));
+            assert!(headers.is_empty(), "{:?}", headers);
+        }
+        other => panic!("Expected UnexpectedHttpStatus, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_bad_http_request_from_python() {
+    let err = BadHttpRequest::new_err(("repos/owner/repo", "Bad Request"));
+    let error: Error = err.into();
+    match error {
+        Error::BadHttpRequest(url, reason) => {
+            assert_eq!(url, "repos/owner/repo");
+            assert_eq!(reason, "Bad Request");
+        }
+        other => panic!("Expected BadHttpRequest, got {:?}", other),
+    }
 }
 
 #[test]
@@ -1676,7 +1704,7 @@ fn test_timeout() {
 
 #[test]
 fn test_bad_http_request() {
-    let e = Error::BadHttpRequest("http://example.com".parse().unwrap(), "foo".to_string());
+    let e = Error::BadHttpRequest("http://example.com".to_string(), "foo".to_string());
     let p: PyErr = e.into();
     // Verify that p is an instance of BadHttpRequest
     Python::attach(|py| {
