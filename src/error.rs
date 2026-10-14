@@ -151,6 +151,10 @@ versioned_exception!(
     ("breezy.errors", "InvalidHttpResponse"),
     ("dromedary.errors", "InvalidHttpResponse")
 );
+versioned_exception!(
+    FetchDepthUnsupported,
+    ("breezy.errors", "FetchDepthUnsupported")
+);
 import_exception!(breezy.errors, UnknownFormatError);
 import_exception!(breezy.errors, NotBranchError);
 import_exception!(breezy.errors, ReadOnlyError);
@@ -284,6 +288,8 @@ pub enum Error {
     MergeProposalExists(url::Url, Option<url::Url>),
     /// The operation is not supported.
     UnsupportedOperation(String, String),
+    /// Fetching with a depth limit is not supported by the named type.
+    FetchDepthUnsupported(String),
     /// A protected branch hook declined the push.
     ProtectedBranchHookDeclined(String),
     /// No repository is present at the specified location.
@@ -453,6 +459,7 @@ impl std::fmt::Display for Error {
                 }
             }
             Self::UnsupportedOperation(a, b) => write!(f, "Unsupported operation: {} on {}", a, b),
+            Self::FetchDepthUnsupported(t) => write!(f, "Fetch depth not supported by {}", t),
             Self::ProtectedBranchHookDeclined(e) => {
                 write!(f, "Protected branch hook declined: {}", e)
             }
@@ -554,6 +561,13 @@ fn extract_headers(headers_obj: &Bound<PyAny>) -> std::collections::HashMap<Stri
         }
     }
     headers
+}
+
+/// The attribute as a string, or the name of its type when it is not a string.
+fn get_type_name_attr(value: &Bound<PyAny>, attr: &str) -> PyResult<String> {
+    let obj = value.getattr(attr)?;
+    obj.extract::<String>()
+        .or_else(|_| Ok(obj.get_type().name()?.to_string()))
 }
 
 fn get_exception_msg(value: &Bound<PyAny>) -> String {
@@ -686,6 +700,12 @@ impl From<PyErr> for Error {
                     source_url.parse().unwrap(),
                     target_url.map(|u| u.parse().unwrap()),
                 )
+            } else if FetchDepthUnsupported::matches(&err, py) {
+                // A subclass of UnsupportedOperation that sets neither mname nor tname.
+                match get_type_name_attr(value, "interbranch") {
+                    Ok(tname) => Error::FetchDepthUnsupported(tname),
+                    Err(_) => Error::Other(err),
+                }
             } else if err.is_instance_of::<UnsupportedOperation>(py) {
                 Error::UnsupportedOperation(
                     value.getattr("mname").unwrap().extract().unwrap(),
@@ -972,6 +992,7 @@ impl From<Error> for PyErr {
             Error::UnsupportedOperation(mname, tname) => {
                 UnsupportedOperation::new_err((mname, tname))
             }
+            Error::FetchDepthUnsupported(t) => FetchDepthUnsupported::new_err((t,)),
             Error::ProtectedBranchHookDeclined(msg) => ProtectedBranchHookDeclined::new_err((msg,)),
             Error::NoRepositoryPresent => {
                 Python::attach(|py| NoRepositoryPresent::new_err((py.None(),)))
@@ -1873,5 +1894,42 @@ fn test_redirect_requested() {
     // Verify that p is an instance of RedirectRequested
     Python::attach(|py| {
         assert!(RedirectRequested::matches(&p, py), "{}", p);
+    });
+}
+
+#[test]
+fn test_fetch_depth_unsupported_from_python() {
+    Python::attach(|py| {
+        // Breezy 3.3 has no FetchDepthUnsupported.
+        let errors = py.import("breezy.errors").unwrap();
+        let Ok(cls) = errors.getattr("FetchDepthUnsupported") else {
+            return;
+        };
+        let interbranch = py
+            .eval(c"type('InterProbe', (), {})()", None, None)
+            .unwrap();
+        let err = PyErr::from_value(cls.call1((interbranch,)).unwrap());
+        match Error::from(err) {
+            Error::FetchDepthUnsupported(tname) => assert_eq!(tname, "InterProbe"),
+            other => panic!("Expected FetchDepthUnsupported, got {:?}", other),
+        }
+    });
+}
+
+#[test]
+fn test_fetch_depth_unsupported_roundtrip() {
+    Python::attach(|py| {
+        // Breezy 3.3 has no FetchDepthUnsupported.
+        let errors = py.import("breezy.errors").unwrap();
+        if errors.getattr("FetchDepthUnsupported").is_err() {
+            return;
+        }
+        let p: PyErr = Error::FetchDepthUnsupported("InterProbe".to_string()).into();
+        assert!(FetchDepthUnsupported::matches(&p, py), "{}", p);
+        assert!(p.is_instance_of::<UnsupportedOperation>(py), "{}", p);
+        match Error::from(p) {
+            Error::FetchDepthUnsupported(tname) => assert_eq!(tname, "InterProbe"),
+            other => panic!("Expected FetchDepthUnsupported, got {:?}", other),
+        }
     });
 }
