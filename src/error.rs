@@ -145,6 +145,15 @@ versioned_exception!(
     ("breezy.transport", "FileExists"),
     ("dromedary.errors", "FileExists")
 );
+versioned_exception!(BindingUnsupported, ("breezy.branch", "BindingUnsupported"));
+versioned_exception!(
+    FetchLimitUnsupported,
+    ("breezy.errors", "FetchLimitUnsupported")
+);
+versioned_exception!(
+    SharedRepositoriesUnsupported,
+    ("breezy.errors", "SharedRepositoriesUnsupported")
+);
 versioned_exception!(
     InvalidHttpResponse,
     ("breezy.errors", "InvalidHttpResponse"),
@@ -291,6 +300,12 @@ pub enum Error {
     FetchDepthUnsupported(String),
     /// A protected branch hook declined the push.
     ProtectedBranchHookDeclined(String),
+    /// The branch at this URL does not support binding.
+    BindingUnsupported(url::Url),
+    /// Fetching with a revision limit is not supported by the named type.
+    FetchLimitUnsupported(String),
+    /// Shared repositories are not supported by the named format.
+    SharedRepositoriesUnsupported(String),
     /// No repository is present at the specified location.
     NoRepositoryPresent,
     /// Failed to acquire a lock.
@@ -458,6 +473,13 @@ impl std::fmt::Display for Error {
             Self::FetchDepthUnsupported(t) => write!(f, "Fetch depth not supported by {}", t),
             Self::ProtectedBranchHookDeclined(e) => {
                 write!(f, "Protected branch hook declined: {}", e)
+            }
+            Self::BindingUnsupported(url) => {
+                write!(f, "Binding not supported by branch at {}", url)
+            }
+            Self::FetchLimitUnsupported(t) => write!(f, "Fetch limit not supported by {}", t),
+            Self::SharedRepositoriesUnsupported(t) => {
+                write!(f, "Shared repositories not supported by {}", t)
             }
             Self::NoRepositoryPresent => write!(f, "No repository present"),
             Self::LockFailed(w) => write!(f, "Lock failed: {}", w),
@@ -679,6 +701,26 @@ impl From<PyErr> for Error {
                     Error::UnsupportedForge(url.extract::<String>().unwrap().parse().unwrap())
                 } else {
                     Error::UnsupportedForge(branch.extract::<String>().unwrap().parse().unwrap())
+                }
+            } else if BindingUnsupported::matches(&err, py) {
+                // Subclasses of UnsupportedOperation that set neither mname nor tname.
+                match value
+                    .getattr("url")
+                    .and_then(|u| u.extract::<String>())
+                    .map(|u| u.parse())
+                {
+                    Ok(Ok(url)) => Error::BindingUnsupported(url),
+                    _ => Error::Other(err),
+                }
+            } else if FetchLimitUnsupported::matches(&err, py) {
+                match get_type_name_attr(value, "interbranch") {
+                    Ok(tname) => Error::FetchLimitUnsupported(tname),
+                    Err(_) => Error::Other(err),
+                }
+            } else if SharedRepositoriesUnsupported::matches(&err, py) {
+                match get_type_name_attr(value, "format") {
+                    Ok(tname) => Error::SharedRepositoriesUnsupported(tname),
+                    Err(_) => Error::Other(err),
                 }
             } else if err.is_instance_of::<MergeProposalExists>(py) {
                 let source_url: String = value.getattr("url").unwrap().extract().unwrap();
@@ -981,6 +1023,19 @@ impl From<Error> for PyErr {
             }
             Error::FetchDepthUnsupported(t) => FetchDepthUnsupported::new_err((t,)),
             Error::ProtectedBranchHookDeclined(msg) => ProtectedBranchHookDeclined::new_err((msg,)),
+            Error::BindingUnsupported(url) => Python::attach(|py| {
+                // BindingUnsupported reads user_url from the branch it is given.
+                let kwargs = pyo3::types::PyDict::new(py);
+                kwargs.set_item("user_url", url.to_string())?;
+                let branch = py
+                    .import("types")?
+                    .getattr("SimpleNamespace")?
+                    .call((), Some(&kwargs))?;
+                Ok::<_, PyErr>(BindingUnsupported::new_err((branch.unbind(),)))
+            })
+            .unwrap_or_else(|e| e),
+            Error::FetchLimitUnsupported(t) => FetchLimitUnsupported::new_err((t,)),
+            Error::SharedRepositoriesUnsupported(t) => SharedRepositoriesUnsupported::new_err((t,)),
             Error::NoRepositoryPresent => {
                 Python::attach(|py| NoRepositoryPresent::new_err((py.None(),)))
             }
@@ -1490,6 +1545,92 @@ fn test_error_protected_branch_hook_declined() {
     Python::attach(|py| {
         assert!(p.is_instance_of::<ProtectedBranchHookDeclined>(py), "{}", p);
     });
+}
+
+#[test]
+// Ignored on Windows due to dulwich permission errors when creating .git directories in CI
+#[cfg_attr(target_os = "windows", ignore)]
+fn test_binding_unsupported_from_bind() {
+    use crate::branch::Branch;
+    let td = tempfile::tempdir().unwrap();
+    let url = |name: &str| Url::from_directory_path(td.path().join(name)).unwrap();
+    let local = crate::controldir::create_branch_convenience_as_generic(&url("local"), None, "git")
+        .unwrap();
+    let master =
+        crate::controldir::create_branch_convenience_as_generic(&url("master"), None, "git")
+            .unwrap();
+    match local.bind(&master) {
+        Err(Error::BindingUnsupported(u)) => assert_eq!(u, local.get_user_url()),
+        other => panic!("Expected BindingUnsupported, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_binding_unsupported_roundtrip() {
+    let url: Url = "file:///probe/".parse().unwrap();
+    let p: PyErr = Error::BindingUnsupported(url.clone()).into();
+    Python::attach(|py| {
+        assert!(BindingUnsupported::matches(&p, py), "{}", p);
+        assert!(p.is_instance_of::<UnsupportedOperation>(py), "{}", p);
+    });
+    match Error::from(p) {
+        Error::BindingUnsupported(u) => assert_eq!(u, url),
+        other => panic!("Expected BindingUnsupported, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_fetch_limit_unsupported_from_python() {
+    Python::attach(|py| {
+        let interbranch = py
+            .eval(c"type('InterProbe', (), {})()", None, None)
+            .unwrap();
+        let err = FetchLimitUnsupported::new_err((interbranch.unbind(),));
+        match Error::from(err) {
+            Error::FetchLimitUnsupported(tname) => assert_eq!(tname, "InterProbe"),
+            other => panic!("Expected FetchLimitUnsupported, got {:?}", other),
+        }
+    });
+}
+
+#[test]
+fn test_fetch_limit_unsupported_roundtrip() {
+    let p: PyErr = Error::FetchLimitUnsupported("InterProbe".to_string()).into();
+    Python::attach(|py| {
+        assert!(FetchLimitUnsupported::matches(&p, py), "{}", p);
+        assert!(p.is_instance_of::<UnsupportedOperation>(py), "{}", p);
+    });
+    match Error::from(p) {
+        Error::FetchLimitUnsupported(tname) => assert_eq!(tname, "InterProbe"),
+        other => panic!("Expected FetchLimitUnsupported, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_shared_repositories_unsupported_from_python() {
+    Python::attach(|py| {
+        let format = py
+            .eval(c"type('FormatProbe', (), {})()", None, None)
+            .unwrap();
+        let err = SharedRepositoriesUnsupported::new_err((format.unbind(),));
+        match Error::from(err) {
+            Error::SharedRepositoriesUnsupported(tname) => assert_eq!(tname, "FormatProbe"),
+            other => panic!("Expected SharedRepositoriesUnsupported, got {:?}", other),
+        }
+    });
+}
+
+#[test]
+fn test_shared_repositories_unsupported_roundtrip() {
+    let p: PyErr = Error::SharedRepositoriesUnsupported("FormatProbe".to_string()).into();
+    Python::attach(|py| {
+        assert!(SharedRepositoriesUnsupported::matches(&p, py), "{}", p);
+        assert!(p.is_instance_of::<UnsupportedOperation>(py), "{}", p);
+    });
+    match Error::from(p) {
+        Error::SharedRepositoriesUnsupported(tname) => assert_eq!(tname, "FormatProbe"),
+        other => panic!("Expected SharedRepositoriesUnsupported, got {:?}", other),
+    }
 }
 
 #[test]
