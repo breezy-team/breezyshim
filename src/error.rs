@@ -1533,6 +1533,92 @@ fn test_error_protected_branch_hook_declined() {
 }
 
 #[test]
+// Ignored on Windows due to dulwich permission errors when creating .git directories in CI
+#[cfg_attr(target_os = "windows", ignore)]
+fn test_binding_unsupported_from_bind() {
+    use crate::branch::Branch;
+    let td = tempfile::tempdir().unwrap();
+    let url = |name: &str| Url::from_directory_path(td.path().join(name)).unwrap();
+    let local = crate::controldir::create_branch_convenience_as_generic(&url("local"), None, "git")
+        .unwrap();
+    let master =
+        crate::controldir::create_branch_convenience_as_generic(&url("master"), None, "git")
+            .unwrap();
+    match local.bind(&master) {
+        Err(Error::BindingUnsupported(u)) => assert_eq!(u, local.get_user_url()),
+        other => panic!("Expected BindingUnsupported, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_binding_unsupported_roundtrip() {
+    let url: Url = "file:///probe/".parse().unwrap();
+    let p: PyErr = Error::BindingUnsupported(url.clone()).into();
+    Python::attach(|py| {
+        assert!(BindingUnsupported::matches(&p, py), "{}", p);
+        assert!(p.is_instance_of::<UnsupportedOperation>(py), "{}", p);
+    });
+    match Error::from(p) {
+        Error::BindingUnsupported(u) => assert_eq!(u, url),
+        other => panic!("Expected BindingUnsupported, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_fetch_limit_unsupported_from_python() {
+    Python::attach(|py| {
+        let interbranch = py
+            .eval(c"type('InterProbe', (), {})()", None, None)
+            .unwrap();
+        let err = FetchLimitUnsupported::new_err((interbranch.unbind(),));
+        match Error::from(err) {
+            Error::FetchLimitUnsupported(tname) => assert_eq!(tname, "InterProbe"),
+            other => panic!("Expected FetchLimitUnsupported, got {:?}", other),
+        }
+    });
+}
+
+#[test]
+fn test_fetch_limit_unsupported_roundtrip() {
+    let p: PyErr = Error::FetchLimitUnsupported("InterProbe".to_string()).into();
+    Python::attach(|py| {
+        assert!(FetchLimitUnsupported::matches(&p, py), "{}", p);
+        assert!(p.is_instance_of::<UnsupportedOperation>(py), "{}", p);
+    });
+    match Error::from(p) {
+        Error::FetchLimitUnsupported(tname) => assert_eq!(tname, "InterProbe"),
+        other => panic!("Expected FetchLimitUnsupported, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_shared_repositories_unsupported_from_python() {
+    Python::attach(|py| {
+        let format = py
+            .eval(c"type('FormatProbe', (), {})()", None, None)
+            .unwrap();
+        let err = SharedRepositoriesUnsupported::new_err((format.unbind(),));
+        match Error::from(err) {
+            Error::SharedRepositoriesUnsupported(tname) => assert_eq!(tname, "FormatProbe"),
+            other => panic!("Expected SharedRepositoriesUnsupported, got {:?}", other),
+        }
+    });
+}
+
+#[test]
+fn test_shared_repositories_unsupported_roundtrip() {
+    let p: PyErr = Error::SharedRepositoriesUnsupported("FormatProbe".to_string()).into();
+    Python::attach(|py| {
+        assert!(SharedRepositoriesUnsupported::matches(&p, py), "{}", p);
+        assert!(p.is_instance_of::<UnsupportedOperation>(py), "{}", p);
+    });
+    match Error::from(p) {
+        Error::SharedRepositoriesUnsupported(tname) => assert_eq!(tname, "FormatProbe"),
+        other => panic!("Expected SharedRepositoriesUnsupported, got {:?}", other),
+    }
+}
+
+#[test]
 #[ignore] // NoRepositoryPresent takes an argument, which is not implemented
 fn test_error_no_repository_present() {
     let e = Error::NoRepositoryPresent;
