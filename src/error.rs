@@ -150,6 +150,10 @@ versioned_exception!(
     ("breezy.errors", "InvalidHttpResponse"),
     ("dromedary.errors", "InvalidHttpResponse")
 );
+versioned_exception!(
+    FetchDepthUnsupported,
+    ("breezy.errors", "FetchDepthUnsupported")
+);
 import_exception!(breezy.errors, UnknownFormatError);
 import_exception!(breezy.errors, NotBranchError);
 import_exception!(breezy.errors, ReadOnlyError);
@@ -283,6 +287,8 @@ pub enum Error {
     MergeProposalExists(url::Url, Option<url::Url>),
     /// The operation is not supported.
     UnsupportedOperation(String, String),
+    /// Fetching with a depth limit is not supported by the named type.
+    FetchDepthUnsupported(String),
     /// A protected branch hook declined the push.
     ProtectedBranchHookDeclined(String),
     /// No repository is present at the specified location.
@@ -449,6 +455,7 @@ impl std::fmt::Display for Error {
                 }
             }
             Self::UnsupportedOperation(a, b) => write!(f, "Unsupported operation: {} on {}", a, b),
+            Self::FetchDepthUnsupported(t) => write!(f, "Fetch depth not supported by {}", t),
             Self::ProtectedBranchHookDeclined(e) => {
                 write!(f, "Protected branch hook declined: {}", e)
             }
@@ -678,6 +685,15 @@ impl From<PyErr> for Error {
                     source_url.parse().unwrap(),
                     target_url.map(|u| u.parse().unwrap()),
                 )
+            } else if FetchDepthUnsupported::matches(&err, py) {
+                // A subclass of UnsupportedOperation that sets neither mname nor tname.
+                match value.getattr("interbranch").and_then(|i| {
+                    i.extract::<String>()
+                        .or_else(|_| Ok(i.get_type().name()?.to_string()))
+                }) {
+                    Ok(tname) => Error::FetchDepthUnsupported(tname),
+                    Err(_) => Error::Other(err),
+                }
             } else if err.is_instance_of::<UnsupportedOperation>(py) {
                 Error::UnsupportedOperation(
                     value.getattr("mname").unwrap().extract().unwrap(),
@@ -959,6 +975,7 @@ impl From<Error> for PyErr {
             Error::UnsupportedOperation(mname, tname) => {
                 UnsupportedOperation::new_err((mname, tname))
             }
+            Error::FetchDepthUnsupported(t) => FetchDepthUnsupported::new_err((t,)),
             Error::ProtectedBranchHookDeclined(msg) => ProtectedBranchHookDeclined::new_err((msg,)),
             Error::NoRepositoryPresent => {
                 Python::attach(|py| NoRepositoryPresent::new_err((py.None(),)))
