@@ -1047,6 +1047,35 @@ fn test_error_unknownformat() {
 }
 
 #[test]
+fn test_unknown_format_from_python() {
+    crate::init();
+    let td = tempfile::tempdir().unwrap();
+    let url = url::Url::from_directory_path(td.path()).unwrap();
+    crate::controldir::create_branch_convenience_as_generic(
+        &url,
+        None,
+        &crate::controldir::ControlDirFormat::default(),
+    )
+    .unwrap();
+    // Breezy reads this file as bytes; the invalid UTF-8 must not panic either
+    std::fs::write(td.path().join(".bzr/branch/format"), b"junk \xff\n").unwrap();
+    match crate::branch::open_as_generic(&url) {
+        Err(Error::UnknownFormat(format)) => assert_eq!(format, "junk \u{fffd}\n"),
+        Err(other) => panic!("Expected UnknownFormat, got {:?}", other),
+        Ok(_) => panic!("Expected UnknownFormat, got a branch"),
+    }
+}
+
+#[test]
+fn test_unknown_format_str_from_python() {
+    let p: PyErr = Error::UnknownFormat("foo".to_string()).into();
+    match Error::from(p) {
+        Error::UnknownFormat(format) => assert_eq!(format, "foo"),
+        other => panic!("Expected UnknownFormat, got {:?}", other),
+    }
+}
+
+#[test]
 fn test_error_notbrancherror() {
     let e = Error::NotBranchError("foo".to_string(), Some("bar".to_string()));
     let p: PyErr = e.into();
