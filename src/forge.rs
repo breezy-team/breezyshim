@@ -1165,6 +1165,108 @@ class BrokenProposal:
         assert!(mp.get_target_project().is_err());
     }
 
+    const KINDS: &std::ffi::CStr = cr#"
+from breezy.forge import Forge
+
+
+class WorkingForge(Forge):
+    def __init__(self, label):
+        self.label = label
+
+    @classmethod
+    def iter_instances(cls):
+        yield cls("one")
+        yield cls("two")
+
+
+class FailingForge(WorkingForge):
+    @classmethod
+    def iter_instances(cls):
+        yield cls("three")
+        raise RuntimeError("can not list instances")
+"#;
+
+    const TEST_KINDS: [&str; 3] = ["aaa-missing", "aab-failing", "aac-working"];
+
+    /// Takes the kinds of forge a test registered back out of breezy's registry.
+    struct UnregisterKinds;
+
+    impl Drop for UnregisterKinds {
+        fn drop(&mut self) {
+            Python::attach(|py| {
+                if let Ok(forges) = py.import("breezy.forge").and_then(|m| m.getattr("forges")) {
+                    for kind in TEST_KINDS {
+                        let _ = forges.call_method1("remove", (kind,));
+                    }
+                }
+            });
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_try_iter_forge_instances() {
+        Python::attach(|py| {
+            let m = PyModule::from_code(
+                py,
+                KINDS,
+                c"breezyshim_forge_kinds.py",
+                c"breezyshim_forge_kinds",
+            )
+            .unwrap();
+            let forges = py
+                .import("breezy.forge")
+                .unwrap()
+                .getattr("forges")
+                .unwrap();
+            forges
+                .call_method1(
+                    "register_lazy",
+                    (TEST_KINDS[0], "breezyshim_no_such_module", "MissingForge"),
+                )
+                .unwrap();
+            for (kind, cls) in TEST_KINDS[1..].iter().zip(["FailingForge", "WorkingForge"]) {
+                forges
+                    .call_method1("register", (*kind, m.getattr(cls).unwrap()))
+                    .unwrap();
+            }
+        });
+        let _unregister = UnregisterKinds;
+
+        let found = super::try_iter_forge_instances()
+            .unwrap()
+            .take(5)
+            .map(|instance| match instance {
+                Ok(forge) => Ok(Python::attach(|py| {
+                    forge
+                        .0
+                        .getattr(py, "label")
+                        .unwrap()
+                        .extract::<String>(py)
+                        .unwrap()
+                })),
+                Err((kind, e)) => Err((kind, e.to_string())),
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            found,
+            vec![
+                Err((
+                    "aaa-missing".to_string(),
+                    "Error::Other(ModuleNotFoundError: No module named 'breezyshim_no_such_module')"
+                        .to_string()
+                )),
+                Ok("three".to_string()),
+                Err((
+                    "aab-failing".to_string(),
+                    "Error::Other(RuntimeError: can not list instances)".to_string()
+                )),
+                Ok("one".to_string()),
+                Ok("two".to_string()),
+            ]
+        );
+    }
+
     #[test]
     fn test_determine_title() {
         let description = "This is a test description";
