@@ -952,6 +952,63 @@ pub fn get_proposal_by_url(url: &url::Url) -> Result<MergeProposal, Error> {
     })
 }
 
+/// Iterator over the instances of each registered kind of forge.
+struct ForgeInstanceResults {
+    registry: Py<PyAny>,
+    kinds: std::vec::IntoIter<String>,
+    current: Option<(String, Py<PyAny>)>,
+}
+
+impl Iterator for ForgeInstanceResults {
+    type Item = Result<Forge, (String, Error)>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        Python::attach(|py| loop {
+            if let Some((kind, instances)) = self.current.as_ref() {
+                match instances.call_method0(py, "__next__") {
+                    Ok(instance) => return Some(Ok(Forge(instance))),
+                    Err(e) => {
+                        let kind = kind.clone();
+                        self.current = None;
+                        if !e.is_instance_of::<pyo3::exceptions::PyStopIteration>(py) {
+                            return Some(Err((kind, e.into())));
+                        }
+                    }
+                }
+            }
+            let kind = self.kinds.next()?;
+            let instances = self
+                .registry
+                .bind(py)
+                .call_method1("get", (kind.as_str(),))
+                .and_then(|cls| cls.call_method0("iter_instances"))
+                .and_then(|instances| instances.try_iter());
+            match instances {
+                Ok(instances) => self.current = Some((kind, instances.into_any().unbind())),
+                Err(e) => return Some(Err((kind, e.into()))),
+            }
+        })
+    }
+}
+
+/// Returns every forge instance; a kind of forge that fails to load or list them yields `Err((kind, error))`.
+pub fn try_iter_forge_instances(
+) -> Result<impl Iterator<Item = Result<Forge, (String, Error)>>, Error> {
+    Python::attach(|py| {
+        let registry = py.import("breezy.forge")?.getattr("forges")?;
+        let kinds = registry
+            .call_method0("keys")?
+            .try_iter()?
+            .map(|kind| kind?.extract::<String>())
+            .collect::<PyResult<Vec<_>>>()?;
+        Ok(ForgeInstanceResults {
+            registry: registry.unbind(),
+            kinds: kinds.into_iter(),
+            current: None,
+        })
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::{Forge, MergeProposal};
