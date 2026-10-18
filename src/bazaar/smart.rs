@@ -221,4 +221,56 @@ mod tests {
         let _ = proto.next_read_size().unwrap();
         let _ = buffer.into_bytes().unwrap();
     }
+
+    /// Encode a version 3 smart request for `verb` on `path`.
+    fn request_v3(verb: &str, path: &str) -> Vec<u8> {
+        let args = format!("l{}:{}{}:{}e", verb.len(), verb, path.len(), path);
+        let mut request = b"bzr message 3 (bzr 1.6)\n".to_vec();
+        request.extend(2u32.to_be_bytes());
+        request.extend(b"des");
+        request.extend((args.len() as u32).to_be_bytes());
+        request.extend(args.as_bytes());
+        request.push(b'e');
+        request
+    }
+
+    /// Strip the version line and the headers (they name the Breezy version) off a v3 response.
+    fn response_body(response: &[u8]) -> &[u8] {
+        let start = response.iter().position(|b| *b == b'\n').unwrap() + 1;
+        let len = u32::from_be_bytes(response[start..start + 4].try_into().unwrap()) as usize;
+        &response[start + 4 + len..]
+    }
+
+    /// A smart request is served from a chroot of the backing transport.
+    #[test]
+    fn chrooted_request() {
+        crate::init();
+        crate::init_bzr();
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir(tmp.path().join("root")).unwrap();
+        crate::controldir::create(tmp.path().join("root/trunk").as_path(), "2a", None).unwrap();
+        let url = url::Url::from_directory_path(tmp.path().join("root")).unwrap();
+        let server = crate::transport::chroot::ChrootServer::new(
+            &crate::transport::get_transport(&url, None).unwrap(),
+        )
+        .unwrap();
+        server.start_server().unwrap();
+        let root = crate::transport::get_transport(&server.get_url().unwrap(), None).unwrap();
+
+        let buffer = ResponseBuffer::new().unwrap();
+        let (factory, unused) =
+            detect_protocol_factory(&request_v3("BzrDir.open_2.1", "trunk/")).unwrap();
+        let proto = factory
+            .build(&root, buffer.write_func().unwrap(), "/", &root)
+            .unwrap();
+        proto.accept_bytes(&unused).unwrap();
+        assert_eq!(proto.next_read_size().unwrap(), 0);
+        let response = buffer.into_bytes().unwrap();
+        server.stop_server().unwrap();
+
+        assert_eq!(
+            response_body(&response),
+            b"oSs\x00\x00\x00\x0bl3:yes2:noee".as_slice()
+        );
+    }
 }

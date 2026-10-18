@@ -40,3 +40,28 @@ impl ChrootServer {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::ChrootServer;
+    use crate::transport::get_transport;
+
+    #[test]
+    fn test_chroot_server() {
+        let td = tempfile::tempdir().unwrap();
+        std::fs::create_dir(td.path().join("root")).unwrap();
+        std::fs::write(td.path().join("root/README"), b"").unwrap();
+        let backing_url = url::Url::from_directory_path(td.path().join("root")).unwrap();
+        let backing = get_transport(&backing_url, None).unwrap();
+
+        let server = ChrootServer::new(&backing).unwrap();
+        server.start_server().unwrap();
+        let url = server.get_url().unwrap();
+        let chroot = get_transport(&url, None).unwrap();
+        assert_eq!(chroot.base(), url);
+        assert!(chroot.has("README").unwrap());
+
+        server.stop_server().unwrap();
+        assert!(get_transport(&url, None).is_err());
+    }
+}
