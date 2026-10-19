@@ -4,6 +4,8 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 use std::path::{Path, PathBuf};
 
+pub mod chroot;
+
 /// A transport represents a way to access content in a branch.
 pub struct Transport(Py<PyAny>);
 
