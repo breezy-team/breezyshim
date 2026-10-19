@@ -12,20 +12,31 @@ use pyo3::prelude::*;
 ///
 /// # Returns
 ///
-/// A new URL with the specified parameters added.
+/// A new URL with the specified parameters added, or an error if Breezy
+/// rejects the parameters (for example a value containing a comma).
+pub fn try_join_segment_parameters(
+    url: &url::Url,
+    parameters: std::collections::HashMap<String, String>,
+) -> Result<url::Url, crate::error::Error> {
+    pyo3::Python::attach(|py| {
+        let urlutils = py.import("breezy.urlutils")?;
+        let joined = urlutils
+            .call_method1("join_segment_parameters", (url.to_string(), parameters))?
+            .extract::<String>()?;
+        Ok(url::Url::parse(joined.as_str())?)
+    })
+}
+
+/// Join segment parameters to a URL.
+///
+/// # Panics
+///
+/// If Breezy rejects the parameters; see [`try_join_segment_parameters`].
 pub fn join_segment_parameters(
     url: &url::Url,
     parameters: std::collections::HashMap<String, String>,
 ) -> url::Url {
-    pyo3::Python::attach(|py| {
-        let urlutils = py.import("breezy.urlutils").unwrap();
-        urlutils
-            .call_method1("join_segment_parameters", (url.to_string(), parameters))
-            .unwrap()
-            .extract::<String>()
-            .map(|s| url::Url::parse(s.as_str()).unwrap())
-            .unwrap()
-    })
+    try_join_segment_parameters(url, parameters).unwrap()
 }
 
 /// Split segment parameters from a URL.
@@ -38,19 +49,29 @@ pub fn join_segment_parameters(
 ///
 /// # Returns
 ///
-/// A tuple containing the URL without parameters and a map of the parameters.
+/// A tuple containing the URL without parameters and a map of the parameters,
+/// or an error if a segment parameter is malformed (for example `,foo`).
+pub fn try_split_segment_parameters(
+    url: &url::Url,
+) -> Result<(url::Url, std::collections::HashMap<String, String>), crate::error::Error> {
+    pyo3::Python::attach(|py| {
+        let urlutils = py.import("breezy.urlutils")?;
+        let (base, parameters) = urlutils
+            .call_method1("split_segment_parameters", (url.to_string(),))?
+            .extract::<(String, std::collections::HashMap<String, String>)>()?;
+        Ok((url::Url::parse(base.as_str())?, parameters))
+    })
+}
+
+/// Split segment parameters from a URL.
+///
+/// # Panics
+///
+/// If a segment parameter is malformed; see [`try_split_segment_parameters`].
 pub fn split_segment_parameters(
     url: &url::Url,
 ) -> (url::Url, std::collections::HashMap<String, String>) {
-    pyo3::Python::attach(|py| {
-        let urlutils = py.import("breezy.urlutils").unwrap();
-        urlutils
-            .call_method1("split_segment_parameters", (url.to_string(),))
-            .unwrap()
-            .extract::<(String, std::collections::HashMap<String, String>)>()
-            .map(|(s, m)| (url::Url::parse(s.as_str()).unwrap(), m))
-            .unwrap()
-    })
+    try_split_segment_parameters(url).unwrap()
 }
 
 fn char_is_safe(c: char) -> bool {
@@ -166,5 +187,21 @@ mod tests {
             result,
             url::Url::parse("http://example.com/blah,a=1,b=2").unwrap()
         );
+    }
+
+    #[test]
+    fn test_try_split_segment_parameters_malformed() {
+        let url = url::Url::parse("file:///tmp/repo,foo").unwrap();
+        assert!(matches!(
+            try_split_segment_parameters(&url),
+            Err(crate::error::Error::InvalidURL(..))
+        ));
+    }
+
+    #[test]
+    fn test_try_join_segment_parameters_comma() {
+        let url = url::Url::parse("file:///tmp/repo").unwrap();
+        let params = std::collections::HashMap::from([("branch".to_string(), "a,b".to_string())]);
+        assert!(try_join_segment_parameters(&url, params).is_err());
     }
 }
