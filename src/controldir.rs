@@ -1007,22 +1007,12 @@ impl ControlDirFormat {
 pub fn open_tree_or_branch(
     location: impl AsLocation,
     name: Option<&str>,
-    possible_transports: Option<&mut Vec<Transport>>,
 ) -> Result<(Option<GenericWorkingTree>, Box<dyn Branch>), Error> {
     Python::attach(|py| {
         let m = py.import("breezy.controldir")?;
         let cd = m.getattr("ControlDir")?;
 
         let kwargs = PyDict::new(py);
-        if let Some(possible_transports) = possible_transports {
-            kwargs.set_item(
-                "possible_transports",
-                possible_transports
-                    .iter()
-                    .map(|t| t.as_pyobject().clone_ref(py))
-                    .collect::<Vec<Py<PyAny>>>(),
-            )?;
-        }
 
         let ret = cd.call_method(
             "open_tree_or_branch",
@@ -1604,7 +1594,6 @@ mod tests {
         .unwrap();
         let (wt, branch) = open_tree_or_branch(
             &url::Url::from_directory_path(tmp_dir.path()).unwrap(),
-            None,
             None,
         )
         .unwrap();
