@@ -1014,21 +1014,19 @@ pub fn open_tree_or_branch(
         let cd = m.getattr("ControlDir")?;
 
         let kwargs = PyDict::new(py);
-        if let Some(possible_transports) = possible_transports {
-            kwargs.set_item(
-                "possible_transports",
-                possible_transports
-                    .iter()
-                    .map(|t| t.as_pyobject().clone_ref(py))
-                    .collect::<Vec<Py<PyAny>>>(),
-            )?;
+        let list = possible_transports
+            .as_deref()
+            .map(|t| possible_transports_to_py(py, t))
+            .transpose()?;
+        if let Some(list) = list.as_ref() {
+            kwargs.set_item("possible_transports", list)?;
         }
-
-        let ret = cd.call_method(
-            "open_tree_or_branch",
-            (location.as_location(), name),
-            Some(&kwargs),
-        )?;
+        // breezy's open_tree_or_branch takes no possible_transports, so do its two steps here.
+        let controldir = cd.call_method("open", (location.as_location(),), Some(&kwargs));
+        if let (Some(list), Some(possible_transports)) = (list.as_ref(), possible_transports) {
+            possible_transports_from_py(list, possible_transports);
+        }
+        let ret = controldir?.call_method1("_get_tree_branch", (name,))?;
 
         let (tree, branch) = ret.extract::<(Option<Py<PyAny>>, Py<PyAny>)>()?;
         let branch = Box::new(GenericBranch::from(branch)) as Box<dyn Branch>;
@@ -1621,6 +1619,27 @@ mod tests {
             branch.get_user_url(),
             url::Url::from_directory_path(tmp_dir.path()).unwrap()
         );
+    }
+
+    #[test]
+    fn test_open_tree_or_branch_fills_possible_transports() {
+        crate::init();
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let urls = ["a", "b"].map(|name| {
+            let path = tmp_dir.path().join(name);
+            std::fs::create_dir(&path).unwrap();
+            let url = url::Url::from_directory_path(path).unwrap();
+            create_branch_convenience_as_generic(&url, None, &ControlDirFormat::default()).unwrap();
+            url
+        });
+
+        let mut possible_transports = vec![];
+        open_tree_or_branch(&urls[0], None, Some(&mut possible_transports)).unwrap();
+        let bases: Vec<_> = possible_transports.iter().map(|t| t.base()).collect();
+        assert_eq!(bases, vec![urls[0].clone()]);
+        open_tree_or_branch(&urls[1], None, Some(&mut possible_transports)).unwrap();
+        let bases: Vec<_> = possible_transports.iter().map(|t| t.base()).collect();
+        assert_eq!(bases, urls.to_vec());
     }
 
     #[test]
