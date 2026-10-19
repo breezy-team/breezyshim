@@ -1112,6 +1112,26 @@ fn test_error_unsupportedprotocol() {
 }
 
 #[test]
+fn test_connection_errors_from_python() {
+    crate::init();
+    Python::attach(|py| {
+        let mut classes =
+            vec![versioned_exception(py, TransportConnectionError::CANDIDATES).unwrap()];
+        // Breezy 3.4 has no ConnectionReset.
+        if let Ok(cls) = versioned_exception(py, ConnectionReset::CANDIDATES) {
+            classes.push(cls);
+        }
+        for cls in classes {
+            let err = PyErr::from_value(cls.bind(py).call1(("Connection lost",)).unwrap());
+            match Error::from(err) {
+                Error::ConnectionError(_) => {}
+                other => panic!("Expected ConnectionError, got {:?}", other),
+            }
+        }
+    });
+}
+
+#[test]
 fn test_error_unsupportedprotocol_from_python() {
     Python::attach(|py| {
         let err = py
