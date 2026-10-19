@@ -105,7 +105,10 @@ pub use transport::{get_transport, Transport};
 /// Tree-related traits and types
 pub use tree::{RevisionTree, Tree, WorkingTree};
 /// URL utility functions
-pub use urlutils::{join_segment_parameters, split_segment_parameters};
+pub use urlutils::{
+    join_segment_parameters, split_segment_parameters, try_join_segment_parameters,
+    try_split_segment_parameters,
+};
 /// Workspace functions
 pub use workspace::reset_tree;
 
