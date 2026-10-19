@@ -154,7 +154,7 @@ impl MergeProposal {
     pub fn url(&self) -> Result<url::Url, crate::error::Error> {
         Python::attach(|py| {
             let url = self.0.getattr(py, "url")?;
-            Ok(url.extract::<String>(py)?.parse().unwrap())
+            Ok(url.extract::<String>(py)?.parse()?)
         })
     }
 
@@ -489,9 +489,8 @@ impl Forge {
             let branch_obj = branch.to_object(py);
             let url = forge_obj
                 .call_method1(py, "get_web_url", (&branch_obj,))?
-                .extract::<String>(py)
-                .unwrap();
-            Ok(url.parse::<url::Url>().unwrap())
+                .extract::<String>(py)?;
+            Ok(url.parse::<url::Url>()?)
         })
     }
 
@@ -765,7 +764,7 @@ impl Forge {
             let (b, u): (Py<PyAny>, String) = forge_obj
                 .call_method(py, "publish_derived", (), Some(&kwargs))?
                 .extract(py)?;
-            Ok((GenericBranch::from(b), u.parse::<url::Url>().unwrap()))
+            Ok((GenericBranch::from(b), u.parse::<url::Url>()?))
         })
     }
 
@@ -810,7 +809,7 @@ impl Forge {
                 .extract(py)?;
             Ok((
                 Box::new(GenericBranch::from(b)) as Box<dyn Branch>,
-                u.parse::<url::Url>().unwrap(),
+                u.parse::<url::Url>()?,
             ))
         })
     }
@@ -834,11 +833,9 @@ impl Forge {
         Python::attach(|py| {
             let url = self
                 .to_object()
-                .call_method1(py, "get_user_url", (user,))
-                .unwrap()
-                .extract::<String>(py)
-                .unwrap();
-            Ok(url.parse::<url::Url>().unwrap())
+                .call_method1(py, "get_user_url", (user,))?
+                .extract::<String>(py)?;
+            Ok(url.parse::<url::Url>()?)
         })
     }
 
@@ -847,10 +844,8 @@ impl Forge {
         Python::attach(|py| {
             let user = self
                 .to_object()
-                .call_method0(py, "get_current_user")
-                .unwrap()
-                .extract::<Option<String>>(py)
-                .unwrap();
+                .call_method0(py, "get_current_user")?
+                .extract::<Option<String>>(py)?;
             Ok(user)
         })
     }
