@@ -188,4 +188,20 @@ mod tests {
             url::Url::parse("http://example.com/blah,a=1,b=2").unwrap()
         );
     }
+
+    #[test]
+    fn test_try_split_segment_parameters_malformed() {
+        let url = url::Url::parse("file:///tmp/repo,foo").unwrap();
+        assert!(matches!(
+            try_split_segment_parameters(&url),
+            Err(crate::error::Error::InvalidURL(..))
+        ));
+    }
+
+    #[test]
+    fn test_try_join_segment_parameters_comma() {
+        let url = url::Url::parse("file:///tmp/repo").unwrap();
+        let params = std::collections::HashMap::from([("branch".to_string(), "a,b".to_string())]);
+        assert!(try_join_segment_parameters(&url, params).is_err());
+    }
 }
