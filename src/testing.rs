@@ -146,6 +146,28 @@ mod tests {
 
     #[test]
     #[serial]
+    fn test_pause_cycle_collector() {
+        let isenabled = || {
+            Python::attach(|py| {
+                py.import("gc")
+                    .unwrap()
+                    .call_method0("isenabled")
+                    .unwrap()
+                    .extract::<bool>()
+                    .unwrap()
+            })
+        };
+        let paused = pause_cycle_collector();
+        assert!(!isenabled());
+        let nested = pause_cycle_collector();
+        drop(nested);
+        assert!(!isenabled());
+        drop(paused);
+        assert!(isenabled());
+    }
+
+    #[test]
+    #[serial]
     fn test_testenv() {
         let env = TestEnv::new();
         assert_eq!(env.home_dir, env.temp_dir.path().join("home"));
