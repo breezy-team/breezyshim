@@ -113,6 +113,32 @@ impl Default for TestEnv {
     }
 }
 
+/// Keeps Python's cycle collector switched off until it is dropped.
+pub struct CycleCollectorPaused {
+    was_enabled: bool,
+}
+
+/// Switch off Python's cycle collector until the returned guard is dropped.
+pub fn pause_cycle_collector() -> CycleCollectorPaused {
+    crate::init();
+    Python::attach(|py| {
+        let gc = py.import("gc").unwrap();
+        let was_enabled = gc.call_method0("isenabled").unwrap().extract().unwrap();
+        gc.call_method0("disable").unwrap();
+        CycleCollectorPaused { was_enabled }
+    })
+}
+
+impl Drop for CycleCollectorPaused {
+    fn drop(&mut self) {
+        if self.was_enabled {
+            Python::attach(|py| {
+                py.import("gc").unwrap().call_method0("enable").unwrap();
+            });
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
