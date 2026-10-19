@@ -154,7 +154,7 @@ impl MergeProposal {
     pub fn url(&self) -> Result<url::Url, crate::error::Error> {
         Python::attach(|py| {
             let url = self.0.getattr(py, "url")?;
-            Ok(url.extract::<String>(py)?.parse().unwrap())
+            Ok(url.extract::<String>(py)?.parse()?)
         })
     }
 
@@ -489,9 +489,8 @@ impl Forge {
             let branch_obj = branch.to_object(py);
             let url = forge_obj
                 .call_method1(py, "get_web_url", (&branch_obj,))?
-                .extract::<String>(py)
-                .unwrap();
-            Ok(url.parse::<url::Url>().unwrap())
+                .extract::<String>(py)?;
+            Ok(url.parse::<url::Url>()?)
         })
     }
 
@@ -765,7 +764,7 @@ impl Forge {
             let (b, u): (Py<PyAny>, String) = forge_obj
                 .call_method(py, "publish_derived", (), Some(&kwargs))?
                 .extract(py)?;
-            Ok((GenericBranch::from(b), u.parse::<url::Url>().unwrap()))
+            Ok((GenericBranch::from(b), u.parse::<url::Url>()?))
         })
     }
 
@@ -810,7 +809,7 @@ impl Forge {
                 .extract(py)?;
             Ok((
                 Box::new(GenericBranch::from(b)) as Box<dyn Branch>,
-                u.parse::<url::Url>().unwrap(),
+                u.parse::<url::Url>()?,
             ))
         })
     }
@@ -834,11 +833,9 @@ impl Forge {
         Python::attach(|py| {
             let url = self
                 .to_object()
-                .call_method1(py, "get_user_url", (user,))
-                .unwrap()
-                .extract::<String>(py)
-                .unwrap();
-            Ok(url.parse::<url::Url>().unwrap())
+                .call_method1(py, "get_user_url", (user,))?
+                .extract::<String>(py)?;
+            Ok(url.parse::<url::Url>()?)
         })
     }
 
@@ -847,10 +844,8 @@ impl Forge {
         Python::attach(|py| {
             let user = self
                 .to_object()
-                .call_method0(py, "get_current_user")
-                .unwrap()
-                .extract::<Option<String>>(py)
-                .unwrap();
+                .call_method0(py, "get_current_user")?
+                .extract::<Option<String>>(py)?;
             Ok(user)
         })
     }
@@ -984,6 +979,18 @@ class BrokenForge:
     def delete_project(self, name):
         raise RuntimeError("no such project")
 
+    def get_current_user(self):
+        raise RuntimeError("bad credentials")
+
+    def get_user_url(self, user):
+        raise RuntimeError("bad credentials")
+
+    def get_web_url(self, branch):
+        return "not a url"
+
+    def publish_derived(self, **kwargs):
+        return (None, "not a url")
+
 
 class FakeProposal:
     def get_source_project(self):
@@ -994,6 +1001,8 @@ class FakeProposal:
 
 
 class BrokenProposal:
+    url = "not a url"
+
     def get_source_project(self):
         raise RuntimeError("no source project")
 
@@ -1068,6 +1077,28 @@ class BrokenProposal:
         let mp = MergeProposal::from(Python::attach(|py| fake(py, "FakeProposal")));
         assert_eq!(mp.get_source_project().unwrap(), Some("me/one".to_string()));
         assert_eq!(mp.get_target_project().unwrap(), None);
+    }
+
+    #[test]
+    fn test_forge_errors_do_not_panic() {
+        use crate::error::Error;
+        let forge = Forge::from(Python::attach(|py| fake(py, "BrokenForge")));
+        assert!(matches!(forge.get_current_user(), Err(Error::Other(_))));
+        assert!(matches!(
+            forge.get_user_url("someone"),
+            Err(Error::Other(_))
+        ));
+        let branch = crate::branch::GenericBranch::from(Python::attach(|py| py.None()));
+        assert!(matches!(
+            forge.get_web_url(&branch),
+            Err(Error::InvalidURL(..))
+        ));
+        assert!(matches!(
+            forge.publish_derived_as_generic_branch(&branch, &branch, "x", None, None, None, None),
+            Err(Error::InvalidURL(..))
+        ));
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "BrokenProposal")));
+        assert!(matches!(mp.url(), Err(Error::InvalidURL(..))));
     }
 
     #[test]
