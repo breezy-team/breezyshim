@@ -49,7 +49,7 @@ fn versioned_exception(py: Python<'_>, candidates: &[(&str, &str)]) -> PyResult<
 /// underlying Python exception lazily from the first available candidate
 /// module, instead of panicking when the first one is missing.
 macro_rules! versioned_exception {
-    ($name:ident, $(($module:expr, $attr:expr)),+ $(,)?) => {
+    ($(#[$attr_meta:meta])* $name:ident, $(($module:expr, $attr:expr)),+ $(,)?) => {
         #[allow(non_camel_case_types)]
         pub(crate) struct $name;
 
@@ -57,6 +57,7 @@ macro_rules! versioned_exception {
             const CANDIDATES: &'static [(&'static str, &'static str)] =
                 &[$(($module, $attr)),+];
 
+            $(#[$attr_meta])*
             pub(crate) fn new_err<A>(args: A) -> PyErr
             where
                 A: for<'py> IntoPyObject<'py> + Send + Sync + 'static,
@@ -152,6 +153,17 @@ versioned_exception!(
     ("breezy.errors", "InvalidHttpResponse"),
     ("dromedary.errors", "InvalidHttpResponse")
 );
+versioned_exception!(
+    #[cfg_attr(not(test), expect(dead_code))]
+    TransportConnectionError,
+    ("breezy.errors", "ConnectionError"),
+    ("dromedary.errors", "ConnectionError")
+);
+versioned_exception!(
+    #[cfg_attr(not(test), expect(dead_code))]
+    ConnectionReset,
+    ("breezy.errors", "ConnectionReset")
+);
 import_exception!(breezy.errors, UnknownFormatError);
 import_exception!(breezy.errors, NotBranchError);
 import_exception!(breezy.errors, ReadOnlyError);
@@ -196,17 +208,6 @@ import_exception!(breezy.controldir, BranchReferenceLoop);
 import_exception!(breezy.errors, ConflictsInTree);
 import_exception!(breezy.errors, NoRoundtrippingSupport);
 import_exception!(breezy.inter, NoCompatibleInter);
-
-lazy_static::lazy_static! {
-    /// Static reference to the BreezyConnectionError class, if it exists.
-    ///
-    /// This is only present in Breezy versions before 4.0.
-    pub static ref BreezyConnectionError: Option<Py<PyAny>> = { Python::attach(|py| {
-        let m = py.import("breezy.errors").unwrap();
-        m.getattr("ConnectionError").ok().map(|x| x.unbind())
-    })
-};
-}
 
 /// Error type for the Breezy Rust wrapper.
 ///
@@ -845,17 +846,8 @@ impl From<PyErr> for Error {
                 Error::ConflictsInTree
             } else if err.is_instance_of::<SourceNotDerivedFromTarget>(py) {
                 Error::SourceNotDerivedFromTarget
-            } else if BreezyConnectionError
-                .as_ref()
-                .and_then(|cls| {
-                    Python::attach(|py| {
-                        Some(
-                            err.is_instance_of::<PyAny>(py)
-                                && err.value(py).is_instance(cls.bind(py)).unwrap(),
-                        )
-                    })
-                })
-                .unwrap_or(false)
+            } else if TransportConnectionError::matches(&err, py)
+                || ConnectionReset::matches(&err, py)
             {
                 Error::ConnectionError(err.to_string())
             } else if err.is_instance_of::<ReadOnlyError>(py) {
@@ -1137,6 +1129,24 @@ fn test_error_unsupportedprotocol() {
     // Verify that p is an instance of UnsupportedProtocol
     Python::attach(|py| {
         assert!(UnsupportedProtocol::matches(&p, py));
+    });
+}
+
+#[test]
+fn test_connection_errors_from_python() {
+    crate::init();
+    Python::attach(|py| {
+        let mut errs = vec![TransportConnectionError::new_err(("Connection lost",))];
+        // Breezy 3.4 has no ConnectionReset.
+        if versioned_exception(py, ConnectionReset::CANDIDATES).is_ok() {
+            errs.push(ConnectionReset::new_err(("Connection lost",)));
+        }
+        for err in errs {
+            match Error::from(err) {
+                Error::ConnectionError(_) => {}
+                other => panic!("Expected ConnectionError, got {:?}", other),
+            }
+        }
     });
 }
 
