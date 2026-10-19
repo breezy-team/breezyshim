@@ -1767,11 +1767,9 @@ fn test_already_branch() {
 #[test]
 fn test_redirect_requested_from_python() {
     Python::attach(|py| {
-        let cls = py
-            .import("breezy.errors")
+        let cls = versioned_exception(py, RedirectRequested::CANDIDATES)
             .unwrap()
-            .getattr("RedirectRequested")
-            .unwrap();
+            .into_bound(py);
 
         let err = PyErr::from_value(
             cls.call1(("http://example.com/a", "http://example.com/b", true))
