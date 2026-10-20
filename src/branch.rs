@@ -380,7 +380,7 @@ pub trait Branch {
     /// # Parameters
     ///
     /// * `from_branch` - The branch to fetch revisions from.
-    /// * `last_revision` - The last revision to fetch, or None to fetch all.
+    /// * `stop_revision` - The last revision to fetch, or None to fetch all.
     ///
     /// # Returns
     ///
@@ -388,7 +388,7 @@ pub trait Branch {
     fn fetch(
         &self,
         from_branch: &dyn Branch,
-        last_revision: Option<&RevisionId>,
+        stop_revision: Option<&RevisionId>,
     ) -> Result<(), Error>;
     /// Update this branch to match the master branch.
     ///
@@ -865,12 +865,12 @@ impl<T: PyBranch> Branch for T {
     fn fetch(
         &self,
         from_branch: &dyn Branch,
-        last_revision: Option<&RevisionId>,
+        stop_revision: Option<&RevisionId>,
     ) -> Result<(), Error> {
         Python::attach(|py| {
             let kwargs = PyDict::new(py);
-            if let Some(rev) = last_revision {
-                kwargs.set_item("last_revision", rev.clone())?;
+            if let Some(rev) = stop_revision {
+                kwargs.set_item("stop_revision", rev.clone())?;
             }
 
             // Try to downcast to concrete PyBranch types
@@ -1210,5 +1210,32 @@ mod tests {
         let branch = MemoryBranch::new(&branch.repository(), None, &RevisionId::null());
 
         assert_eq!(branch.last_revision(), RevisionId::null());
+    }
+
+    #[test]
+    fn test_fetch_stop_revision() {
+        use crate::workingtree::WorkingTree;
+
+        crate::init();
+        let src = tempfile::tempdir().unwrap();
+        let dst = tempfile::tempdir().unwrap();
+        let wt = crate::controldir::create_standalone_workingtree(src.path(), "2a").unwrap();
+        let revs: Vec<RevisionId> = (0..2)
+            .map(|i| {
+                wt.build_commit()
+                    .message(&format!("commit {}", i))
+                    .committer("Test <test@example.com>")
+                    .allow_pointless(true)
+                    .commit()
+                    .unwrap()
+            })
+            .collect();
+        let other = crate::controldir::create_standalone_workingtree(dst.path(), "2a").unwrap();
+
+        other.branch().fetch(&wt.branch(), Some(&revs[0])).unwrap();
+
+        let repo = other.branch().repository();
+        assert!(repo.has_revision(&revs[0]).unwrap());
+        assert!(!repo.has_revision(&revs[1]).unwrap());
     }
 }
