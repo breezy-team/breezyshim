@@ -483,15 +483,12 @@ pub fn upstream_version_add_revision(
         let m = py.import("breezy.plugins.debian.upstream.branch").unwrap();
         let upstream_version_add_revision = m.getattr("upstream_version_add_revision").unwrap();
         Ok(upstream_version_add_revision
-            .call_method1(
-                "upstream_version_add_revision",
-                (
-                    upstream_branch.to_object(py),
-                    version_string,
-                    revid.clone(),
-                    sep,
-                ),
-            )?
+            .call1((
+                upstream_branch.to_object(py),
+                version_string,
+                revid.clone(),
+                sep,
+            ))?
             .extract()?)
     })
 }
@@ -554,4 +551,39 @@ pub fn run_dist_command(
 
         Ok(run_dist_command.call((), Some(&kwargs))?.extract()?)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::controldir::create_standalone_workingtree;
+    use crate::workingtree::WorkingTree;
+
+    #[test]
+    #[serial_test::serial]
+    fn test_upstream_version_add_revision() {
+        let env = crate::testing::TestEnv::new();
+        if Python::attach(|py| py.import("breezy.plugins.debian").is_err()) {
+            // Skip test if brz-debian plugin is not installed
+            return;
+        }
+        let wt = create_standalone_workingtree(&env.working_dir, "2a").unwrap();
+        wt.build_commit()
+            .message("one")
+            .allow_pointless(true)
+            .commit()
+            .unwrap();
+        let revid = wt
+            .build_commit()
+            .message("two")
+            .allow_pointless(true)
+            .commit()
+            .unwrap();
+
+        assert_eq!(
+            upstream_version_add_revision(&wt.branch(), "1.0", &revid, None).unwrap(),
+            "1.0+bzr2"
+        );
+        std::mem::drop(env);
+    }
 }
