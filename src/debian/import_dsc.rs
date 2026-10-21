@@ -120,18 +120,21 @@ impl DistributionBranch {
     /// * `apply_patches` - Whether to apply patches during import
     ///
     /// # Returns
-    /// The version string of the imported package, or an error
+    /// The name of the tag for the imported version, or an error
     pub fn import_package(
         &self,
         dsc_path: &Path,
         apply_patches: bool,
     ) -> Result<String, crate::debian::error::Error> {
         Ok(Python::attach(|py| -> PyResult<String> {
+            let kwargs = pyo3::types::PyDict::new(py);
+            kwargs.set_item("apply_patches", apply_patches)?;
             self.0
-                .call_method1(
+                .call_method(
                     py,
                     "import_package",
-                    (dsc_path.to_string_lossy().to_string(), apply_patches),
+                    (dsc_path.to_string_lossy().to_string(),),
+                    Some(&kwargs),
                 )?
                 .extract::<String>(py)
         })?)
@@ -230,5 +233,45 @@ impl DistributionBranch {
             )?;
             Ok(())
         })?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::debian::tests::{setup, CHANGELOG};
+    use crate::workingtree::WorkingTree;
+
+    #[test]
+    #[serial_test::serial]
+    fn test_import_package() {
+        let Some((env, wt)) = setup() else { return };
+        let pkg = env.temp_dir.path().join("pkg");
+        std::fs::create_dir_all(pkg.join("foo-1.0/debian/source")).unwrap();
+        std::fs::write(pkg.join("foo-1.0/debian/changelog"), CHANGELOG).unwrap();
+        std::fs::write(
+            pkg.join("foo-1.0/debian/control"),
+            "Source: foo\nMaintainer: Joe Tester <joe@example.com>\n\nPackage: foo\nArchitecture: all\nDescription: foo\n foo\n",
+        )
+        .unwrap();
+        std::fs::write(pkg.join("foo-1.0/debian/source/format"), "3.0 (native)\n").unwrap();
+        let status = std::process::Command::new("dpkg-source")
+            .args(["-b", "foo-1.0"])
+            .current_dir(&pkg)
+            .status()
+            .unwrap();
+        assert!(status.success());
+
+        let branch = wt.branch();
+        let db = DistributionBranch::new(&branch, &branch, Some(&wt), Some(&wt));
+        let dbs = DistributionBranchSet::new();
+        dbs.add_branch(&db);
+        let tag = db.import_package(&pkg.join("foo_1.0.dsc"), false).unwrap();
+        assert_eq!(tag, "1.0");
+        assert_eq!(
+            db.revid_of_version(&"1.0".parse().unwrap()).unwrap(),
+            branch.last_revision()
+        );
+        std::mem::drop(env);
     }
 }

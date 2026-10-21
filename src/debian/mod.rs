@@ -255,7 +255,7 @@ pub fn build_helper(
         let locals = PyDict::new(py);
         locals.set_item("local_tree", local_tree.to_object(py))?;
         locals.set_item("subpath", subpath.to_string_lossy().to_string())?;
-        locals.set_item("branch", branch.to_object(py))?;
+        locals.set_item("packaging_branch", branch.to_object(py))?;
         locals.set_item("target_dir", target_dir.to_string_lossy().to_string())?;
         locals.set_item("builder", builder)?;
         locals.set_item("guess_upstream_branch_url", guess_upstream_branch_url)?;
@@ -265,7 +265,7 @@ pub fn build_helper(
         }
 
         py.import("breezy.plugins.debian.cmds")?
-            .call_method1("_build_helper", (locals,))?
+            .call_method("_build_helper", (), Some(&locals))?
             .extract()
     })
     .map_err(DebianError::from)
@@ -324,4 +324,68 @@ pub fn suite_to_distribution(suite: &str) -> Option<Vendor> {
         result.extract()
     })
     .unwrap()
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use super::*;
+    use crate::controldir::create_standalone_workingtree;
+    use crate::tree::MutableTree;
+    use crate::workingtree::{GenericWorkingTree, WorkingTree};
+    use std::path::Path;
+
+    pub(crate) const CHANGELOG: &str = r#"foo (1.0) unstable; urgency=medium
+
+  * Initial release.
+
+ -- Joe Tester <joe@example.com>  Mon, 01 Jan 2024 00:00:00 +0000
+"#;
+
+    /// Set up a test environment with a new working tree, or return `None`
+    /// if the brz-debian plugin is not installed and the test should be skipped.
+    pub(crate) fn setup() -> Option<(crate::testing::TestEnv, GenericWorkingTree)> {
+        let env = crate::testing::TestEnv::new();
+        if Python::attach(|py| py.import("breezy.plugins.debian").is_err()) {
+            return None;
+        }
+        let wt = create_standalone_workingtree(&env.working_dir, "2a").unwrap();
+        Some((env, wt))
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_build_helper() {
+        let Some((env, wt)) = setup() else { return };
+        std::fs::create_dir(env.working_dir.join("debian")).unwrap();
+        std::fs::write(env.working_dir.join("debian/changelog"), CHANGELOG).unwrap();
+        wt.add(&[Path::new("debian"), Path::new("debian/changelog")])
+            .unwrap();
+        wt.build_commit()
+            .message("Initial commit")
+            .commit()
+            .unwrap();
+
+        // Write a .changes file that lists an empty .dsc, as a build would.
+        let builder = r"touch ../foo_1.0.dsc && printf 'Files:\n d41d8cd98f00b204e9800998ecf8427e 0 misc optional foo_1.0.dsc\n' > ../foo_1.0_source.changes";
+        let target = tempfile::tempdir().unwrap();
+        let result = build_helper(
+            &wt,
+            Path::new(""),
+            &wt.branch(),
+            target.path(),
+            builder,
+            false,
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            result,
+            HashMap::from([(
+                "source".to_string(),
+                target.path().join("foo_1.0_source.changes")
+            )])
+        );
+        assert!(target.path().join("foo_1.0.dsc").exists());
+        std::mem::drop(env);
+    }
 }

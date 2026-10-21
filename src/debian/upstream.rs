@@ -184,10 +184,14 @@ impl<T: PyUpstreamSource> UpstreamSource for T {
         current_version: Option<&str>,
     ) -> Result<Option<(String, String)>, Error> {
         Python::attach(|py| {
-            Ok(self
+            let latest = self
                 .as_pyobject()
                 .call_method1(py, "get_latest_version", (package, current_version))?
-                .extract(py)?)
+                .extract::<Option<(Option<String>, Option<String>)>>(py)?;
+            Ok(match latest {
+                Some((Some(version), Some(mangled_version))) => Some((version, mangled_version)),
+                _ => None,
+            })
         })
     }
 
@@ -204,10 +208,8 @@ impl<T: PyUpstreamSource> UpstreamSource for T {
                 (package, since_version),
             )?;
 
-            while let Ok(Some((version, mangled_version))) =
-                recent_versions.call_method0(py, "__next__")?.extract(py)
-            {
-                ret.push((version, mangled_version));
+            for item in recent_versions.bind(py).try_iter()? {
+                ret.push(item?.extract()?);
             }
             Ok(())
         })
@@ -338,18 +340,18 @@ impl UpstreamBranchSource {
     /// * `mangled_upstream_version` - The mangled version string of the upstream version
     ///
     /// # Returns
-    /// A revision tree object or an error
+    /// A tuple containing the revision tree and subpath, or an error
     pub fn revision_tree(
         &self,
         source_name: Option<&str>,
         mangled_upstream_version: &str,
-    ) -> Result<crate::tree::RevisionTree, Error> {
+    ) -> Result<(crate::tree::RevisionTree, PathBuf), Error> {
         Python::attach(|py| {
-            Ok(crate::tree::RevisionTree(self.as_pyobject().call_method1(
-                py,
-                "revision_tree",
-                (source_name, mangled_upstream_version),
-            )?))
+            let (tree, subpath) = self
+                .as_pyobject()
+                .call_method1(py, "revision_tree", (source_name, mangled_upstream_version))?
+                .extract::<(Py<PyAny>, PathBuf)>(py)?;
+            Ok((crate::tree::RevisionTree(tree), subpath))
         })
     }
 
@@ -506,7 +508,9 @@ pub fn get_pristine_tar_source(
     packaging_branch: &dyn PyBranch,
 ) -> Result<PristineTarSource, Error> {
     Python::attach(|py| {
-        let m = py.import("breezy.plugins.debian.upstream").unwrap();
+        let m = py
+            .import("breezy.plugins.debian.upstream.pristinetar")
+            .unwrap();
         let cls = m.getattr("get_pristine_tar_source").unwrap();
         Ok(PristineTarSource(
             cls.call1((packaging_tree.to_object(py), packaging_branch.to_object(py)))?
@@ -527,7 +531,8 @@ pub fn get_pristine_tar_source(
 /// * `subpath` - Subpath within the tree
 ///
 /// # Returns
-/// Whether the command succeeded or an error
+/// The name of the tarball created in `target_dir`, `None` if the command is
+/// not implemented, or an error
 pub fn run_dist_command(
     revtree: &dyn PyTree,
     package: Option<&str>,
@@ -536,12 +541,12 @@ pub fn run_dist_command(
     dist_command: &str,
     include_controldir: bool,
     subpath: &Path,
-) -> Result<bool, Error> {
+) -> Result<Option<OsString>, Error> {
     Python::attach(|py| {
-        let m = py.import("breezy.plugins.debian.upstream").unwrap();
+        let m = py.import("breezy.plugins.debian.upstream.branch").unwrap();
         let run_dist_command = m.getattr("run_dist_command").unwrap();
         let kwargs = PyDict::new(py);
-        kwargs.set_item("revtree", revtree.to_object(py))?;
+        kwargs.set_item("rev_tree", revtree.to_object(py))?;
         kwargs.set_item("package", package)?;
         kwargs.set_item("version", version.to_string())?;
         kwargs.set_item("target_dir", target_dir.to_string_lossy().to_string())?;
@@ -556,18 +561,40 @@ pub fn run_dist_command(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::controldir::create_standalone_workingtree;
-    use crate::workingtree::WorkingTree;
+    use crate::branch::Branch;
+    use crate::controldir::GenericControlDir;
+    use crate::debian::tests::setup;
+    use crate::tree::MutableTree;
+    use crate::workingtree::{GenericWorkingTree, WorkingTree};
+
+    fn commit_with_tag(wt: &GenericWorkingTree, tag: &str) -> RevisionId {
+        let revid = wt
+            .build_commit()
+            .message("one")
+            .allow_pointless(true)
+            .commit()
+            .unwrap();
+        wt.branch().tags().unwrap().set_tag(tag, &revid).unwrap();
+        revid
+    }
+
+    fn branch_source(wt: &GenericWorkingTree) -> UpstreamBranchSource {
+        let local_dir = Python::attach(|py| {
+            GenericControlDir::new(wt.to_object(py).getattr(py, "controldir").unwrap())
+        });
+        UpstreamBranchSource::from_branch(
+            &wt.branch(),
+            None,
+            &local_dir,
+            None::<fn(&dyn PyTree, &str, &str, &Path, &Path) -> Result<OsString, Error>>,
+        )
+        .unwrap()
+    }
 
     #[test]
     #[serial_test::serial]
     fn test_upstream_version_add_revision() {
-        let env = crate::testing::TestEnv::new();
-        if Python::attach(|py| py.import("breezy.plugins.debian").is_err()) {
-            // Skip test if brz-debian plugin is not installed
-            return;
-        }
-        let wt = create_standalone_workingtree(&env.working_dir, "2a").unwrap();
+        let Some((env, wt)) = setup() else { return };
         wt.build_commit()
             .message("one")
             .allow_pointless(true)
@@ -583,6 +610,89 @@ mod tests {
         assert_eq!(
             upstream_version_add_revision(&wt.branch(), "1.0", &revid, None).unwrap(),
             "1.0+bzr2"
+        );
+        std::mem::drop(env);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_get_pristine_tar_source() {
+        let Some((env, wt)) = setup() else { return };
+        let source = get_pristine_tar_source(&wt, &wt.branch()).unwrap();
+        assert!(!source.has_version(Some("foo"), "1.0", None, false).unwrap());
+        std::mem::drop(env);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_run_dist_command() {
+        let Some((env, wt)) = setup() else { return };
+        std::fs::write(env.working_dir.join("README"), "content").unwrap();
+        wt.add(&[Path::new("README")]).unwrap();
+        wt.build_commit().message("one").commit().unwrap();
+
+        let target = tempfile::tempdir().unwrap();
+        let run = |dist_command: &str| {
+            run_dist_command(
+                &wt.basis_tree().unwrap(),
+                Some("foo"),
+                &"1.0".parse().unwrap(),
+                target.path(),
+                dist_command,
+                false,
+                Path::new(""),
+            )
+            .unwrap()
+        };
+        let tarball = run("touch foo-1.0.tar.gz");
+        assert_eq!(tarball, Some(OsString::from("foo-1.0.tar.gz")));
+        assert!(target.path().join("foo-1.0.tar.gz").exists());
+
+        // Exit code 2 means the dist command is not implemented.
+        let tarball = run("exit 2");
+        assert_eq!(tarball, None);
+        std::mem::drop(env);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_revision_tree() {
+        let Some((env, wt)) = setup() else { return };
+        let revid = commit_with_tag(&wt, "1.0");
+        let source = branch_source(&wt);
+
+        let (tree, subpath) = source.revision_tree(Some("foo"), "1.0").unwrap();
+        assert_eq!(tree.get_revision_id(), revid);
+        assert_eq!(subpath, PathBuf::from(""));
+        std::mem::drop(env);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_get_latest_version_none() {
+        let Some((env, wt)) = setup() else { return };
+        let source = branch_source(&wt);
+
+        assert_eq!(source.get_latest_version(Some("foo"), None).unwrap(), None);
+        std::mem::drop(env);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_get_recent_versions() {
+        let Some((env, wt)) = setup() else { return };
+        commit_with_tag(&wt, "1.0");
+        let source = branch_source(&wt);
+
+        assert_eq!(
+            source
+                .get_recent_versions(Some("foo"), None)
+                .collect::<Vec<_>>(),
+            vec![("1.0".to_string(), "1.0".to_string())]
+        );
+        assert_eq!(
+            source.get_latest_version(Some("foo"), None).unwrap(),
+            Some(("1.0".to_string(), "1.0".to_string()))
         );
         std::mem::drop(env);
     }
