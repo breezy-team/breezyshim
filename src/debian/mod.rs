@@ -287,6 +287,9 @@ pub fn tree_debian_tag_name(
     subpath: Option<&std::path::Path>,
     vendor: Option<Vendor>,
 ) -> Result<String, Error> {
+    let subpath = subpath
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
     Python::attach(|py| {
         let result = py.import("breezy.plugins.debian")?.call_method1(
             "tree_debian_tag_name",
@@ -324,4 +327,52 @@ pub fn suite_to_distribution(suite: &str) -> Option<Vendor> {
         result.extract()
     })
     .unwrap()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::controldir::create_standalone_workingtree;
+    use crate::tree::MutableTree;
+    use crate::workingtree::WorkingTree;
+    use std::path::Path;
+
+    #[test]
+    #[serial_test::serial]
+    fn test_tree_debian_tag_name_at_root() {
+        let env = crate::testing::TestEnv::new();
+        if Python::attach(|py| py.import("breezy.plugins.debian").is_err()) {
+            // Skip test if brz-debian plugin is not installed
+            return;
+        }
+        let wt = create_standalone_workingtree(&env.working_dir, "2a").unwrap();
+        std::fs::create_dir(env.working_dir.join("debian")).unwrap();
+        std::fs::write(
+            env.working_dir.join("debian/changelog"),
+            r#"foo (1.0-1) unstable; urgency=medium
+
+  * Initial release.
+
+ -- Joe Tester <joe@example.com>  Mon, 01 Jan 2024 00:00:00 +0000
+"#,
+        )
+        .unwrap();
+        wt.add(&[Path::new("debian"), Path::new("debian/changelog")])
+            .unwrap();
+        wt.build_commit()
+            .message("Initial commit")
+            .commit()
+            .unwrap();
+
+        let branch = wt.branch();
+        assert_eq!(
+            tree_debian_tag_name(&wt, &branch, None, None).unwrap(),
+            "debian/1.0-1"
+        );
+        assert_eq!(
+            tree_debian_tag_name(&wt, &branch, Some(Path::new("")), None).unwrap(),
+            "debian/1.0-1"
+        );
+        std::mem::drop(env);
+    }
 }
