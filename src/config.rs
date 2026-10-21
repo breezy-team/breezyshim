@@ -253,14 +253,15 @@ impl<'a, 'py> FromPyObject<'a, 'py> for Credentials {
     type Error = PyErr;
 
     fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
-        let scheme = ob.get_item("scheme")?.extract()?;
-        let username = ob.get_item("username")?.extract()?;
-        let password = ob.get_item("password")?.extract()?;
-        let host = ob.get_item("host")?.extract()?;
-        let port = ob.get_item("port")?.extract()?;
-        let path = ob.get_item("path")?.extract()?;
-        let realm = ob.get_item("realm")?.extract()?;
-        let verify_certificates = ob.get_item("verify_certificates")?.extract()?;
+        let get = |key: &str| ob.call_method1("get", (key,));
+        let scheme = get("scheme")?.extract()?;
+        let username = get("user")?.extract()?;
+        let password = get("password")?.extract()?;
+        let host = get("host")?.extract()?;
+        let port = get("port")?.extract()?;
+        let path = get("path")?.extract()?;
+        let realm = get("realm")?.extract()?;
+        let verify_certificates = get("verify_certificates")?.extract()?;
 
         Ok(Credentials {
             scheme,
@@ -283,7 +284,7 @@ impl<'py> IntoPyObject<'py> for Credentials {
     fn into_pyobject(self, py: Python<'py>) -> std::result::Result<Self::Output, Self::Error> {
         let dict = pyo3::types::PyDict::new(py);
         dict.set_item("scheme", &self.scheme).unwrap();
-        dict.set_item("username", &self.username).unwrap();
+        dict.set_item("user", &self.username).unwrap();
         dict.set_item("password", &self.password).unwrap();
         dict.set_item("host", &self.host).unwrap();
         dict.set_item("port", self.port).unwrap();
@@ -317,8 +318,8 @@ pub trait CredentialStore: Send + Sync {
     ///
     /// # Returns
     ///
-    /// The credentials for accessing the service, or an error if the credentials
-    /// could not be retrieved.
+    /// The credentials for accessing the service, None if this store has no
+    /// credentials for it, or an error if the credentials could not be retrieved.
     fn get_credentials(
         &self,
         scheme: &str,
@@ -327,7 +328,7 @@ pub trait CredentialStore: Send + Sync {
         user: Option<&str>,
         path: Option<&str>,
         realm: Option<&str>,
-    ) -> Result<Credentials>;
+    ) -> Result<Option<Credentials>>;
 }
 
 struct PyCredentialStore(Py<PyAny>);
@@ -341,8 +342,8 @@ impl CredentialStore for PyCredentialStore {
         user: Option<&str>,
         path: Option<&str>,
         realm: Option<&str>,
-    ) -> Result<Credentials> {
-        Python::attach(|py| -> Result<Credentials> {
+    ) -> Result<Option<Credentials>> {
+        Python::attach(|py| -> Result<Option<Credentials>> {
             let creds = self.0.call_method1(
                 py,
                 "get_credentials",
@@ -371,7 +372,7 @@ impl CredentialStoreWrapper {
         user: Option<&str>,
         path: Option<&str>,
         realm: Option<&str>,
-    ) -> PyResult<Credentials> {
+    ) -> PyResult<Option<Credentials>> {
         self.0
             .get_credentials(scheme, host, port, user, path, realm)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyException, _>(e.to_string()))
@@ -385,7 +386,10 @@ impl CredentialStoreWrapper {
 pub struct CredentialStoreRegistry(Py<PyAny>);
 
 impl CredentialStoreRegistry {
-    /// Create a new `CredentialStoreRegistry`.
+    /// Create a new, empty `CredentialStoreRegistry`.
+    ///
+    /// This is separate from Breezy's global registry; use
+    /// [`credential_store_registry`] to register stores that Breezy should use.
     ///
     /// # Returns
     ///
@@ -430,6 +434,7 @@ impl CredentialStoreRegistry {
     /// # Parameters
     ///
     /// * `scheme` - The scheme of the service, like "https", "ftp", etc.
+    /// * `host` - The hostname of the service.
     /// * `port` - The port number of the service, or None for the default port.
     /// * `user` - The username to use, or None to use the default username.
     /// * `path` - The path on the service, or None for the root path.
@@ -437,21 +442,23 @@ impl CredentialStoreRegistry {
     ///
     /// # Returns
     ///
-    /// The fallback credentials for accessing the service, or an error if the
-    /// credentials could not be retrieved.
+    /// The fallback credentials for accessing the service, None if no fallback
+    /// store has credentials for it, or an error if the credentials could not
+    /// be retrieved.
     pub fn get_fallback_credentials(
         &self,
         scheme: &str,
+        host: &str,
         port: Option<i64>,
         user: Option<&str>,
         path: Option<&str>,
         realm: Option<&str>,
-    ) -> Result<Credentials> {
-        Python::attach(|py| -> Result<Credentials> {
+    ) -> Result<Option<Credentials>> {
+        Python::attach(|py| -> Result<Option<Credentials>> {
             let creds = self.0.call_method1(
                 py,
                 "get_fallback_credentials",
-                (scheme, port, user, path, realm),
+                (scheme, host, port, user, path, realm),
             )?;
             Ok(creds.extract(py)?)
         })
@@ -478,21 +485,24 @@ impl CredentialStoreRegistry {
 
     /// Register a fallback credential store with this registry.
     ///
+    /// Fallback stores are queried when authentication.conf has no matching section.
+    ///
     /// # Parameters
     ///
+    /// * `key` - The key to register the credential store under.
     /// * `store` - The credential store to register as a fallback.
     ///
     /// # Returns
     ///
     /// `Ok(())` on success, or an error if the store could not be registered.
-    pub fn register_fallback(&self, store: Box<dyn CredentialStore>) -> Result<()> {
+    pub fn register_fallback(&self, key: &str, store: Box<dyn CredentialStore>) -> Result<()> {
         Python::attach(|py| -> Result<()> {
             let kwargs = pyo3::types::PyDict::new(py);
             kwargs.set_item("fallback", true)?;
             self.0.call_method(
                 py,
-                "register_fallback",
-                (CredentialStoreWrapper(store),),
+                "register",
+                (key, CredentialStoreWrapper(store)),
                 Some(&kwargs),
             )?;
             Ok(())
@@ -507,14 +517,14 @@ impl Default for CredentialStoreRegistry {
     }
 }
 
-lazy_static::lazy_static! {
-    /// The global credential store registry.
-    ///
-    /// This is a lazily initialized static reference to a `CredentialStoreRegistry`
-    /// instance, which can be used to access credential stores.
-    pub static ref CREDENTIAL_STORE_REGISTRY: CredentialStoreRegistry =
-        CredentialStoreRegistry::new()
-    ;
+/// Return Breezy's global credential store registry.
+///
+/// Stores registered here are used by Breezy when it looks up credentials.
+pub fn credential_store_registry() -> CredentialStoreRegistry {
+    Python::attach(|py| {
+        let m = py.import("breezy.config").unwrap();
+        CredentialStoreRegistry(m.getattr("credential_store_registry").unwrap().unbind())
+    })
 }
 
 #[cfg(test)]
@@ -539,6 +549,90 @@ mod tests {
         let stack = global_stack().unwrap();
         stack.get("email").unwrap();
         std::mem::drop(env);
+    }
+
+    struct HostStore;
+
+    impl CredentialStore for HostStore {
+        fn get_credentials(
+            &self,
+            scheme: &str,
+            host: &str,
+            port: Option<i64>,
+            _user: Option<&str>,
+            path: Option<&str>,
+            realm: Option<&str>,
+        ) -> Result<Option<Credentials>> {
+            if host != "creds.example.com" {
+                return Ok(None);
+            }
+            Ok(Some(Credentials {
+                scheme: Some(scheme.to_string()),
+                username: Some("worker".to_string()),
+                password: Some("secret".to_string()),
+                host: Some(host.to_string()),
+                port,
+                path: path.map(|p| p.to_string()),
+                realm: realm.map(|r| r.to_string()),
+                verify_certificates: Some(true),
+            }))
+        }
+    }
+
+    #[test]
+    fn test_register_fallback_global() {
+        crate::init();
+        credential_store_registry()
+            .register_fallback("test-host-store", Box::new(HostStore))
+            .unwrap();
+        Python::attach(|py| {
+            let auth = py
+                .import("breezy.config")
+                .unwrap()
+                .call_method0("AuthenticationConfig")
+                .unwrap();
+            let user: Option<String> = auth
+                .call_method1("get_user", ("https", "creds.example.com"))
+                .unwrap()
+                .extract()
+                .unwrap();
+            assert_eq!(user.as_deref(), Some("worker"));
+            let password: String = auth
+                .call_method1("get_password", ("https", "creds.example.com", "worker"))
+                .unwrap()
+                .extract()
+                .unwrap();
+            assert_eq!(password, "secret");
+            let user: Option<String> = auth
+                .call_method1("get_user", ("https", "other.example.com"))
+                .unwrap()
+                .extract()
+                .unwrap();
+            assert_eq!(user, None);
+        });
+    }
+
+    #[test]
+    fn test_get_fallback_credentials() {
+        crate::init();
+        let registry = CredentialStoreRegistry::new();
+        assert!(registry
+            .get_fallback_credentials("https", "creds.example.com", None, None, None, None)
+            .unwrap()
+            .is_none());
+        registry
+            .register_fallback("host-store", Box::new(HostStore))
+            .unwrap();
+        let creds = registry
+            .get_fallback_credentials("https", "creds.example.com", None, None, None, None)
+            .unwrap()
+            .unwrap();
+        assert_eq!(creds.username.as_deref(), Some("worker"));
+        assert_eq!(creds.host.as_deref(), Some("creds.example.com"));
+        assert!(registry
+            .get_fallback_credentials("https", "other.example.com", None, None, None, None)
+            .unwrap()
+            .is_none());
     }
 
     #[test]
