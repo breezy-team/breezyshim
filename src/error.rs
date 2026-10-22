@@ -340,7 +340,7 @@ pub enum Error {
     /// The project creation timed out.
     ProjectCreationTimeout(String, chrono::Duration),
     /// A conflict occurred in GitLab.
-    GitLabConflict(String),
+    GitLabConflict(Option<String>),
     /// The source branch is not derived from the target branch.
     SourceNotDerivedFromTarget,
     /// A loop was detected in branch references.
@@ -504,7 +504,8 @@ impl std::fmt::Display for Error {
             Self::ProjectCreationTimeout(p, t) => {
                 write!(f, "Project creation timeout: {} after {} seconds", p, t)
             }
-            Self::GitLabConflict(p) => write!(f, "GitLab conflict: {}", p),
+            Self::GitLabConflict(Some(reason)) => write!(f, "GitLab conflict: {}", reason),
+            Self::GitLabConflict(None) => write!(f, "GitLab conflict"),
             Self::ConflictsInTree => write!(f, "Conflicts in tree"),
             Self::SourceNotDerivedFromTarget => write!(f, "Source not derived from target"),
             Self::BranchReferenceLoop => write!(f, "Branch reference loop"),
@@ -823,7 +824,23 @@ impl From<PyErr> for Error {
                     value.getattr("timeout").unwrap().extract().unwrap(),
                 )
             } else if err.is_instance_of::<GitLabConflict>(py) {
-                Error::GitLabConflict(value.getattr("reason").unwrap().extract().unwrap())
+                // `%(reason)s` applies `str()`, so any printable value is faithful.
+                let reason = value.getattr("reason").map(|reason| {
+                    if reason.is_none() {
+                        Ok(None)
+                    } else {
+                        reason
+                            .extract::<String>()
+                            .or_else(|_| reason.str().map(|reason| reason.to_string()))
+                            .map(Some)
+                    }
+                });
+                match reason {
+                    Ok(Ok(reason)) => Error::GitLabConflict(reason),
+                    Ok(Err(e)) | Err(e) => {
+                        panic!("cannot read the reason of a GitLabConflict: {}", e)
+                    }
+                }
             } else if err.is_instance_of::<ConflictsInTree>(py) {
                 Error::ConflictsInTree
             } else if err.is_instance_of::<SourceNotDerivedFromTarget>(py) {
@@ -1010,7 +1027,7 @@ impl From<Error> for PyErr {
             Error::NoSuchProject(p) => NoSuchProject::new_err((p,)),
             Error::ForkingDisabled(p) => ForkingDisabled::new_err((p,)),
             Error::ProjectCreationTimeout(p, t) => ProjectCreationTimeout::new_err((p, t)),
-            Error::GitLabConflict(p) => GitLabConflict::new_err((p,)),
+            Error::GitLabConflict(reason) => GitLabConflict::new_err((reason,)),
             Error::ConflictsInTree => ConflictsInTree::new_err(()),
             Error::SourceNotDerivedFromTarget => SourceNotDerivedFromTarget::new_err(()),
             Error::BranchReferenceLoop => BranchReferenceLoop::new_err(()),
@@ -1726,11 +1743,78 @@ fn test_forking_disabled() {
 
 #[test]
 fn test_gitlab_conflict() {
-    let e = Error::GitLabConflict("foo".to_string());
+    let e = Error::GitLabConflict(Some("foo".to_string()));
     let p: PyErr = e.into();
     // Verify that p is an instance of GitLabConflict
     Python::attach(|py| {
         assert!(p.is_instance_of::<GitLabConflict>(py), "{}", p);
+    });
+}
+
+#[test]
+fn test_gitlab_conflict_without_a_reason() {
+    Python::attach(|py| {
+        let cls = py
+            .import("breezy.plugins.gitlab.forge")
+            .unwrap()
+            .getattr("GitLabConflict")
+            .unwrap();
+        let err_obj = cls.call1((py.None(),)).unwrap();
+        let error: Error = PyErr::from_value(err_obj).into();
+        match error {
+            Error::GitLabConflict(_) => {}
+            other => panic!("Expected GitLabConflict, got {:?}", other),
+        }
+    });
+}
+
+#[test]
+#[should_panic(expected = "cannot read the reason of a GitLabConflict")]
+fn test_gitlab_conflict_without_the_reason_attribute() {
+    Python::attach(|py| {
+        let cls = py
+            .import("breezy.plugins.gitlab.forge")
+            .unwrap()
+            .getattr("GitLabConflict")
+            .unwrap();
+        let err_obj = cls.call1((py.None(),)).unwrap();
+        err_obj.delattr("reason").unwrap();
+        let _: Error = PyErr::from_value(err_obj).into();
+    });
+}
+
+#[test]
+fn test_gitlab_conflict_reason_shapes() {
+    Python::attach(|py| {
+        let cls = py
+            .import("breezy.plugins.gitlab.forge")
+            .unwrap()
+            .getattr("GitLabConflict")
+            .unwrap();
+        // Each string is what breezy prints for %(reason)s.
+        let cases: [(&std::ffi::CStr, Option<&str>); 4] = [
+            (c"'has already been taken'", Some("has already been taken")),
+            (c"None", None),
+            (
+                c"['has already been taken']",
+                Some("['has already been taken']"),
+            ),
+            (
+                c"{'path': ['has already been taken']}",
+                Some("{'path': ['has already been taken']}"),
+            ),
+        ];
+        for (expr, expected) in cases {
+            let reason = py.eval(expr, None, None).unwrap();
+            let err_obj = cls.call1((reason,)).unwrap();
+            let error: Error = PyErr::from_value(err_obj).into();
+            match error {
+                Error::GitLabConflict(got) => {
+                    assert_eq!(got.as_deref(), expected, "for {:?}", expr)
+                }
+                other => panic!("Expected GitLabConflict, got {:?}", other),
+            }
+        }
     });
 }
 
