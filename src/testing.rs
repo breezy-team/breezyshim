@@ -41,20 +41,18 @@ impl TestEnv {
         let home_dir = temp_dir.path().join("home");
         fs::create_dir(&home_dir).unwrap();
         let mut old_env = HashMap::new();
-        let old_cwd = std::env::current_dir().ok();
         old_env.insert("HOME".to_string(), std::env::var("HOME").ok());
         old_env.insert("BRZ_EMAIL".to_string(), std::env::var("BRZ_EMAIL").ok());
         old_env.insert("BRZ_HOME".to_string(), std::env::var("BRZ_HOME").ok());
         let brz_email = "Joe Tester <joe@example.com>";
         let breezy_home = home_dir.join(".config/breezy");
-        std::env::set_current_dir(&working_dir).unwrap();
         std::env::set_var("HOME", &home_dir);
         std::env::set_var("BRZ_EMAIL", brz_email);
         std::env::set_var("BRZ_HOME", &breezy_home);
-        pyo3::Python::attach(|py| {
+        let old_cwd = pyo3::Python::attach(|py| {
+            let old_cwd = std::env::current_dir().ok();
+            std::env::set_current_dir(&working_dir).unwrap();
             let os = py.import("os").unwrap();
-            os.call_method1("chdir", (working_dir.to_str().unwrap(),))
-                .unwrap();
             let environ = os.getattr("environ").unwrap();
             environ
                 .set_item("HOME", home_dir.to_str().unwrap())
@@ -63,6 +61,7 @@ impl TestEnv {
             environ
                 .set_item("BRZ_HOME", breezy_home.to_str().unwrap())
                 .unwrap();
+            old_cwd
         });
         fs::create_dir_all(&breezy_home).unwrap();
         fs::write(
@@ -102,7 +101,9 @@ impl Drop for TestEnv {
             });
         }
         if let Some(ref old_cwd) = self.old_cwd {
-            let _ = std::env::set_current_dir(old_cwd);
+            Python::attach(|_py| {
+                let _ = std::env::set_current_dir(old_cwd);
+            });
         }
     }
 }
