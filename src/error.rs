@@ -56,6 +56,7 @@ macro_rules! versioned_exception {
             const CANDIDATES: &'static [(&'static str, &'static str)] =
                 &[$(($module, $attr)),+];
 
+            #[allow(dead_code)]
             pub(crate) fn new_err<A>(args: A) -> PyErr
             where
                 A: for<'py> IntoPyObject<'py> + Send + Sync + 'static,
@@ -150,6 +151,12 @@ versioned_exception!(
     ("breezy.errors", "InvalidHttpResponse"),
     ("dromedary.errors", "InvalidHttpResponse")
 );
+versioned_exception!(
+    TransportConnectionError,
+    ("breezy.errors", "ConnectionError"),
+    ("dromedary.errors", "ConnectionError")
+);
+versioned_exception!(ConnectionReset, ("breezy.errors", "ConnectionReset"));
 import_exception!(breezy.errors, UnknownFormatError);
 import_exception!(breezy.errors, NotBranchError);
 import_exception!(breezy.errors, ReadOnlyError);
@@ -828,17 +835,8 @@ impl From<PyErr> for Error {
                 Error::ConflictsInTree
             } else if err.is_instance_of::<SourceNotDerivedFromTarget>(py) {
                 Error::SourceNotDerivedFromTarget
-            } else if BreezyConnectionError
-                .as_ref()
-                .and_then(|cls| {
-                    Python::attach(|py| {
-                        Some(
-                            err.is_instance_of::<PyAny>(py)
-                                && err.value(py).is_instance(cls.bind(py)).unwrap(),
-                        )
-                    })
-                })
-                .unwrap_or(false)
+            } else if TransportConnectionError::matches(&err, py)
+                || ConnectionReset::matches(&err, py)
             {
                 Error::ConnectionError(err.to_string())
             } else if err.is_instance_of::<ReadOnlyError>(py) {
@@ -1110,6 +1108,26 @@ fn test_error_unsupportedprotocol() {
     // Verify that p is an instance of UnsupportedProtocol
     Python::attach(|py| {
         assert!(UnsupportedProtocol::matches(&p, py));
+    });
+}
+
+#[test]
+fn test_connection_errors_from_python() {
+    crate::init();
+    Python::attach(|py| {
+        let mut classes =
+            vec![versioned_exception(py, TransportConnectionError::CANDIDATES).unwrap()];
+        // Breezy 3.4 has no ConnectionReset.
+        if let Ok(cls) = versioned_exception(py, ConnectionReset::CANDIDATES) {
+            classes.push(cls);
+        }
+        for cls in classes {
+            let err = PyErr::from_value(cls.bind(py).call1(("Connection lost",)).unwrap());
+            match Error::from(err) {
+                Error::ConnectionError(_) => {}
+                other => panic!("Expected ConnectionError, got {:?}", other),
+            }
+        }
     });
 }
 
