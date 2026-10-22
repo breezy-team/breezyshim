@@ -16,7 +16,7 @@ use pyo3::prelude::*;
 ///
 /// * `local_tree` - The working tree to reset.
 /// * `basis_tree` - The basis tree to reset to, or None to use the working tree's basis tree.
-/// * `subpath` - The path within the tree to reset, or None to reset the entire tree.
+/// * `subpath` - The path within the tree to reset, or "" to reset the entire tree.
 /// * `dirty_tracker` - The dirty tracker to use, or None to ignore dirty tracking.
 ///
 /// # Returns
@@ -26,7 +26,7 @@ use pyo3::prelude::*;
 pub fn reset_tree_with_dirty_tracker(
     local_tree: &dyn PyWorkingTree,
     basis_tree: Option<&dyn PyTree>,
-    subpath: Option<&std::path::Path>,
+    subpath: &str,
     dirty_tracker: Option<&mut DirtyTreeTracker>,
 ) -> Result<(), Error> {
     if let Some(dirty_tracker) = dirty_tracker {
@@ -47,7 +47,7 @@ pub fn reset_tree_with_dirty_tracker(
 ///
 /// * `local_tree` - The working tree to reset.
 /// * `basis_tree` - The basis tree to reset to, or None to use the working tree's basis tree.
-/// * `subpath` - The path within the tree to reset, or None to reset the entire tree.
+/// * `subpath` - The path within the tree to reset, or "" to reset the entire tree.
 ///
 /// # Returns
 ///
@@ -55,7 +55,7 @@ pub fn reset_tree_with_dirty_tracker(
 pub fn reset_tree(
     local_tree: &dyn PyWorkingTree,
     basis_tree: Option<&dyn PyTree>,
-    subpath: Option<&std::path::Path>,
+    subpath: &str,
 ) -> Result<(), Error> {
     // Lock the tree before resetting
     let lock = local_tree.lock_write()?;
@@ -65,9 +65,7 @@ pub fn reset_tree(
         let reset_tree = workspace_m.getattr("reset_tree")?;
         let local_tree: Py<PyAny> = local_tree.to_object(py);
         let basis_tree: Option<Py<PyAny>> = basis_tree.map(|o| o.to_object(py));
-        // Breezy uses forward slashes internally, even on Windows
-        let subpath_str = subpath.map(|p| p.to_string_lossy().replace('\\', "/"));
-        reset_tree.call1((local_tree, basis_tree, subpath_str))?;
+        reset_tree.call1((local_tree, basis_tree, subpath))?;
         Ok(())
     });
 
@@ -126,7 +124,7 @@ mod tests {
         let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
         let basis_tree = wt.basis_tree().unwrap();
 
-        let result = reset_tree(&wt, Some(&basis_tree), None);
+        let result = reset_tree(&wt, Some(&basis_tree), "");
         assert!(result.is_ok());
     }
 
@@ -135,8 +133,20 @@ mod tests {
         let tmp_dir = tempfile::tempdir().unwrap();
         let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
 
-        let result = reset_tree(&wt, None, None);
+        let result = reset_tree(&wt, None, "");
         assert!(result.is_ok());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_reset_tree_no_subpath_with_unknown_file() {
+        let env = crate::testing::TestEnv::new();
+        let wt = create_standalone_workingtree(&env.working_dir, "2a").unwrap();
+        std::fs::write(env.working_dir.join("unknown.txt"), "content").unwrap();
+
+        reset_tree(&wt, None, "").unwrap();
+        assert!(!env.working_dir.join("unknown.txt").exists());
+        std::mem::drop(env);
     }
 
     #[test]
@@ -157,9 +167,7 @@ mod tests {
         wt.build_commit().message("Add subdir").commit().unwrap();
 
         let basis_tree = wt.basis_tree().unwrap();
-        let subpath = Path::new("subdir");
-
-        let result = reset_tree(&wt, Some(&basis_tree), Some(subpath));
+        let result = reset_tree(&wt, Some(&basis_tree), "subdir");
         if let Err(e) = &result {
             eprintln!("reset_tree failed with error: {:?}", e);
         }
@@ -200,7 +208,23 @@ mod tests {
         let mut dirty_tracker = DirtyTreeTracker::new(Clone::clone(&wt));
 
         let result =
-            reset_tree_with_dirty_tracker(&wt, Some(&basis_tree), None, Some(&mut dirty_tracker));
+            reset_tree_with_dirty_tracker(&wt, Some(&basis_tree), "", Some(&mut dirty_tracker));
         assert!(result.is_ok());
+    }
+
+    #[cfg(feature = "dirty-tracker")]
+    #[test]
+    #[serial_test::serial]
+    fn test_reset_tree_with_dirty_tracker_unknown_file() {
+        use crate::dirty_tracker::DirtyTreeTracker;
+
+        let env = crate::testing::TestEnv::new();
+        let wt = create_standalone_workingtree(&env.working_dir, "2a").unwrap();
+        let mut dirty_tracker = DirtyTreeTracker::new(Clone::clone(&wt));
+        std::fs::write(env.working_dir.join("unknown.txt"), "content").unwrap();
+
+        reset_tree_with_dirty_tracker(&wt, None, "", Some(&mut dirty_tracker)).unwrap();
+        assert!(!env.working_dir.join("unknown.txt").exists());
+        std::mem::drop(env);
     }
 }
