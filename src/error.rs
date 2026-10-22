@@ -3,6 +3,7 @@ use crate::transform::RawConflict;
 use pyo3::import_exception;
 use pyo3::intern;
 use pyo3::prelude::*;
+use pyo3::type_object::PyTypeInfo;
 use pyo3::types::PyTuple;
 use pyo3::IntoPyObjectExt;
 use pyo3::PyErr;
@@ -599,10 +600,26 @@ impl From<PyErr> for Error {
                 )
             } else if err.is_instance_of::<pyo3::exceptions::PyConnectionError>(py) {
                 Error::ConnectionError(err.to_string())
-            } else if err.is_instance_of::<UnsupportedFormatError>(py) {
-                Error::UnsupportedFormat(value.getattr("format").unwrap().extract().unwrap())
             } else if err.is_instance_of::<UnsupportedVcs>(py) {
-                Error::UnsupportedVcs(value.getattr("vcs").unwrap().extract().unwrap())
+                // Sorted above UnsupportedFormatError, which it subclasses
+                Error::UnsupportedVcs(
+                    value
+                        .getattr("vcs")
+                        .ok()
+                        .and_then(|vcs| vcs.extract::<String>().ok())
+                        .unwrap_or_else(|| get_exception_msg(value)),
+                )
+            } else if err.is_instance_of::<UnsupportedFormatError>(py) {
+                Error::UnsupportedFormat(match value.getattr("format") {
+                    Ok(format) => match format.extract::<String>() {
+                        Ok(format) => format,
+                        Err(_) => format
+                            .str()
+                            .map(|format| format.to_string())
+                            .unwrap_or_else(|_| get_exception_msg(value)),
+                    },
+                    Err(_) => get_exception_msg(value),
+                })
             } else if err.is_instance_of::<RemoteGitError>(py) {
                 Error::RemoteGitError(get_exception_msg(value))
             } else if err.is_instance_of::<IncompleteRead>(py) {
@@ -916,7 +933,18 @@ impl From<Error> for PyErr {
             Error::InvalidURL(path, reason) => InvalidURL::new_err((path, reason)),
             Error::TransportError(e) => TransportError::new_err((e,)),
             Error::UnsupportedFormat(s) => UnsupportedFormatError::new_err((s,)),
-            Error::UnsupportedVcs(s) => UnsupportedVcs::new_err((s,)),
+            Error::UnsupportedVcs(vcs) => Python::attach(|py| {
+                // `BzrError.__init__` takes a positional argument as `msg`, so
+                // `vcs` has to go in as a keyword
+                let kwargs = pyo3::types::PyDict::new(py);
+                if let Err(e) = kwargs.set_item("vcs", vcs) {
+                    return e;
+                }
+                match UnsupportedVcs::type_object(py).call((), Some(&kwargs)) {
+                    Ok(inst) => PyErr::from_value(inst),
+                    Err(e) => e,
+                }
+            }),
             Error::RemoteGitError(e) => RemoteGitError::new_err((e,)),
             Error::IncompleteRead(partial, expected) => Python::attach(|py| {
                 let bytes = pyo3::types::PyBytes::new(py, partial.as_slice());
@@ -1192,6 +1220,82 @@ fn test_error_unsupportedvcs() {
     Python::attach(|py| {
         assert!(p.is_instance_of::<UnsupportedVcs>(py));
     });
+}
+
+#[test]
+fn test_unsupported_vcs_from_python() {
+    Python::attach(|py| {
+        let cls = py
+            .import("breezy.plugins.svn")
+            .unwrap()
+            .getattr("SubversionUnsupportedError")
+            .unwrap();
+
+        // The plugins raise it with no arguments at all
+        let error: Error = PyErr::from_value(cls.call0().unwrap()).into();
+        match error {
+            Error::UnsupportedVcs(vcs) => assert_eq!(vcs, "svn"),
+            other => panic!("Expected UnsupportedVcs, got {:?}", other),
+        }
+
+        // And with the format object
+        let format = py
+            .import("breezy.plugins.svn")
+            .unwrap()
+            .getattr("SvnWorkingTreeDirFormat")
+            .unwrap()
+            .call0()
+            .unwrap();
+        let kwargs = pyo3::types::PyDict::new(py);
+        kwargs.set_item("format", format).unwrap();
+        let error: Error = PyErr::from_value(cls.call((), Some(&kwargs)).unwrap()).into();
+        match error {
+            Error::UnsupportedVcs(vcs) => assert_eq!(vcs, "svn"),
+            other => panic!("Expected UnsupportedVcs, got {:?}", other),
+        }
+    });
+}
+
+#[test]
+fn test_unsupported_format_with_format_object() {
+    Python::attach(|py| {
+        let format = py
+            .import("breezy.plugins.svn")
+            .unwrap()
+            .getattr("SvnWorkingTreeDirFormat")
+            .unwrap()
+            .call0()
+            .unwrap();
+        let kwargs = pyo3::types::PyDict::new(py);
+        kwargs.set_item("format", format).unwrap();
+        let cls = py
+            .import("breezy.errors")
+            .unwrap()
+            .getattr("UnsupportedFormatError")
+            .unwrap();
+        let error: Error = PyErr::from_value(cls.call((), Some(&kwargs)).unwrap()).into();
+        match error {
+            Error::UnsupportedFormat(format) => {
+                assert_eq!(format, "Subversion working directory")
+            }
+            other => panic!("Expected UnsupportedFormat, got {:?}", other),
+        }
+    });
+}
+
+#[test]
+fn test_unsupported_vcs_roundtrip() {
+    let p: PyErr = Error::UnsupportedVcs("svn".to_string()).into();
+    Python::attach(|py| {
+        assert_eq!(
+            p.value(py).str().unwrap().to_string(),
+            "Unsupported version control system: svn"
+        );
+    });
+    match Error::from(p) {
+        Error::UnsupportedVcs(vcs) => assert_eq!(vcs, "svn"),
+        other => panic!("Expected UnsupportedVcs, got {:?}", other),
+    }
 }
 
 #[test]
