@@ -343,6 +343,14 @@ impl MergeProposal {
         })
     }
 
+    /// Returns the username of the person who opened this proposal, if known.
+    pub fn get_author(&self) -> Result<Option<String>, crate::error::Error> {
+        Python::attach(|py| {
+            let author = self.0.call_method0(py, "get_author")?;
+            author.extract(py).map_err(Into::into)
+        })
+    }
+
     /// Returns the name of the project the proposal's source branch lives in, if known.
     pub fn get_source_project(&self) -> Result<Option<String>, crate::error::Error> {
         Python::attach(|py| {
@@ -993,6 +1001,9 @@ class BrokenForge:
 
 
 class FakeProposal:
+    def get_author(self):
+        return "janitor-bot"
+
     def get_source_project(self):
         return "me/one"
 
@@ -1000,8 +1011,16 @@ class FakeProposal:
         return None
 
 
+class AnonymousProposal:
+    def get_author(self):
+        return None
+
+
 class BrokenProposal:
     url = "not a url"
+
+    def get_author(self):
+        raise NotImplementedError(self.get_author)
 
     def get_source_project(self):
         raise RuntimeError("no source project")
@@ -1077,6 +1096,19 @@ class BrokenProposal:
         let mp = MergeProposal::from(Python::attach(|py| fake(py, "FakeProposal")));
         assert_eq!(mp.get_source_project().unwrap(), Some("me/one".to_string()));
         assert_eq!(mp.get_target_project().unwrap(), None);
+    }
+
+    #[test]
+    fn test_get_author() {
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "FakeProposal")));
+        assert_eq!(mp.get_author().unwrap(), Some("janitor-bot".to_string()));
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "AnonymousProposal")));
+        assert_eq!(mp.get_author().unwrap(), None);
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "BrokenProposal")));
+        assert!(matches!(
+            mp.get_author(),
+            Err(crate::error::Error::NotImplemented)
+        ));
     }
 
     #[test]
