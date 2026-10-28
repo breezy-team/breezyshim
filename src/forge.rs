@@ -343,6 +343,20 @@ impl MergeProposal {
         })
     }
 
+    /// Returns the username of the person who created this proposal, if known.
+    ///
+    /// Returns `Error::NotImplemented` with versions of Breezy that predate
+    /// `MergeProposal.get_author`.
+    pub fn get_author(&self) -> Result<Option<String>, crate::error::Error> {
+        Python::attach(|py| {
+            let mp = self.0.bind(py);
+            if !mp.hasattr("get_author")? {
+                return Err(crate::error::Error::NotImplemented);
+            }
+            mp.call_method0("get_author")?.extract().map_err(Into::into)
+        })
+    }
+
     /// Returns the name of the project the proposal's source branch lives in, if known.
     pub fn get_source_project(&self) -> Result<Option<String>, crate::error::Error> {
         Python::attach(|py| {
@@ -999,9 +1013,19 @@ class FakeProposal:
     def get_target_project(self):
         return None
 
+    def get_author(self):
+        return "me"
+
+
+class OldProposal:
+    pass
+
 
 class BrokenProposal:
     url = "not a url"
+
+    def get_author(self):
+        raise RuntimeError("no author")
 
     def get_source_project(self):
         raise RuntimeError("no source project")
@@ -1099,6 +1123,27 @@ class BrokenProposal:
         ));
         let mp = MergeProposal::from(Python::attach(|py| fake(py, "BrokenProposal")));
         assert!(matches!(mp.url(), Err(Error::InvalidURL(..))));
+    }
+
+    #[test]
+    fn test_get_author() {
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "FakeProposal")));
+        assert_eq!(mp.get_author().unwrap(), Some("me".to_string()));
+    }
+
+    #[test]
+    fn test_get_author_unsupported() {
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "OldProposal")));
+        assert!(matches!(
+            mp.get_author(),
+            Err(crate::error::Error::NotImplemented)
+        ));
+    }
+
+    #[test]
+    fn test_get_author_error() {
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "BrokenProposal")));
+        assert!(mp.get_author().is_err());
     }
 
     #[test]
