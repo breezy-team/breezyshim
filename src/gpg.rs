@@ -245,11 +245,16 @@ impl GPGContext {
     /// A vector of GPG keys.
     pub fn keylist(&self, secret: bool) -> Vec<GPGKey> {
         Python::attach(|py| {
+            let kwargs = pyo3::types::PyDict::new(py);
+            kwargs.set_item("secret", secret).unwrap();
             self.0
-                .call_method1(py, "keylist", (secret,))
+                .call_method(py, "keylist", (), Some(&kwargs))
                 .unwrap()
-                .extract::<Vec<GPGKey>>(py)
+                .bind(py)
+                .try_iter()
                 .unwrap()
+                .map(|key| key.unwrap().extract::<GPGKey>().unwrap())
+                .collect()
         })
     }
 
@@ -270,5 +275,105 @@ impl GPGContext {
                 .extract::<Vec<u8>>(py)
                 .unwrap()
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serial_test::serial;
+    use std::process::Command;
+
+    struct GnupgHome {
+        dir: tempfile::TempDir,
+        old: Option<std::ffi::OsString>,
+    }
+
+    impl GnupgHome {
+        fn new() -> Self {
+            let dir = tempfile::tempdir().unwrap();
+            let old = std::env::var_os("GNUPGHOME");
+            std::env::set_var("GNUPGHOME", dir.path());
+            GnupgHome { dir, old }
+        }
+
+        fn gpg(&self, args: &[&str]) -> String {
+            let output = Command::new("gpg")
+                .arg("--batch")
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "gpg {:?} failed: {}",
+                args,
+                String::from_utf8_lossy(&output.stderr)
+            );
+            String::from_utf8(output.stdout).unwrap()
+        }
+
+        fn gen_key(&self, uid: &str) -> String {
+            let status = self.gpg(&[
+                "--passphrase",
+                "",
+                "--status-fd",
+                "1",
+                "--quick-gen-key",
+                uid,
+                "ed25519",
+                "sign",
+                "never",
+            ]);
+            status
+                .lines()
+                .find_map(|l| l.strip_prefix("[GNUPG:] KEY_CREATED P "))
+                .unwrap()
+                .to_string()
+        }
+    }
+
+    impl Drop for GnupgHome {
+        fn drop(&mut self) {
+            let _ = Command::new("gpgconf")
+                .args(["--kill", "gpg-agent"])
+                .output();
+            match &self.old {
+                Some(old) => std::env::set_var("GNUPGHOME", old),
+                None => std::env::remove_var("GNUPGHOME"),
+            }
+        }
+    }
+
+    fn sorted_fprs(keys: Vec<GPGKey>) -> Vec<String> {
+        let mut fprs = keys.into_iter().map(|k| k.fpr).collect::<Vec<_>>();
+        fprs.sort();
+        fprs
+    }
+
+    #[test]
+    #[serial]
+    fn test_keylist() {
+        // Skip when the gpg Python bindings or the gpg binary are missing
+        if Python::attach(|py| py.import("gpg").is_err()) {
+            return;
+        }
+        if Command::new("gpg").arg("--version").output().is_err() {
+            return;
+        }
+        let home = GnupgHome::new();
+        let mut secret = vec![
+            home.gen_key("Test One <one@example.com>"),
+            home.gen_key("Test Two <two@example.com>"),
+        ];
+        secret.sort();
+        let public_only = home.gen_key("Test Three <three@example.com>");
+        home.gpg(&["--yes", "--delete-secret-keys", &public_only]);
+        let mut all = secret.clone();
+        all.push(public_only);
+        all.sort();
+
+        let context = GPGContext::new();
+        assert_eq!(sorted_fprs(context.keylist(true)), secret);
+        assert_eq!(sorted_fprs(context.keylist(false)), all);
     }
 }
