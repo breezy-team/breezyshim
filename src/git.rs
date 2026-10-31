@@ -61,6 +61,54 @@ impl crate::controldir::PyProber for RemoteGitProber {
     }
 }
 
+/// A prober that can detect local Git repositories.
+pub struct LocalGitProber(Py<PyAny>);
+
+impl LocalGitProber {
+    /// Create a new LocalGitProber.
+    pub fn new() -> Self {
+        Python::attach(|py| {
+            let m = py
+                .import("breezy.git")
+                .expect("Failed to import breezy.git");
+            let prober = m
+                .getattr("LocalGitProber")
+                .expect("Failed to get LocalGitProber");
+            Self(prober.unbind())
+        })
+    }
+}
+
+impl<'a, 'py> FromPyObject<'a, 'py> for LocalGitProber {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Ok(Self(obj.to_owned().unbind()))
+    }
+}
+
+impl<'py> IntoPyObject<'py> for LocalGitProber {
+    type Target = PyAny;
+    type Output = Bound<'py, Self::Target>;
+    type Error = std::convert::Infallible;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(self.0.into_bound(py))
+    }
+}
+
+impl std::fmt::Debug for LocalGitProber {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_fmt(format_args!("LocalGitProber({:?})", self.0))
+    }
+}
+
+impl crate::controldir::PyProber for LocalGitProber {
+    fn to_object(&self, py: Python) -> Py<PyAny> {
+        self.0.clone_ref(py)
+    }
+}
+
 /// Format for bare local Git repositories.
 pub struct BareLocalGitControlDirFormat(Py<PyAny>);
 
@@ -188,6 +236,25 @@ mod tests {
     fn test_remote_git_prober_new() {
         // This may return None if git plugin is not available
         let _prober = RemoteGitProber::new();
+    }
+
+    #[test]
+    #[cfg_attr(target_os = "windows", ignore)]
+    fn test_local_git_prober() {
+        let td = tempfile::tempdir().unwrap();
+        let open = |format: &str| {
+            let path = td.path().join(format);
+            std::fs::create_dir(&path).unwrap();
+            crate::controldir::create_standalone_workingtree(&path, format).unwrap();
+            let url = url::Url::from_directory_path(&path).unwrap();
+            let transport = crate::transport::get_transport(&url, None).unwrap();
+            crate::controldir::open_from_transport(&transport, Some(&[&LocalGitProber::new()]))
+        };
+        assert!(open("git").is_ok());
+        assert!(matches!(
+            open("2a"),
+            Err(crate::error::Error::NotBranchError(..))
+        ));
     }
 
     #[test]

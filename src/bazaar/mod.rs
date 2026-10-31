@@ -126,6 +126,72 @@ fn test_file_id() {
     gen_file_id("somename");
 }
 
+/// A prober for Bazaar repositories with a `.bzr` control directory.
+pub struct BzrProber(Py<PyAny>);
+
+impl BzrProber {
+    /// Create a new BzrProber.
+    pub fn new() -> Self {
+        Python::attach(|py| {
+            let m = py
+                .import("breezy.bzr")
+                .expect("Failed to import breezy.bzr");
+            let prober = m.getattr("BzrProber").expect("Failed to get BzrProber");
+            Self(prober.unbind())
+        })
+    }
+}
+
+impl<'a, 'py> FromPyObject<'a, 'py> for BzrProber {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Ok(Self(obj.to_owned().unbind()))
+    }
+}
+
+impl<'py> IntoPyObject<'py> for BzrProber {
+    type Target = PyAny;
+    type Output = Bound<'py, Self::Target>;
+    type Error = std::convert::Infallible;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(self.0.into_bound(py))
+    }
+}
+
+impl std::fmt::Debug for BzrProber {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_fmt(format_args!("BzrProber({:?})", self.0))
+    }
+}
+
+impl crate::controldir::PyProber for BzrProber {
+    fn to_object(&self, py: Python) -> Py<PyAny> {
+        self.0.clone_ref(py)
+    }
+}
+
+#[test]
+#[cfg_attr(target_os = "windows", ignore)]
+fn test_bzr_prober() {
+    crate::init();
+    let td = tempfile::tempdir().unwrap();
+    let open = |format: &str| {
+        let path = td.path().join(format);
+        std::fs::create_dir(&path).unwrap();
+        crate::controldir::create_standalone_workingtree(&path, format).unwrap();
+        let url = url::Url::from_directory_path(&path).unwrap();
+        let transport = crate::transport::get_transport(&url, None).unwrap();
+        crate::controldir::open_from_transport(&transport, Some(&[&BzrProber::new()]))
+    };
+    assert!(open("2a").is_ok());
+    assert!(matches!(
+        open("git"),
+        Err(crate::error::Error::NotBranchError(..))
+    ));
+}
+
 /// A prober for remote Bazaar repositories.
 ///
 /// This prober can detect whether a remote location contains a Bazaar repository.
