@@ -105,8 +105,9 @@ impl SmartProtocolFactory {
     /// Build a [`SmartServerRequestProtocol`] bound to `backing`
     /// (the transport the protocol writes against), `write_func`
     /// (a Python callable that accepts bytes), `root_client_path`
-    /// (typically `"."`), and `jail_root` (the top-level transport
-    /// that bounds client access).
+    /// (for example `Some("/")`, or `None` to use client paths as they
+    /// are), and `jail_root` (the top-level transport that bounds
+    /// client access).
     ///
     /// `write_func` is passed through as a `Py<PyAny>` so callers
     /// can supply `BytesIO.write`, a bound method, or any other
@@ -115,7 +116,7 @@ impl SmartProtocolFactory {
         &self,
         backing: &Transport,
         write_func: Py<PyAny>,
-        root_client_path: &str,
+        root_client_path: Option<&str>,
         jail_root: &Transport,
     ) -> Result<SmartServerRequestProtocol, Error> {
         Python::attach(|py| -> PyResult<SmartServerRequestProtocol> {
@@ -213,7 +214,9 @@ mod tests {
 
         let input: &[u8] = b"bzr request 3\n";
         let (factory, unused) = detect_protocol_factory(input).unwrap();
-        let proto = factory.build(&transport, write_func, ".", &jail).unwrap();
+        let proto = factory
+            .build(&transport, write_func, Some("."), &jail)
+            .unwrap();
         proto.accept_bytes(&unused).unwrap();
 
         // Any sensible value is fine — the point is that the full
@@ -241,7 +244,8 @@ mod tests {
         &response[start + 4 + len..]
     }
 
-    /// A smart request is served from a chroot of the backing transport.
+    /// A smart request is served from a chroot of the backing transport,
+    /// with and without a root client path.
     #[test]
     fn chrooted_request() {
         crate::init();
@@ -257,20 +261,32 @@ mod tests {
         server.start_server().unwrap();
         let root = crate::transport::get_transport(&server.get_url().unwrap(), None).unwrap();
 
-        let buffer = ResponseBuffer::new().unwrap();
-        let (factory, unused) =
-            detect_protocol_factory(&request_v3("BzrDir.open_2.1", "trunk/")).unwrap();
-        let proto = factory
-            .build(&root, buffer.write_func().unwrap(), "/", &root)
-            .unwrap();
-        proto.accept_bytes(&unused).unwrap();
-        assert_eq!(proto.next_read_size().unwrap(), 0);
-        let response = buffer.into_bytes().unwrap();
+        let yes = b"oSs\x00\x00\x00\x0bl3:yes2:noee".as_slice();
+        let no = b"oSs\x00\x00\x00\x06l2:noee".as_slice();
+        for (root_client_path, path, expected) in [
+            (Some("/"), "trunk/", yes),
+            (Some("/srv/"), "/srv/trunk/", yes),
+            (None, "trunk/", yes),
+            (None, "/srv/trunk/", no),
+            (None, "../trunk/", yes),
+        ] {
+            let buffer = ResponseBuffer::new().unwrap();
+            let (factory, unused) =
+                detect_protocol_factory(&request_v3("BzrDir.open_2.1", path)).unwrap();
+            let proto = factory
+                .build(&root, buffer.write_func().unwrap(), root_client_path, &root)
+                .unwrap();
+            proto.accept_bytes(&unused).unwrap();
+            assert_eq!(proto.next_read_size().unwrap(), 0);
+            let response = buffer.into_bytes().unwrap();
+            assert_eq!(
+                response_body(&response),
+                expected,
+                "{:?} {}",
+                root_client_path,
+                path
+            );
+        }
         server.stop_server().unwrap();
-
-        assert_eq!(
-            response_body(&response),
-            b"oSs\x00\x00\x00\x0bl3:yes2:noee".as_slice()
-        );
     }
 }
