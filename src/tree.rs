@@ -2068,10 +2068,9 @@ mod tests {
     fn test_remove() {
         let env = crate::testing::TestEnv::new();
         let wt =
-            create_standalone_workingtree(std::path::Path::new("."), &ControlDirFormat::default())
-                .unwrap();
+            create_standalone_workingtree(&env.working_dir, &ControlDirFormat::default()).unwrap();
         let path = std::path::Path::new("foo");
-        std::fs::write(path, b"").unwrap();
+        std::fs::write(env.working_dir.join(path), b"").unwrap();
         wt.add(&[(std::path::Path::new("foo"))]).unwrap();
         wt.build_commit()
             .message("Initial commit")
@@ -2089,14 +2088,13 @@ mod tests {
     fn test_walkdirs() {
         let env = crate::testing::TestEnv::new();
         let wt =
-            create_standalone_workingtree(std::path::Path::new("."), &ControlDirFormat::default())
-                .unwrap();
+            create_standalone_workingtree(&env.working_dir, &ControlDirFormat::default()).unwrap();
 
         // Create a directory structure
-        std::fs::create_dir("subdir").unwrap();
-        std::fs::write("file1.txt", b"content1").unwrap();
-        std::fs::write("subdir/file2.txt", b"content2").unwrap();
-        std::fs::write(".gitattributes", b"* text=auto\n").unwrap();
+        std::fs::create_dir(env.working_dir.join("subdir")).unwrap();
+        std::fs::write(env.working_dir.join("file1.txt"), b"content1").unwrap();
+        std::fs::write(env.working_dir.join("subdir/file2.txt"), b"content2").unwrap();
+        std::fs::write(env.working_dir.join(".gitattributes"), b"* text=auto\n").unwrap();
 
         wt.add(&[
             Path::new("file1.txt"),
@@ -2155,9 +2153,8 @@ mod tests {
         // than a bool, which used to break `TreeEntry` extraction.
         let env = crate::testing::TestEnv::new();
         let wt =
-            create_standalone_workingtree(std::path::Path::new("."), &ControlDirFormat::default())
-                .unwrap();
-        std::fs::write("file.txt", b"content").unwrap();
+            create_standalone_workingtree(&env.working_dir, &ControlDirFormat::default()).unwrap();
+        std::fs::write(env.working_dir.join("file.txt"), b"content").unwrap();
         wt.add(&[Path::new("file.txt")]).unwrap();
         wt.build_commit()
             .message("Add file")

@@ -162,8 +162,8 @@ mod tests {
         let wt = create_standalone_workingtree(&env.working_dir, "2a").unwrap();
 
         // Create a subdir in the working tree
-        std::fs::create_dir("subdir").unwrap();
-        std::fs::write("subdir/file.txt", "content").unwrap();
+        std::fs::create_dir(env.working_dir.join("subdir")).unwrap();
+        std::fs::write(env.working_dir.join("subdir/file.txt"), "content").unwrap();
         wt.add(&[Path::new("subdir")]).unwrap();
         wt.add(&[Path::new("subdir/file.txt")]).unwrap();
         wt.build_commit().message("Add subdir").commit().unwrap();

@@ -13,12 +13,10 @@ use tempfile::TempDir;
 pub struct TestEnv {
     /// The temporary directory that contains all test files.
     pub temp_dir: TempDir,
-    /// The working directory where tests will run.
+    /// The directory for the test's working trees.
     pub working_dir: PathBuf,
     /// The home directory for the test environment.
     pub home_dir: PathBuf,
-    /// The original working directory before the test environment was set up.
-    pub old_cwd: Option<PathBuf>,
     /// The original environment variables before the test environment was set up.
     pub old_env: HashMap<String, Option<String>>,
 }
@@ -41,20 +39,16 @@ impl TestEnv {
         let home_dir = temp_dir.path().join("home");
         fs::create_dir(&home_dir).unwrap();
         let mut old_env = HashMap::new();
-        let old_cwd = std::env::current_dir().ok();
         old_env.insert("HOME".to_string(), std::env::var("HOME").ok());
         old_env.insert("BRZ_EMAIL".to_string(), std::env::var("BRZ_EMAIL").ok());
         old_env.insert("BRZ_HOME".to_string(), std::env::var("BRZ_HOME").ok());
         let brz_email = "Joe Tester <joe@example.com>";
         let breezy_home = home_dir.join(".config/breezy");
-        std::env::set_current_dir(&working_dir).unwrap();
         std::env::set_var("HOME", &home_dir);
         std::env::set_var("BRZ_EMAIL", brz_email);
         std::env::set_var("BRZ_HOME", &breezy_home);
         pyo3::Python::attach(|py| {
             let os = py.import("os").unwrap();
-            os.call_method1("chdir", (working_dir.to_str().unwrap(),))
-                .unwrap();
             let environ = os.getattr("environ").unwrap();
             environ
                 .set_item("HOME", home_dir.to_str().unwrap())
@@ -77,7 +71,6 @@ email = Joe Tester <joe@example.com>
             temp_dir,
             home_dir,
             working_dir,
-            old_cwd,
             old_env,
         }
     }
@@ -101,9 +94,6 @@ impl Drop for TestEnv {
                 }
             });
         }
-        if let Some(ref old_cwd) = self.old_cwd {
-            let _ = std::env::set_current_dir(old_cwd);
-        }
     }
 }
 
@@ -124,12 +114,6 @@ mod tests {
         let env = TestEnv::new();
         assert_eq!(env.home_dir, env.temp_dir.path().join("home"));
         assert_eq!(env.working_dir, env.temp_dir.path().join("test"));
-        // On Windows, canonicalize() can add \\?\ prefix and resolve short names differently
-        // So we compare the canonicalized versions of both paths
-        assert_eq!(
-            std::env::current_dir().unwrap().canonicalize().unwrap(),
-            env.working_dir.canonicalize().unwrap()
-        );
         assert_eq!(
             std::env::var("HOME").unwrap(),
             env.home_dir.to_str().unwrap()
@@ -141,16 +125,6 @@ mod tests {
 
         Python::attach(|py| {
             let os = py.import("os").unwrap();
-            // On Windows, canonicalize both paths to handle short/long names and \\?\ prefix
-            let py_cwd = os
-                .call_method0("getcwd")
-                .unwrap()
-                .extract::<PathBuf>()
-                .unwrap();
-            assert_eq!(
-                py_cwd.canonicalize().unwrap(),
-                env.working_dir.canonicalize().unwrap(),
-            );
             assert_eq!(
                 os.call_method1("getenv", ("HOME",))
                     .unwrap()
