@@ -16,7 +16,7 @@ use pyo3::prelude::*;
 ///
 /// * `local_tree` - The working tree to reset.
 /// * `basis_tree` - The basis tree to reset to, or None to use the working tree's basis tree.
-/// * `subpath` - The path within the tree to reset, or "" to reset the entire tree.
+/// * `subpath` - The path within the tree to reset.
 /// * `dirty_tracker` - The dirty tracker to use, or None to ignore dirty tracking.
 ///
 /// # Returns
@@ -47,7 +47,7 @@ pub fn reset_tree_with_dirty_tracker(
 ///
 /// * `local_tree` - The working tree to reset.
 /// * `basis_tree` - The basis tree to reset to, or None to use the working tree's basis tree.
-/// * `subpath` - The path within the tree to reset, or "" to reset the entire tree.
+/// * `subpath` - The path within the tree to reset.
 ///
 /// # Returns
 ///
