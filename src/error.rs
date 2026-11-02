@@ -759,6 +759,17 @@ impl From<PyErr> for Error {
                         value.getattr("errno").unwrap().extract::<i32>().unwrap(),
                     ),
                 )
+            } else if BadHttpRequest::matches(&err, py) {
+                Error::BadHttpRequest(
+                    value
+                        .getattr("path")
+                        .unwrap()
+                        .extract::<String>()
+                        .unwrap()
+                        .parse()
+                        .unwrap(),
+                    value.getattr("reason").unwrap().extract().unwrap(),
+                )
             } else if UnexpectedHttpStatus::matches(&err, py) {
                 let headers_obj = value.getattr("headers").unwrap();
                 Error::UnexpectedHttpStatus {
@@ -773,17 +784,6 @@ impl From<PyErr> for Error {
                     extra: value.getattr("extra").unwrap().extract().unwrap(),
                     headers: extract_headers(&headers_obj),
                 }
-            } else if BadHttpRequest::matches(&err, py) {
-                Error::BadHttpRequest(
-                    value
-                        .getattr("path")
-                        .unwrap()
-                        .extract::<String>()
-                        .unwrap()
-                        .parse()
-                        .unwrap(),
-                    value.getattr("reason").unwrap().extract().unwrap(),
-                )
             } else if TransportNotPossible::matches(&err, py) {
                 Error::TransportNotPossible(get_exception_msg(value))
             } else if err.is_instance_of::<IncompatibleFormat>(py) {
@@ -1682,6 +1682,13 @@ fn test_bad_http_request() {
     Python::attach(|py| {
         assert!(BadHttpRequest::matches(&p, py), "{}", p);
     });
+    match Error::from(p) {
+        Error::BadHttpRequest(url, reason) => {
+            assert_eq!(url.as_str(), "http://example.com/");
+            assert_eq!(reason, "foo");
+        }
+        e => panic!("Expected BadHttpRequest error, got {:?}", e),
+    }
 }
 
 #[test]
