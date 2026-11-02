@@ -48,7 +48,10 @@ pub fn release(
     Python::attach(|py| {
         let m = py.import("breezy.plugins.debian.release").unwrap();
         let release = m.getattr("release").unwrap();
-        match release.call1((local_tree.to_object(py), subpath)) {
+        match release.call1((
+            local_tree.to_object(py),
+            subpath.to_string_lossy().to_string(),
+        )) {
             Ok(result) => Ok(result.extract().unwrap()),
             Err(err) if err.is_instance_of::<GeneratedFile>(py) => Err(ReleaseError::GeneratedFile),
             Err(err) => Err(ReleaseError::BrzError(err.into())),

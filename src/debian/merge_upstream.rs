@@ -48,16 +48,26 @@ pub fn do_import(
         let kwargs = PyDict::new(py);
         kwargs.set_item("tree", tree.to_object(py))?;
         kwargs.set_item("subpath", subpath.to_string_lossy().to_string())?;
-        kwargs.set_item("tarball_filenames", tarball_filenames.to_vec())?;
+        let tarball_filenames: Vec<String> = tarball_filenames
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect();
+        kwargs.set_item("tarball_filenames", tarball_filenames)?;
         kwargs.set_item("package", package)?;
         kwargs.set_item("version", version)?;
         kwargs.set_item("current_version", current_version)?;
         kwargs.set_item("upstream_branch", upstream_branch.to_object(py))?;
+        let upstream_revisions: HashMap<TarballKind, (RevisionId, String)> = upstream_revisions
+            .into_iter()
+            .map(|(k, (r, p))| (k, (r, p.to_string_lossy().to_string())))
+            .collect();
         kwargs.set_item("upstream_revisions", upstream_revisions)?;
         kwargs.set_item("merge_type", merge_type)?;
         kwargs.set_item("force", force)?;
         kwargs.set_item("force_pristine_tar", force_pristine_tar)?;
         kwargs.set_item("committer", committer)?;
+        let files_excluded: Option<Vec<String>> =
+            files_excluded.map(|fs| fs.iter().map(|p| p.to_string_lossy().to_string()).collect());
         kwargs.set_item("files_excluded", files_excluded)?;
         Ok(do_import.call((), Some(&kwargs))?.extract()?)
     })
@@ -84,14 +94,12 @@ pub fn get_tarballs(
     Python::attach(|py| {
         let m = PyModule::import(py, "breezy.plugins.debian.merge_upstream").unwrap();
         let get_tarballs = m.getattr("get_tarballs").unwrap();
+        let locations: Vec<String> = locations
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect();
         Ok(get_tarballs
-            .call1((
-                orig_dir,
-                tree.to_object(py),
-                package,
-                version,
-                locations.to_vec(),
-            ))?
+            .call1((orig_dir, tree.to_object(py), package, version, locations))?
             .extract()?)
     })
 }
