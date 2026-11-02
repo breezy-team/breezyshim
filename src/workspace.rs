@@ -119,6 +119,7 @@ mod tests {
     use std::path::Path;
 
     #[test]
+    #[serial_test::serial]
     fn test_reset_tree() {
         let tmp_dir = tempfile::tempdir().unwrap();
         let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
@@ -129,6 +130,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_reset_tree_no_basis() {
         let tmp_dir = tempfile::tempdir().unwrap();
         let wt = create_standalone_workingtree(tmp_dir.path(), "2a").unwrap();
@@ -199,6 +201,7 @@ mod tests {
 
     #[cfg(feature = "dirty-tracker")]
     #[test]
+    #[serial_test::serial]
     fn test_reset_tree_with_dirty_tracker() {
         use crate::dirty_tracker::DirtyTreeTracker;
 
