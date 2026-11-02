@@ -134,7 +134,21 @@ pub fn init_bzr() {
 /// Initialize
 #[ctor::ctor(unsafe)]
 fn ensure_initialized() {
+    let starts_python = unsafe { pyo3::ffi::Py_IsInitialized() } == 0;
     init();
+    if starts_python {
+        // Importing breezy loads Python's signal module, which takes over SIGINT; give it back.
+        pyo3::Python::attach(|py| {
+            let signal = py.import("signal")?;
+            let sigint = signal.getattr("SIGINT")?;
+            let handler = signal.call_method1("getsignal", (&sigint,))?;
+            if handler.is(&signal.getattr("default_int_handler")?) {
+                signal.call_method1("signal", (&sigint, signal.getattr("SIG_DFL")?))?;
+            }
+            Ok::<_, pyo3::PyErr>(())
+        })
+        .unwrap();
+    }
 }
 
 /// Import the first available of several equivalent Python modules.
