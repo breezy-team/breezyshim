@@ -251,7 +251,7 @@ pub enum Error {
         String,
         String,
         Option<String>,
-        std::collections::HashMap<String, String>,
+        Option<std::collections::HashMap<String, String>>,
     ),
     /// A control directory already exists at the specified path.
     AlreadyControlDir(std::path::PathBuf),
@@ -318,8 +318,11 @@ pub enum Error {
         code: u16,
         /// Additional information about the error.
         extra: Option<String>,
-        /// The HTTP headers that were received.
-        headers: std::collections::HashMap<String, String>,
+        /// The HTTP headers the raise site recorded, if it recorded any.
+        ///
+        /// `None` means no headers were passed, which is not the same as a
+        /// response that carried none.
+        headers: Option<std::collections::HashMap<String, String>>,
     },
     /// A timeout occurred.
     Timeout,
@@ -529,23 +532,48 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-/// Convert a Python headers object (dict or HTTPMessage) to a HashMap<String, String>
-fn extract_headers(headers_obj: &Bound<PyAny>) -> std::collections::HashMap<String, String> {
-    // Try to extract as a dict first
-    if let Ok(headers) = headers_obj.extract::<std::collections::HashMap<String, String>>() {
-        return headers;
+/// Render headers the way the raise sites pass them, as a list of pairs
+///
+/// `None` is passed back as `None`, so a raise site that recorded no headers
+/// is not turned into one that recorded an empty set.
+fn headers_to_pairs(
+    headers: Option<std::collections::HashMap<String, String>>,
+) -> Option<Vec<(String, String)>> {
+    headers.map(|h| h.into_iter().collect())
+}
+
+/// Convert a Python headers object to a HashMap<String, String>
+///
+/// The raise sites pass a list of pairs, a dict, an `HTTPMessage` or nothing.
+fn extract_headers(
+    headers_obj: &Bound<PyAny>,
+) -> Option<std::collections::HashMap<String, String>> {
+    if headers_obj.is_none() {
+        return None;
     }
 
-    // Otherwise, try to get items() method (works for HTTPMessage and other dict-like objects)
-    let mut headers = std::collections::HashMap::new();
-    if let Ok(items) = headers_obj.call_method0("items") {
-        if let Ok(items_list) = items.extract::<Vec<(String, String)>>() {
-            for (key, value) in items_list {
-                headers.insert(key, value);
-            }
+    // Try to extract as a dict first
+    if let Ok(headers) = headers_obj.extract::<std::collections::HashMap<String, String>>() {
+        return Some(headers);
+    }
+
+    if let Ok(pairs) = headers_obj.extract::<Vec<(String, String)>>() {
+        return Some(pairs.into_iter().collect());
+    }
+
+    // Otherwise try items(), which works for HTTPMessage and other dict-like
+    // objects. Headers we cannot read at all are reported as `None`, because
+    // an empty set would claim the response carried no headers.
+    match headers_obj
+        .call_method0("items")
+        .and_then(|items| items.extract::<Vec<(String, String)>>())
+    {
+        Ok(pairs) => Some(pairs.into_iter().collect()),
+        Err(e) => {
+            log::warn!("could not read the headers on this error: {}", e);
+            None
         }
     }
-    headers
 }
 
 fn get_exception_msg(value: &Bound<PyAny>) -> String {
@@ -924,7 +952,7 @@ impl From<Error> for PyErr {
             }),
             Error::LineEndingError(e) => LineEndingError::new_err((e,)),
             Error::InvalidHttpResponse(status, msg, orig_error, headers) => {
-                InvalidHttpResponse::new_err((status, msg, orig_error, headers))
+                InvalidHttpResponse::new_err((status, msg, orig_error, headers_to_pairs(headers)))
             }
             Error::AlreadyControlDir(path) => {
                 AlreadyControlDirError::new_err((path.to_string_lossy().to_string(),))
@@ -996,7 +1024,12 @@ impl From<Error> for PyErr {
                 code,
                 extra,
                 headers,
-            } => UnexpectedHttpStatus::new_err((url.to_string(), code, extra, headers)),
+            } => UnexpectedHttpStatus::new_err((
+                url.to_string(),
+                code,
+                extra,
+                headers_to_pairs(headers),
+            )),
             Error::Timeout => pyo3::exceptions::PyTimeoutError::new_err(()),
             Error::BadHttpRequest(url, reason) => {
                 BadHttpRequest::new_err((url.to_string(), reason))
@@ -1247,7 +1280,7 @@ fn test_error_invalidhttpresponse() {
         "foo".to_string(),
         "bar".to_string(),
         Some("baz".to_string()),
-        std::collections::HashMap::new(),
+        None,
     );
     let p: PyErr = e.into();
     // Verify that p is an instance of InvalidHttpResponse
@@ -1575,7 +1608,7 @@ fn test_unexpected_http_status() {
         url: url::Url::parse("http://example.com").unwrap(),
         code: 404,
         extra: Some("bar".to_string()),
-        headers: std::collections::HashMap::new(),
+        headers: None,
     };
     let p: PyErr = e.into();
     // Verify that p is an instance of UnexpectedHttpStatus
@@ -1620,6 +1653,7 @@ fn test_unexpected_http_status_with_httpmessage() {
                 assert_eq!(code, 404);
                 assert_eq!(extra, Some("Not Found".to_string()));
                 // Verify headers were extracted (at least the ones we set)
+                let headers = headers.expect("the raise site passed headers");
                 assert_eq!(headers.get("Content-Type"), Some(&"text/html".to_string()));
                 assert_eq!(headers.get("Server"), Some(&"TestServer".to_string()));
             }
@@ -1657,6 +1691,7 @@ fn test_invalid_http_response_with_httpmessage() {
                 assert_eq!(path, "http://example.com");
                 assert_eq!(msg, "Invalid response");
                 // The key test: verify HTTPMessage headers were properly extracted without panicking
+                let headers = headers.expect("the raise site passed headers");
                 assert_eq!(headers.get("X-Custom"), Some(&"value".to_string()));
             }
             _ => panic!("Expected InvalidHttpResponse error, got {:?}", rust_err),
@@ -1681,6 +1716,157 @@ fn test_bad_http_request() {
     // Verify that p is an instance of BadHttpRequest
     Python::attach(|py| {
         assert!(BadHttpRequest::matches(&p, py), "{}", p);
+    });
+}
+
+#[test]
+fn test_unexpected_http_status_with_getheaders_list() {
+    // breezy passes response.getheaders(), a list of pairs
+    Python::attach(|py| {
+        let headers = py
+            .eval(
+                c"[('Content-Type', 'application/json'), ('Server', 'nginx')]",
+                None,
+                None,
+            )
+            .unwrap();
+        let err = UnexpectedHttpStatus::new_err((
+            "http://example.com/",
+            500,
+            py.None(),
+            headers.unbind(),
+        ));
+        let error: Error = err.into();
+        match error {
+            Error::UnexpectedHttpStatus { headers, .. } => {
+                let headers = headers.expect("the raise site passed headers");
+                assert_eq!(
+                    headers.get("Content-Type"),
+                    Some(&"application/json".to_string())
+                );
+                assert_eq!(headers.get("Server"), Some(&"nginx".to_string()));
+            }
+            other => panic!("Expected UnexpectedHttpStatus, got {:?}", other),
+        }
+    });
+}
+
+#[test]
+fn test_unexpected_http_status_without_headers() {
+    let err = UnexpectedHttpStatus::new_err(("http://example.com/", 500));
+    let error: Error = err.into();
+    match error {
+        Error::UnexpectedHttpStatus { headers, .. } => assert_eq!(headers, None),
+        other => panic!("Expected UnexpectedHttpStatus, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_unexpected_http_status_with_empty_headers() {
+    // A raise site that passed an empty set is not the same as one that
+    // passed nothing, so this must be `Some` and empty.
+    Python::attach(|py| {
+        let empty = pyo3::types::PyDict::new(py);
+        let err =
+            UnexpectedHttpStatus::new_err(("http://example.com/", 500, py.None(), empty.unbind()));
+        let error: Error = err.into();
+        match error {
+            Error::UnexpectedHttpStatus { headers, .. } => {
+                assert_eq!(headers, Some(std::collections::HashMap::new()))
+            }
+            other => panic!("Expected UnexpectedHttpStatus, got {:?}", other),
+        }
+    });
+}
+
+#[test]
+fn test_unexpected_http_status_with_unreadable_headers() {
+    // Headers that cannot be read are not reported as an empty set
+    Python::attach(|py| {
+        let headers = py.eval(c"object()", None, None).unwrap();
+        let err = UnexpectedHttpStatus::new_err((
+            "http://example.com/",
+            500,
+            py.None(),
+            headers.unbind(),
+        ));
+        let error: Error = err.into();
+        match error {
+            Error::UnexpectedHttpStatus { headers, .. } => assert_eq!(headers, None),
+            other => panic!("Expected UnexpectedHttpStatus, got {:?}", other),
+        }
+    });
+}
+
+#[test]
+fn test_unexpected_http_status_none_headers_reach_python_as_none() {
+    let e = Error::UnexpectedHttpStatus {
+        url: url::Url::parse("http://example.com/").unwrap(),
+        code: 500,
+        extra: None,
+        headers: None,
+    };
+    let p: PyErr = e.into();
+    Python::attach(|py| {
+        assert!(p.value(py).getattr("headers").unwrap().is_none());
+    });
+}
+
+#[test]
+fn test_unexpected_http_status_headers_roundtrip() {
+    let mut headers = std::collections::HashMap::new();
+    headers.insert("Retry-After".to_string(), "120".to_string());
+    let e = Error::UnexpectedHttpStatus {
+        url: url::Url::parse("http://example.com/").unwrap(),
+        code: 429,
+        extra: None,
+        headers: Some(headers),
+    };
+    let p: PyErr = e.into();
+    Python::attach(|py| {
+        // The raise sites pass a list of pairs, so this one does too
+        let got = p.value(py).getattr("headers").unwrap();
+        assert_eq!(
+            got.extract::<Vec<(String, String)>>().unwrap(),
+            vec![("Retry-After".to_string(), "120".to_string())]
+        );
+    });
+    let error: Error = p.into();
+    match error {
+        Error::UnexpectedHttpStatus { headers, .. } => {
+            assert_eq!(
+                headers
+                    .expect("round trip kept the headers")
+                    .get("Retry-After"),
+                Some(&"120".to_string())
+            )
+        }
+        other => panic!("Expected UnexpectedHttpStatus, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_invalid_http_response_with_getheaders_list() {
+    Python::attach(|py| {
+        let headers = py.eval(c"[('X-Custom', 'value')]", None, None).unwrap();
+        let err = InvalidHttpResponse::new_err((
+            "http://example.com",
+            "Invalid response",
+            py.None(),
+            headers.unbind(),
+        ));
+        let error: Error = err.into();
+        match error {
+            Error::InvalidHttpResponse(_, _, _, headers) => {
+                assert_eq!(
+                    headers
+                        .expect("the raise site passed headers")
+                        .get("X-Custom"),
+                    Some(&"value".to_string())
+                )
+            }
+            other => panic!("Expected InvalidHttpResponse, got {:?}", other),
+        }
     });
 }
 
