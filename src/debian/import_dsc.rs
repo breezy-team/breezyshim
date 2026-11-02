@@ -224,7 +224,7 @@ impl DistributionBranch {
                     {
                         let dict = pyo3::types::PyDict::new(py);
                         for (k, (r, p)) in upstream_tips {
-                            dict.set_item(k.clone(), (r.clone(), p.clone()))?;
+                            dict.set_item(k.clone(), (r.clone(), p.to_string_lossy().to_string()))?;
                         }
                         dict
                     },
@@ -240,6 +240,7 @@ impl DistributionBranch {
 mod tests {
     use super::*;
     use crate::debian::tests::{setup, CHANGELOG};
+    use crate::tree::MutableTree;
     use crate::workingtree::WorkingTree;
 
     #[test]
@@ -272,6 +273,28 @@ mod tests {
             db.revid_of_version(&"1.0".parse().unwrap()).unwrap(),
             branch.last_revision()
         );
+        std::mem::drop(env);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_extract_upstream_tree() {
+        let Some((env, wt)) = setup() else { return };
+        std::fs::write(env.working_dir.join("README"), "content").unwrap();
+        wt.add(&[Path::new("README")]).unwrap();
+        let revid = wt
+            .build_commit()
+            .message("Initial commit")
+            .commit()
+            .unwrap();
+
+        let branch = wt.branch();
+        let db = DistributionBranch::new(&branch, &branch, Some(&wt), None);
+        let tips = HashMap::from([(TarballKind::Orig, (revid, PathBuf::new()))]);
+        let basedir = env.temp_dir.path().join("extract");
+        std::fs::create_dir(&basedir).unwrap();
+        db.extract_upstream_tree(&tips, &basedir).unwrap();
+        assert!(basedir.join("upstream/README").exists());
         std::mem::drop(env);
     }
 }
