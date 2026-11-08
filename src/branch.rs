@@ -11,6 +11,7 @@
 use crate::controldir::{ControlDir, GenericControlDir, PyControlDir};
 use crate::error::Error;
 use crate::foreign::VcsType;
+use crate::location::AsLocation;
 use crate::lock::Lock;
 use crate::repository::{GenericRepository, PyRepository, Repository};
 use crate::revisionid::RevisionId;
@@ -194,7 +195,11 @@ pub trait Branch {
     /// # Parameters
     ///
     /// * `parent` - The new parent branch location.
-    fn set_parent(&mut self, parent: &str);
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or an error if the location could not be set.
+    fn set_parent(&mut self, parent: &str) -> Result<(), Error>;
     /// Get the public branch location.
     ///
     /// # Returns
@@ -621,11 +626,11 @@ impl<T: PyBranch> Branch for T {
         })
     }
 
-    fn set_parent(&mut self, parent: &str) {
+    fn set_parent(&mut self, parent: &str) -> Result<(), Error> {
         Python::attach(|py| {
             self.to_object(py)
-                .call_method1(py, "set_parent", (parent,))
-                .unwrap();
+                .call_method1(py, "set_parent", (parent,))?;
+            Ok(())
         })
     }
 
@@ -1063,7 +1068,7 @@ pub fn open(url: &url::Url) -> Result<Box<dyn Branch>, Error> {
     open_as_generic(url).map(|b| Box::new(b) as Box<dyn Branch>)
 }
 
-/// Open a branch at the specified URL, returning a GenericBranch.
+/// Open a branch at the specified location, returning a GenericBranch.
 ///
 /// This is similar to `open`, but returns a `GenericBranch` directly
 /// instead of boxing it as a trait object. This is more efficient and allows the caller
@@ -1071,16 +1076,16 @@ pub fn open(url: &url::Url) -> Result<Box<dyn Branch>, Error> {
 ///
 /// # Parameters
 ///
-/// * `url` - The URL of the branch to open.
+/// * `location` - The location of the branch to open, e.g. a URL or a local path.
 ///
 /// # Returns
 ///
 /// The opened branch, or an error if the branch could not be opened.
-pub fn open_as_generic(url: &url::Url) -> Result<GenericBranch, Error> {
+pub fn open_as_generic(location: impl AsLocation) -> Result<GenericBranch, Error> {
     Python::attach(|py| {
         let m = py.import("breezy.branch").unwrap();
         let c = m.getattr("Branch").unwrap();
-        let r = c.call_method1("open", (url.to_string(),))?;
+        let r = c.call_method1("open", (location.as_location(),))?;
         Ok(GenericBranch::from(r))
     })
 }
@@ -1237,5 +1242,38 @@ mod tests {
         let repo = other.branch().repository();
         assert!(repo.has_revision(&revs[0]).unwrap());
         assert!(!repo.has_revision(&revs[1]).unwrap());
+    }
+
+    #[test]
+    fn test_open_as_generic_path() {
+        crate::init();
+        let td = tempfile::tempdir().unwrap();
+        crate::controldir::create_standalone_workingtree(td.path(), "2a").unwrap();
+        let branch = open_as_generic(td.path()).unwrap();
+        assert_eq!(branch.last_revision(), RevisionId::null());
+    }
+
+    #[test]
+    fn test_open_as_generic_not_branch() {
+        crate::init();
+        let td = tempfile::tempdir().unwrap();
+        assert!(matches!(
+            open_as_generic(td.path()),
+            Err(Error::NotBranchError(..))
+        ));
+    }
+
+    #[test]
+    fn test_set_parent() {
+        crate::init();
+        let td = tempfile::tempdir().unwrap();
+        crate::controldir::create_standalone_workingtree(td.path(), "2a").unwrap();
+        let mut branch = open_as_generic(td.path()).unwrap();
+        branch.set_parent("https://example.com/parent").unwrap();
+        let branch = open_as_generic(td.path()).unwrap();
+        assert_eq!(
+            branch.get_parent(),
+            Some("https://example.com/parent".to_string())
+        );
     }
 }
