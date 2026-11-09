@@ -1312,36 +1312,7 @@ impl AsFormat for &ControlDirFormat {
     }
 }
 
-/// Create a branch conveniently (includes creating a repository if needed).
-///
-/// # Parameters
-///
-/// * `base` - The URL to create the branch at.
-/// * `force_new_tree` - Whether to force the creation of a new working tree if
-///   one already exists.
-/// * `format` - The format to use for the new branch.
-///
-/// # Returns
-///
-/// The newly created branch, or an error if the branch could not be created.
-#[deprecated(
-    since = "0.7.7",
-    note = "Use `create_branch_convenience_as_generic` instead to avoid unnecessary boxing"
-)]
-pub fn create_branch_convenience(
-    base: &url::Url,
-    force_new_tree: Option<bool>,
-    format: impl AsFormat,
-) -> Result<Box<dyn Branch>, Error> {
-    create_branch_convenience_as_generic(base, force_new_tree, format)
-        .map(|b| Box::new(b) as Box<dyn Branch>)
-}
-
 /// Create a branch conveniently, returning a GenericBranch.
-///
-/// This is similar to `create_branch_convenience`, but returns a `GenericBranch` directly
-/// instead of boxing it as a trait object. This is more efficient and allows the caller
-/// to use `GenericBranch`-specific methods and traits like `Clone`.
 ///
 /// # Parameters
 ///

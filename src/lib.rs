@@ -10,9 +10,9 @@
 //!
 //! ```no_run
 //! use breezyshim::prelude::*;
-//! use breezyshim::branch::open as open_branch;
+//! use breezyshim::branch::open_as_generic;
 //! breezyshim::plugin::load_plugins();
-//! let b = open_branch(&"https://code.launchpad.net/brz".parse().unwrap()).unwrap();
+//! let b = open_as_generic("https://code.launchpad.net/brz").unwrap();
 //! println!("Last revision: {:?}", b.last_revision());
 //! ```
 
