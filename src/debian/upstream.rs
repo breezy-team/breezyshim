@@ -7,7 +7,7 @@ use crate::tree::PyTree;
 use crate::RevisionId;
 use debversion::Version;
 use pyo3::prelude::*;
-use pyo3::types::{PyCFunction, PyDict, PyTuple};
+use pyo3::types::PyDict;
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -323,6 +323,36 @@ impl std::fmt::Debug for UpstreamBranchSource {
     }
 }
 
+type CreateDistFn =
+    dyn Fn(&dyn PyTree, &str, &str, &Path, &Path) -> Result<OsString, Error> + Send + Sync;
+
+/// Python callable that forwards `create_dist` calls to a Rust function.
+#[pyclass]
+struct PyCreateDist(Box<CreateDistFn>);
+
+#[pymethods]
+impl PyCreateDist {
+    #[pyo3(signature = (tree, package, version, target_dir, subpath=None))]
+    fn __call__(
+        &self,
+        tree: Py<PyAny>,
+        package: &str,
+        version: &str,
+        target_dir: PathBuf,
+        subpath: Option<PathBuf>,
+    ) -> PyResult<String> {
+        (self.0)(
+            &crate::tree::RevisionTree(tree),
+            package,
+            version,
+            &target_dir,
+            &subpath.unwrap_or_default(),
+        )
+        .map(|x| x.to_string_lossy().into_owned())
+        .map_err(|e| e.into())
+    }
+}
+
 impl UpstreamBranchSource {
     /// Get the upstream branch associated with this source.
     ///
@@ -407,22 +437,7 @@ impl UpstreamBranchSource {
             kwargs.set_item("version_kind", version_kind.unwrap_or_default())?;
             kwargs.set_item("local_dir", local_dir.to_object(py))?;
             if let Some(create_dist) = create_dist {
-                let create_dist = move |args: &Bound<'_, PyTuple>,
-                                        _kwargs: Option<&Bound<'_, PyDict>>|
-                      -> PyResult<_> {
-                    let args = args.extract::<(Py<PyAny>, String, String, PathBuf, PathBuf)>()?;
-                    create_dist(
-                        &crate::tree::RevisionTree(args.0),
-                        &args.1,
-                        &args.2,
-                        &args.3,
-                        &args.4,
-                    )
-                    .map(|x| x.to_string_lossy().into_owned())
-                    .map_err(|e| e.into())
-                };
-                let create_dist = PyCFunction::new_closure(py, None, None, create_dist)?;
-                kwargs.set_item("create_dist", create_dist)?;
+                kwargs.set_item("create_dist", PyCreateDist(Box::new(create_dist)))?;
             }
             Ok(UpstreamBranchSource(
                 cls.call_method("from_branch", (upstream_branch,), Some(&kwargs))?
@@ -566,6 +581,7 @@ mod tests {
     use crate::debian::tests::setup;
     use crate::tree::MutableTree;
     use crate::workingtree::{GenericWorkingTree, WorkingTree};
+    use std::sync::{Arc, Mutex};
 
     fn commit_with_tag(wt: &GenericWorkingTree, tag: &str) -> RevisionId {
         let revid = wt
@@ -578,14 +594,17 @@ mod tests {
         revid
     }
 
-    fn branch_source(wt: &GenericWorkingTree) -> UpstreamBranchSource {
-        let local_dir = Python::attach(|py| {
+    fn local_dir(wt: &GenericWorkingTree) -> GenericControlDir {
+        Python::attach(|py| {
             GenericControlDir::new(wt.to_object(py).getattr(py, "controldir").unwrap())
-        });
+        })
+    }
+
+    fn branch_source(wt: &GenericWorkingTree) -> UpstreamBranchSource {
         UpstreamBranchSource::from_branch(
             &wt.branch(),
             None,
-            &local_dir,
+            &local_dir(wt),
             None::<fn(&dyn PyTree, &str, &str, &Path, &Path) -> Result<OsString, Error>>,
         )
         .unwrap()
@@ -694,6 +713,73 @@ mod tests {
             source.get_latest_version(Some("foo"), None).unwrap(),
             Some(("1.0".to_string(), "1.0".to_string()))
         );
+        std::mem::drop(env);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_from_branch_create_dist() {
+        let Some((env, wt)) = setup() else { return };
+        commit_with_tag(&wt, "1.0");
+
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let recorded = calls.clone();
+        let source = UpstreamBranchSource::from_branch(
+            &wt.branch(),
+            None,
+            &local_dir(&wt),
+            Some(
+                move |_tree: &dyn PyTree,
+                      package: &str,
+                      version: &str,
+                      target_dir: &Path,
+                      subpath: &Path|
+                      -> Result<OsString, Error> {
+                    recorded.lock().unwrap().push((
+                        package.to_string(),
+                        version.to_string(),
+                        subpath.to_path_buf(),
+                    ));
+                    std::fs::write(target_dir.join("foo-1.0.tar.gz"), "tarball").unwrap();
+                    Ok(OsString::from("foo-1.0.tar.gz"))
+                },
+            ),
+        )
+        .unwrap();
+        // from_branch does not take a subpath, so set it on the source.
+        Python::attach(|py| source.0.setattr(py, "subpath", "sub").unwrap());
+
+        let target = tempfile::tempdir().unwrap();
+        let paths = source
+            .fetch_tarballs(Some("foo"), "1.0", target.path(), None)
+            .unwrap();
+        // The arguments may also all come by name.
+        let other = tempfile::tempdir().unwrap();
+        let name = Python::attach(|py| {
+            let kwargs = PyDict::new(py);
+            kwargs.set_item("tree", py.None()).unwrap();
+            kwargs.set_item("package", "bar").unwrap();
+            kwargs.set_item("version", "2.0").unwrap();
+            kwargs.set_item("target_dir", other.path()).unwrap();
+            kwargs.set_item("subpath", "other").unwrap();
+            let create_dist = source.0.getattr(py, "create_dist").unwrap();
+            create_dist
+                .call(py, (), Some(&kwargs))
+                .unwrap()
+                .extract::<String>(py)
+                .unwrap()
+        });
+
+        assert_eq!(
+            *calls.lock().unwrap(),
+            vec![
+                ("foo".to_string(), "1.0".to_string(), PathBuf::from("sub")),
+                ("bar".to_string(), "2.0".to_string(), PathBuf::from("other")),
+            ]
+        );
+        assert_eq!(name, "foo-1.0.tar.gz");
+        assert_eq!(paths, vec![target.path().join("foo_1.0.orig.tar.gz")]);
+        assert_eq!(std::fs::read_to_string(&paths[0]).unwrap(), "tarball");
         std::mem::drop(env);
     }
 }
