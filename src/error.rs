@@ -548,6 +548,20 @@ fn extract_headers(headers_obj: &Bound<PyAny>) -> std::collections::HashMap<Stri
     headers
 }
 
+// breezy's PathError stores its detail as ": detail", or "" when there is none.
+fn path_error_extra(value: &Bound<PyAny>) -> Option<String> {
+    let extra: Option<String> = value.getattr("extra").unwrap().extract().unwrap();
+    match extra.as_deref() {
+        None | Some("") => None,
+        Some(extra) => Some(
+            extra
+                .strip_prefix(": ")
+                .unwrap_or_else(|| panic!("unexpected PathError extra: {:?}", extra))
+                .to_string(),
+        ),
+    }
+}
+
 fn get_exception_msg(value: &Bound<PyAny>) -> String {
     value
         .getattr("msg")
@@ -579,12 +593,12 @@ impl From<PyErr> for Error {
             } else if PermissionDenied::matches(&err, py) {
                 Error::PermissionDenied(
                     value.getattr("path").unwrap().extract().unwrap(),
-                    value.getattr("extra").unwrap().extract().unwrap(),
+                    path_error_extra(value),
                 )
             } else if UnsupportedProtocol::matches(&err, py) {
                 Error::UnsupportedProtocol(
                     value.getattr("path").unwrap().extract().unwrap(),
-                    value.getattr("extra").unwrap().extract().unwrap(),
+                    path_error_extra(value),
                 )
             } else if UnusableRedirect::matches(&err, py) {
                 Error::UnusableRedirect(
@@ -595,7 +609,7 @@ impl From<PyErr> for Error {
             } else if err.is_instance_of::<InvalidURL>(py) {
                 Error::InvalidURL(
                     value.getattr("path").unwrap().extract().unwrap(),
-                    value.getattr("extra").unwrap().extract().unwrap(),
+                    path_error_extra(value),
                 )
             } else if err.is_instance_of::<pyo3::exceptions::PyConnectionError>(py) {
                 Error::ConnectionError(err.to_string())
@@ -700,7 +714,7 @@ impl From<PyErr> for Error {
                     std::path::PathBuf::from(
                         value.getattr("path").unwrap().extract::<String>().unwrap(),
                     ),
-                    value.getattr("extra").unwrap().extract().unwrap(),
+                    path_error_extra(value),
                 )
             } else if err.is_instance_of::<LockContention>(py) {
                 Error::LockContention(
@@ -1101,6 +1115,16 @@ fn test_error_permissiondenied() {
     Python::attach(|py| {
         assert!(PermissionDenied::matches(&p, py));
     });
+    for reason in [Some("bar".to_string()), None] {
+        let p: PyErr =
+            Error::PermissionDenied(std::path::PathBuf::from("foo"), reason.clone()).into();
+        match Error::from(p) {
+            Error::PermissionDenied(path, r) => {
+                assert_eq!((path, r), (std::path::PathBuf::from("foo"), reason));
+            }
+            e => panic!("Expected PermissionDenied, got {:?}", e),
+        }
+    }
 }
 
 #[test]
@@ -1127,7 +1151,7 @@ fn test_error_unsupportedprotocol_from_python() {
         match error {
             Error::UnsupportedProtocol(url, extra) => {
                 assert_eq!(url, "nosuch://x/y");
-                assert_eq!(extra.as_deref(), Some(""));
+                assert_eq!(extra, None);
             }
             _ => panic!("Expected UnsupportedProtocol, got {:?}", error),
         }
