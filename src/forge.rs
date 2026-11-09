@@ -1,5 +1,5 @@
 //! Code hosting services and merge proposals.
-use crate::branch::{py_tag_selector, Branch, GenericBranch, PyBranch};
+use crate::branch::{py_tag_selector, GenericBranch, PyBranch};
 use crate::error::Error;
 use crate::revisionid::RevisionId;
 use pyo3::exceptions::PyValueError;
@@ -659,27 +659,7 @@ impl Forge {
         })
     }
 
-    /// Gets a branch derived from a main branch with the given name and optional owner.
-    #[deprecated(
-        since = "0.7.7",
-        note = "Use `get_derived_branch_as_generic` instead to avoid unnecessary boxing"
-    )]
-    pub fn get_derived_branch(
-        &self,
-        main_branch: &dyn PyBranch,
-        name: &str,
-        owner: Option<&str>,
-        preferred_schemes: Option<&[&str]>,
-    ) -> Result<Box<dyn Branch>, crate::error::Error> {
-        self.get_derived_branch_as_generic(main_branch, name, owner, preferred_schemes)
-            .map(|b| Box::new(b) as Box<dyn Branch>)
-    }
-
     /// Gets a branch derived from a main branch with the given name and optional owner, returning a GenericBranch.
-    ///
-    /// This is similar to `get_derived_branch`, but returns a `GenericBranch` directly
-    /// instead of boxing it as a trait object. This is more efficient and allows the caller
-    /// to use `GenericBranch`-specific methods and traits like `Clone`.
     pub fn get_derived_branch_as_generic(
         &self,
         main_branch: &dyn PyBranch,
@@ -779,52 +759,6 @@ impl Forge {
                 .call_method(py, "publish_derived", (), Some(&kwargs))?
                 .extract(py)?;
             Ok((GenericBranch::from(b), u.parse::<url::Url>()?))
-        })
-    }
-
-    /// Publishes a derived branch and returns the branch and its URL.
-    #[deprecated(
-        since = "0.7.7",
-        note = "Use `publish_derived_as_generic_branch` instead to avoid unnecessary boxing"
-    )]
-    pub fn publish_derived(
-        &self,
-        local_branch: &dyn PyBranch,
-        base_branch: &dyn PyBranch,
-        name: &str,
-        overwrite: Option<bool>,
-        owner: Option<&str>,
-        revision_id: Option<&RevisionId>,
-        tag_selector: Option<Box<dyn Fn(String) -> bool>>,
-    ) -> Result<(Box<dyn Branch>, url::Url), crate::error::Error> {
-        Python::attach(|py| {
-            let kwargs = PyDict::new(py);
-            let local_branch_obj = local_branch.to_object(py);
-            let base_branch_obj = base_branch.to_object(py);
-            let forge_obj = self.to_object();
-
-            kwargs.set_item("local_branch", local_branch_obj)?;
-            kwargs.set_item("base_branch", base_branch_obj)?;
-            kwargs.set_item("name", name)?;
-            if let Some(overwrite) = overwrite {
-                kwargs.set_item("overwrite", overwrite)?;
-            }
-            if let Some(owner) = owner {
-                kwargs.set_item("owner", owner)?;
-            }
-            if let Some(revision_id) = revision_id {
-                kwargs.set_item("revision_id", revision_id.clone())?;
-            }
-            if let Some(tag_selector) = tag_selector {
-                kwargs.set_item("tag_selector", py_tag_selector(py, tag_selector)?)?;
-            }
-            let (b, u): (Py<PyAny>, String) = forge_obj
-                .call_method(py, "publish_derived", (), Some(&kwargs))?
-                .extract(py)?;
-            Ok((
-                Box::new(GenericBranch::from(b)) as Box<dyn Branch>,
-                u.parse::<url::Url>()?,
-            ))
         })
     }
 

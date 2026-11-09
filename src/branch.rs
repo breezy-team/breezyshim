@@ -1051,28 +1051,7 @@ pub(crate) fn py_tag_selector(
         .into())
 }
 
-/// Open a branch at the specified URL.
-///
-/// # Parameters
-///
-/// * `url` - The URL of the branch to open.
-///
-/// # Returns
-///
-/// The opened branch, or an error if the branch could not be opened.
-#[deprecated(
-    since = "0.7.7",
-    note = "Use `open_as_generic` instead to avoid unnecessary boxing"
-)]
-pub fn open(url: &url::Url) -> Result<Box<dyn Branch>, Error> {
-    open_as_generic(url).map(|b| Box::new(b) as Box<dyn Branch>)
-}
-
 /// Open a branch at the specified location, returning a GenericBranch.
-///
-/// This is similar to `open`, but returns a `GenericBranch` directly
-/// instead of boxing it as a trait object. This is more efficient and allows the caller
-/// to use `GenericBranch`-specific methods and traits like `Clone`.
 ///
 /// # Parameters
 ///
@@ -1090,32 +1069,7 @@ pub fn open_as_generic(location: impl AsLocation) -> Result<GenericBranch, Error
     })
 }
 
-/// Find and open a branch containing the specified URL.
-///
-/// This function searches for a branch containing the specified URL and returns
-/// the branch and the relative path from the branch to the specified URL.
-///
-/// # Parameters
-///
-/// * `url` - The URL to find a branch for.
-///
-/// # Returns
-///
-/// A tuple containing the opened branch and the relative path from the branch to
-/// the specified URL, or an error if no branch could be found.
-#[deprecated(
-    since = "0.7.7",
-    note = "Use `open_containing_as_generic` instead to avoid unnecessary boxing"
-)]
-pub fn open_containing(url: &url::Url) -> Result<(Box<dyn Branch>, String), Error> {
-    open_containing_as_generic(url).map(|(b, p)| (Box::new(b) as Box<dyn Branch>, p))
-}
-
 /// Find and open a branch containing the specified URL, returning a GenericBranch.
-///
-/// This is similar to `open_containing`, but returns a `GenericBranch` directly
-/// instead of boxing it as a trait object. This is more efficient and allows the caller
-/// to use `GenericBranch`-specific methods and traits like `Clone`.
 ///
 /// # Parameters
 ///
@@ -1138,30 +1092,7 @@ pub fn open_containing_as_generic(url: &url::Url) -> Result<(GenericBranch, Stri
     })
 }
 
-/// Open a branch from a transport.
-///
-/// # Parameters
-///
-/// * `transport` - The transport to use for accessing the branch.
-///
-/// # Returns
-///
-/// The opened branch, or an error if the branch could not be opened.
-#[deprecated(
-    since = "0.7.7",
-    note = "Use `open_from_transport_as_generic` instead to avoid unnecessary boxing"
-)]
-pub fn open_from_transport(
-    transport: &crate::transport::Transport,
-) -> Result<Box<dyn Branch>, Error> {
-    open_from_transport_as_generic(transport).map(|b| Box::new(b) as Box<dyn Branch>)
-}
-
 /// Open a branch from a transport, returning a GenericBranch.
-///
-/// This is similar to `open_from_transport`, but returns a `GenericBranch` directly
-/// instead of boxing it as a trait object. This is more efficient and allows the caller
-/// to use `GenericBranch`-specific methods and traits like `Clone`.
 ///
 /// # Parameters
 ///
