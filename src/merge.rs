@@ -2,7 +2,7 @@
 use crate::branch::PyBranch;
 use crate::graph::Graph;
 use crate::hooks::HookDict;
-use crate::transform::TreeTransform;
+use crate::transform::{Conflict, TreeTransform};
 use crate::tree::PyTree;
 use crate::RevisionId;
 use pyo3::import_exception;
@@ -241,9 +241,83 @@ impl Submerger {
             Ok(TreeTransform::from(transform))
         })
     }
+
+    /// Get the conflicts found by `make_preview_transform`; empty until it has run.
+    pub fn cooked_conflicts(&self) -> Result<Vec<Conflict>, crate::error::Error> {
+        Python::attach(|py| {
+            let conflicts = self.0.getattr(py, "cooked_conflicts")?;
+            Ok(conflicts
+                .bind(py)
+                .try_iter()?
+                .map(|c| c.map(|c| Conflict(c.unbind())))
+                .collect::<PyResult<Vec<_>>>()?)
+        })
+    }
 }
 
 lazy_static::lazy_static! {
     /// Hooks that are called during merge operations.
     pub static ref MERGE_HOOKS: HookDict = HookDict::new("breezy.merge", "Merger", "hooks");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::branch::Branch;
+    use crate::controldir::{create_standalone_workingtree, ControlDirFormat};
+    use crate::tree::MutableTree;
+    use crate::workingtree::WorkingTree;
+    use serial_test::serial;
+
+    #[test]
+    #[serial]
+    fn test_cooked_conflicts() {
+        let env = crate::testing::TestEnv::new();
+        let this = create_standalone_workingtree(
+            std::path::Path::new("this"),
+            &ControlDirFormat::default(),
+        )
+        .unwrap();
+        std::fs::write("this/a", "a\n").unwrap();
+        this.add(&[std::path::Path::new("a")]).unwrap();
+        this.build_commit().message("add a").commit().unwrap();
+        let other = this
+            .controldir()
+            .sprout(
+                url::Url::from_file_path(env.working_dir.join("other")).unwrap(),
+                None,
+                None,
+                None,
+                None,
+            )
+            .unwrap()
+            .open_workingtree()
+            .unwrap();
+        std::fs::write("other/a", "other\n").unwrap();
+        other.build_commit().message("change a").commit().unwrap();
+        std::fs::write("this/a", "this\n").unwrap();
+        this.build_commit().message("change a").commit().unwrap();
+
+        let _this_lock = this.lock_write().unwrap();
+        let _other_lock = other.branch().lock_read().unwrap();
+        let Ok(mut merger) = Merger::from_revision_ids(
+            &this,
+            &other.branch(),
+            &other.last_revision().unwrap(),
+            &this.branch(),
+        ) else {
+            panic!("merger");
+        };
+        merger.set_merge_type(MergeType::Merge3);
+        let submerger = merger.make_merger().unwrap();
+        let _tt = submerger.make_preview_transform().unwrap();
+        let conflicts = submerger
+            .cooked_conflicts()
+            .unwrap()
+            .iter()
+            .map(|c| c.describe().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(vec!["Text conflict in a".to_string()], conflicts);
+        std::mem::drop(env);
+    }
 }
