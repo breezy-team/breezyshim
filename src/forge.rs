@@ -53,6 +53,102 @@ pub enum MergeProposalStatus {
     Merged,
 }
 
+/// A comment on a merge proposal.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct ProposalComment {
+    /// Login name of the author, if known.
+    pub author: Option<String>,
+    /// Text of the comment.
+    pub body: String,
+    /// When the comment was made.
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    /// Web URL of the comment, if any.
+    pub url: Option<String>,
+}
+
+impl<'a, 'py> FromPyObject<'a, 'py> for ProposalComment {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Ok(ProposalComment {
+            author: ob.getattr("author")?.extract()?,
+            body: ob.getattr("body")?.extract()?,
+            created_at: extract_datetime(&ob.getattr("created_at")?)?,
+            url: ob.getattr("url")?.extract()?,
+        })
+    }
+}
+
+/// The verdict of a review of a merge proposal.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum ReviewVerdict {
+    /// The reviewer approved the proposal.
+    Approved,
+    /// The reviewer requested changes.
+    ChangesRequested,
+    /// The reviewer only commented.
+    Commented,
+    /// The review was dismissed.
+    Dismissed,
+}
+
+impl<'a, 'py> FromPyObject<'a, 'py> for ReviewVerdict {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        let value: String = ob.getattr("value")?.extract()?;
+        match value.as_str() {
+            "approved" => Ok(ReviewVerdict::Approved),
+            "changes-requested" => Ok(ReviewVerdict::ChangesRequested),
+            "commented" => Ok(ReviewVerdict::Commented),
+            "dismissed" => Ok(ReviewVerdict::Dismissed),
+            _ => Err(PyValueError::new_err(format!(
+                "unknown review verdict: {value}"
+            ))),
+        }
+    }
+}
+
+/// A review of a merge proposal.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct ProposalReview {
+    /// Login name of the reviewer, if known.
+    pub author: Option<String>,
+    /// The verdict of the review.
+    pub verdict: ReviewVerdict,
+    /// Summary text of the review, if any.
+    pub body: Option<String>,
+    /// When the review was submitted.
+    pub submitted_at: chrono::DateTime<chrono::Utc>,
+    /// The head revision the review applied to, when known.
+    pub revision: Option<RevisionId>,
+    /// Web URL of the review, if any.
+    pub url: Option<String>,
+}
+
+impl<'a, 'py> FromPyObject<'a, 'py> for ProposalReview {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Ok(ProposalReview {
+            author: ob.getattr("author")?.extract()?,
+            verdict: ob.getattr("verdict")?.extract()?,
+            body: ob.getattr("body")?.extract()?,
+            submitted_at: extract_datetime(&ob.getattr("submitted_at")?)?,
+            revision: ob.getattr("revision")?.extract()?,
+            url: ob.getattr("url")?.extract()?,
+        })
+    }
+}
+
+/// Extract a Python datetime, treating naive ones as UTC.
+fn extract_datetime(ob: &Bound<'_, PyAny>) -> PyResult<chrono::DateTime<chrono::Utc>> {
+    if let Ok(dt) = ob.extract::<chrono::DateTime<chrono::FixedOffset>>() {
+        return Ok(dt.to_utc());
+    }
+    Ok(ob.extract::<chrono::NaiveDateTime>()?.and_utc())
+}
+
 impl MergeProposalStatus {
     /// Get all possible merge proposal statuses.
     pub fn all() -> Vec<Self> {
@@ -401,19 +497,43 @@ impl MergeProposal {
         &self,
     ) -> Result<Option<chrono::DateTime<chrono::Utc>>, crate::error::Error> {
         Python::attach(|py| {
-            let merged_at = self.0.call_method0(py, "get_merged_at")?;
-            if merged_at.is_none(py) {
+            let merged_at = self.0.bind(py).call_method0("get_merged_at")?;
+            if merged_at.is_none() {
                 return Ok(None);
             }
-            // Try timezone-aware first; fall back to naive (treat as UTC).
-            if let Ok(dt) = merged_at.extract::<chrono::DateTime<chrono::Utc>>(py) {
-                return Ok(Some(dt));
-            }
-            merged_at
-                .extract::<chrono::NaiveDateTime>(py)
-                .map(|dt| Some(dt.and_utc()))
-                .map_err(Into::into)
+            Ok(Some(extract_datetime(&merged_at)?))
         })
+    }
+
+    /// Returns the comments on the proposal as a whole, oldest first.
+    ///
+    /// Comments on lines of the diff are not included. Eagerly drains the
+    /// underlying Python iterator; the first per-item error short-circuits
+    /// and is returned.
+    pub fn iter_comments(&self) -> Result<impl Iterator<Item = ProposalComment>, Error> {
+        let ret: Vec<ProposalComment> = Python::attach(|py| -> Result<_, Error> {
+            self.optional_method(py, "iter_comments")?
+                .call0()?
+                .try_iter()?
+                .map(|c| Ok(c?.extract()?))
+                .collect()
+        })?;
+        Ok(ret.into_iter())
+    }
+
+    /// Returns the submitted reviews of the proposal.
+    ///
+    /// Eagerly drains the underlying Python iterator; the first per-item
+    /// error short-circuits and is returned.
+    pub fn iter_reviews(&self) -> Result<impl Iterator<Item = ProposalReview>, Error> {
+        let ret: Vec<ProposalReview> = Python::attach(|py| -> Result<_, Error> {
+            self.optional_method(py, "iter_reviews")?
+                .call0()?
+                .try_iter()?
+                .map(|r| Ok(r?.extract()?))
+                .collect()
+        })?;
+        Ok(ret.into_iter())
     }
 
     /// Posts a review with inline comments, replies to existing threads and
@@ -1086,12 +1206,24 @@ pub fn get_proposal_by_url(url: &url::Url) -> Result<MergeProposal, Error> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Forge, MergeProposal};
+    use super::{Forge, MergeProposal, ProposalComment, ProposalReview, ReviewVerdict};
     use crate::error::Error;
     use crate::revisionid::RevisionId;
     use pyo3::prelude::*;
 
     const FAKES: &std::ffi::CStr = cr#"
+import datetime
+import enum
+from types import SimpleNamespace
+
+
+class Verdict(enum.Enum):
+    APPROVED = "approved"
+    CHANGES_REQUESTED = "changes-requested"
+    COMMENTED = "commented"
+    DISMISSED = "dismissed"
+
+
 class FakeForge:
     def __init__(self):
         self.calls = []
@@ -1148,6 +1280,64 @@ class FakeProposal:
     def get_author(self):
         return "me"
 
+    def iter_comments(self):
+        yield SimpleNamespace(
+            author="alice",
+            body="Looks good",
+            created_at=datetime.datetime(2024, 1, 2, 3, 4, 5),
+            url="https://example.com/c1",
+        )
+        yield SimpleNamespace(
+            author=None,
+            body="Me too",
+            created_at=datetime.datetime(
+                2024, 1, 3, tzinfo=datetime.timezone(datetime.timedelta(hours=1))
+            ),
+            url=None,
+        )
+        yield SimpleNamespace(
+            author="carol",
+            body="UTC-aware",
+            created_at=datetime.datetime(
+                2024, 1, 4, 5, 6, 7, tzinfo=datetime.timezone.utc
+            ),
+            url=None,
+        )
+
+    def iter_reviews(self):
+        yield SimpleNamespace(
+            author="bob",
+            verdict=Verdict.APPROVED,
+            body=None,
+            submitted_at=datetime.datetime(2024, 1, 4),
+            revision=b"git-v1:abc",
+            url="https://example.com/r1",
+        )
+        yield SimpleNamespace(
+            author=None,
+            verdict=Verdict.CHANGES_REQUESTED,
+            body="Please fix",
+            submitted_at=datetime.datetime(2024, 1, 5),
+            revision=None,
+            url=None,
+        )
+        yield SimpleNamespace(
+            author="dan",
+            verdict=Verdict.COMMENTED,
+            body="just a note",
+            submitted_at=datetime.datetime(2024, 1, 6),
+            revision=None,
+            url=None,
+        )
+        yield SimpleNamespace(
+            author="erin",
+            verdict=Verdict.DISMISSED,
+            body=None,
+            submitted_at=datetime.datetime(2024, 1, 7),
+            revision=None,
+            url=None,
+        )
+
 
 class ReviewableProposal:
     def __init__(self):
@@ -1193,6 +1383,12 @@ class RebaseProposal:
 
 
 class UnsupportedProposal:
+    def iter_comments(self):
+        raise NotImplementedError(self.iter_comments)
+
+    def iter_reviews(self):
+        raise NotImplementedError(self.iter_reviews)
+
     def rebase(self, expected_revision=None):
         raise NotImplementedError(self.rebase)
 
@@ -1214,6 +1410,19 @@ class BrokenProposal:
 
     def get_target_project(self):
         raise RuntimeError("no target project")
+
+    def iter_comments(self):
+        yield SimpleNamespace(author="x", body="y", created_at="not a date", url=None)
+
+    def iter_reviews(self):
+        yield SimpleNamespace(
+            author="x",
+            verdict=SimpleNamespace(value="bogus"),
+            body=None,
+            submitted_at=datetime.datetime(2024, 1, 4),
+            revision=None,
+            url=None,
+        )
 "#;
 
     fn fake(py: Python<'_>, name: &str) -> Py<PyAny> {
@@ -1287,7 +1496,6 @@ class BrokenProposal:
 
     #[test]
     fn test_forge_errors_do_not_panic() {
-        use crate::error::Error;
         let forge = Forge::from(Python::attach(|py| fake(py, "BrokenForge")));
         assert!(matches!(forge.get_current_user(), Err(Error::Other(_))));
         assert!(matches!(
@@ -1358,6 +1566,94 @@ class BrokenProposal:
         let mp = MergeProposal::from(Python::attach(|py| fake(py, "BrokenProposal")));
         assert!(mp.get_source_project().is_err());
         assert!(mp.get_target_project().is_err());
+    }
+
+    #[test]
+    fn test_iter_comments() {
+        use chrono::TimeZone;
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "FakeProposal")));
+        assert_eq!(
+            mp.iter_comments().unwrap().collect::<Vec<_>>(),
+            vec![
+                ProposalComment {
+                    author: Some("alice".to_string()),
+                    body: "Looks good".to_string(),
+                    created_at: chrono::Utc.with_ymd_and_hms(2024, 1, 2, 3, 4, 5).unwrap(),
+                    url: Some("https://example.com/c1".to_string()),
+                },
+                ProposalComment {
+                    author: None,
+                    body: "Me too".to_string(),
+                    created_at: chrono::Utc.with_ymd_and_hms(2024, 1, 2, 23, 0, 0).unwrap(),
+                    url: None,
+                },
+                ProposalComment {
+                    author: Some("carol".to_string()),
+                    body: "UTC-aware".to_string(),
+                    created_at: chrono::Utc.with_ymd_and_hms(2024, 1, 4, 5, 6, 7).unwrap(),
+                    url: None,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn test_iter_reviews() {
+        use chrono::TimeZone;
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "FakeProposal")));
+        assert_eq!(
+            mp.iter_reviews().unwrap().collect::<Vec<_>>(),
+            vec![
+                ProposalReview {
+                    author: Some("bob".to_string()),
+                    verdict: ReviewVerdict::Approved,
+                    body: None,
+                    submitted_at: chrono::Utc.with_ymd_and_hms(2024, 1, 4, 0, 0, 0).unwrap(),
+                    revision: Some(RevisionId::from(b"git-v1:abc".to_vec())),
+                    url: Some("https://example.com/r1".to_string()),
+                },
+                ProposalReview {
+                    author: None,
+                    verdict: ReviewVerdict::ChangesRequested,
+                    body: Some("Please fix".to_string()),
+                    submitted_at: chrono::Utc.with_ymd_and_hms(2024, 1, 5, 0, 0, 0).unwrap(),
+                    revision: None,
+                    url: None,
+                },
+                ProposalReview {
+                    author: Some("dan".to_string()),
+                    verdict: ReviewVerdict::Commented,
+                    body: Some("just a note".to_string()),
+                    submitted_at: chrono::Utc.with_ymd_and_hms(2024, 1, 6, 0, 0, 0).unwrap(),
+                    revision: None,
+                    url: None,
+                },
+                ProposalReview {
+                    author: Some("erin".to_string()),
+                    verdict: ReviewVerdict::Dismissed,
+                    body: None,
+                    submitted_at: chrono::Utc.with_ymd_and_hms(2024, 1, 7, 0, 0, 0).unwrap(),
+                    revision: None,
+                    url: None,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn test_comments_and_reviews_unsupported() {
+        for name in ["OldProposal", "UnsupportedProposal"] {
+            let mp = MergeProposal::from(Python::attach(|py| fake(py, name)));
+            assert!(matches!(mp.iter_comments(), Err(Error::NotImplemented)));
+            assert!(matches!(mp.iter_reviews(), Err(Error::NotImplemented)));
+        }
+    }
+
+    #[test]
+    fn test_comments_and_reviews_invalid() {
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "BrokenProposal")));
+        assert!(matches!(mp.iter_comments(), Err(Error::Other(_))));
+        assert!(matches!(mp.iter_reviews(), Err(Error::Other(_))));
     }
 
     fn has_review_types() -> bool {
