@@ -326,6 +326,27 @@ impl MergeProposal {
         })
     }
 
+    /// Has the forge rebase the source branch onto the target branch.
+    ///
+    /// Returns `false` if the source branch was already up to date, and
+    /// `true` if a rebase was done or started; GitLab rebases in the
+    /// background. With `expected_revision` set, a different head is
+    /// reported as `Error::HeadChanged`.
+    ///
+    /// Returns `Error::NotImplemented` for forges that do not support this
+    /// and with versions of Breezy that predate `MergeProposal.rebase`.
+    pub fn rebase(&self, expected_revision: Option<&RevisionId>) -> Result<bool, Error> {
+        Python::attach(|py| {
+            let mp = self.0.bind(py);
+            if !mp.hasattr("rebase")? {
+                return Err(Error::NotImplemented);
+            }
+            mp.call_method1("rebase", (expected_revision.cloned(),))?
+                .extract()
+                .map_err(Into::into)
+        })
+    }
+
     /// Returns the web URL for viewing the merge proposal in a browser.
     pub fn get_web_url(&self) -> Result<url::Url, crate::error::Error> {
         Python::attach(|py| {
@@ -1030,6 +1051,8 @@ pub fn get_proposal_by_url(url: &url::Url) -> Result<MergeProposal, Error> {
 #[cfg(test)]
 mod tests {
     use super::{Forge, MergeProposal};
+    use crate::error::Error;
+    use crate::revisionid::RevisionId;
     use pyo3::prelude::*;
 
     const FAKES: &std::ffi::CStr = cr#"
@@ -1108,6 +1131,22 @@ class MergeableProposal:
 
     def merge(self, commit_message=None, auto=False):
         self.calls.append((commit_message, auto))
+
+
+class RebaseProposal:
+    def rebase(self, expected_revision=None):
+        if expected_revision is None:
+            return False
+        if expected_revision != b"git-v1:aaaa":
+            from breezy.forge import HeadChanged
+
+            raise HeadChanged(expected_revision, b"git-v1:aaaa")
+        return True
+
+
+class UnsupportedProposal:
+    def rebase(self, expected_revision=None):
+        raise NotImplementedError(self.rebase)
 
 
 class BrokenProposal:
@@ -1391,5 +1430,43 @@ class BrokenProposal:
             "ValueError: ",
             super::determine_title(description).unwrap_err()
         );
+    }
+
+    #[test]
+    fn test_rebase() {
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "RebaseProposal")));
+        assert!(!mp.rebase(None).unwrap());
+        let head = RevisionId::from(b"git-v1:aaaa".to_vec());
+        assert!(mp.rebase(Some(&head)).unwrap());
+    }
+
+    #[test]
+    fn test_rebase_head_changed() {
+        // Older versions of Breezy lack HeadChanged.
+        let supported = Python::attach(|py| {
+            py.import("breezy.forge")
+                .and_then(|m| m.hasattr("HeadChanged"))
+                .unwrap()
+        });
+        if !supported {
+            return;
+        }
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "RebaseProposal")));
+        let old = RevisionId::from(b"git-v1:bbbb".to_vec());
+        match mp.rebase(Some(&old)) {
+            Err(Error::HeadChanged(expected, actual)) => {
+                assert_eq!(expected, old);
+                assert_eq!(actual, Some(RevisionId::from(b"git-v1:aaaa".to_vec())));
+            }
+            other => panic!("unexpected result: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_rebase_unsupported() {
+        for name in ["OldProposal", "UnsupportedProposal"] {
+            let mp = MergeProposal::from(Python::attach(|py| fake(py, name)));
+            assert!(matches!(mp.rebase(None), Err(Error::NotImplemented)));
+        }
     }
 }
