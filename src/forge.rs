@@ -1043,6 +1043,77 @@ impl Forge {
         Ok(ret.into_iter())
     }
 
+    /// Calls a Python method that yields merge proposals and collects them.
+    ///
+    /// Returns `Error::NotImplemented` if the forge lacks the method, as
+    /// older versions of Breezy do.
+    fn collect_proposals(
+        &self,
+        method: &str,
+        status: Option<MergeProposalStatus>,
+        kwargs: impl FnOnce(&Bound<'_, PyDict>) -> PyResult<()>,
+    ) -> Result<Vec<MergeProposal>, Error> {
+        Python::attach(|py| {
+            let forge = self.0.bind(py);
+            if !forge.hasattr(method)? {
+                return Err(Error::NotImplemented);
+            }
+            let args = PyDict::new(py);
+            if let Some(status) = status {
+                args.set_item("status", status)?;
+            }
+            kwargs(&args)?;
+            forge
+                .call_method(method, (), Some(&args))?
+                .try_iter()?
+                .map(|mp| Ok(MergeProposal::from(mp?.unbind())))
+                .collect()
+        })
+    }
+
+    /// Returns the proposals the current user, or one of their teams, is
+    /// asked to review.
+    ///
+    /// The status defaults to open.
+    pub fn iter_my_review_requests(
+        &self,
+        status: Option<MergeProposalStatus>,
+    ) -> Result<impl Iterator<Item = MergeProposal>, Error> {
+        Ok(self
+            .collect_proposals("iter_my_review_requests", status, |_| Ok(()))?
+            .into_iter())
+    }
+
+    /// Returns the proposals the current user has reviewed.
+    ///
+    /// Some forges drop the review request once the review is submitted, so
+    /// these are not necessarily returned by [`Forge::iter_my_review_requests`].
+    /// The status defaults to open.
+    pub fn iter_my_reviewed_proposals(
+        &self,
+        status: Option<MergeProposalStatus>,
+    ) -> Result<impl Iterator<Item = MergeProposal>, Error> {
+        Ok(self
+            .collect_proposals("iter_my_reviewed_proposals", status, |_| Ok(()))?
+            .into_iter())
+    }
+
+    /// Returns the proposals in projects the current user maintains.
+    ///
+    /// `exclude` takes path prefixes of projects to leave out, such as
+    /// `"org"` or `"org/project"`. The status defaults to open.
+    pub fn iter_proposals_in_my_projects(
+        &self,
+        status: Option<MergeProposalStatus>,
+        exclude: &[&str],
+    ) -> Result<impl Iterator<Item = MergeProposal>, Error> {
+        Ok(self
+            .collect_proposals("iter_proposals_in_my_projects", status, |kwargs| {
+                kwargs.set_item("exclude", exclude.to_vec())
+            })?
+            .into_iter())
+    }
+
     /// Deletes the project with the given name, as yielded by [`Forge::iter_my_forks`].
     pub fn delete_project(&self, project: &str) -> Result<(), Error> {
         Python::attach(|py| {
@@ -1327,6 +1398,20 @@ class FakeForge:
     def delete_project(self, name):
         self.calls.append(("delete_project", name))
 
+    def iter_my_review_requests(self, status="open"):
+        self.calls.append(("iter_my_review_requests", status))
+        yield FakeProposal()
+
+    def iter_my_reviewed_proposals(self, status="open"):
+        self.calls.append(("iter_my_reviewed_proposals", status))
+        yield FakeProposal()
+        yield FakeProposal()
+
+    def iter_proposals_in_my_projects(self, status="open", exclude=()):
+        self.calls.append(("iter_proposals_in_my_projects", status))
+        self.calls.append(("exclude", ",".join(exclude)))
+        return iter([])
+
 
 class BrokenForge:
     def iter_my_forks(self, owner=None):
@@ -1337,6 +1422,10 @@ class BrokenForge:
         raise RuntimeError("no such project")
 
     def get_current_user(self):
+        raise RuntimeError("bad credentials")
+
+    def iter_my_review_requests(self, status="open"):
+        yield FakeProposal()
         raise RuntimeError("bad credentials")
 
     def get_user_url(self, user):
@@ -1474,6 +1563,10 @@ class MergeStatusProposal:
         )
 
 
+class OldForge:
+    pass
+
+
 class MergeableProposal:
     def __init__(self):
         self.calls = []
@@ -1582,6 +1675,71 @@ class BrokenProposal:
     fn test_iter_my_forks_error() {
         let forge = Forge::from(Python::attach(|py| fake(py, "BrokenForge")));
         assert!(forge.iter_my_forks(None).is_err());
+    }
+
+    #[test]
+    fn test_proposal_listing() {
+        use super::MergeProposalStatus;
+        let obj = Python::attach(|py| fake(py, "FakeForge"));
+        let forge = Forge::from(Python::attach(|py| obj.clone_ref(py)));
+        let mps: Vec<_> = forge.iter_my_review_requests(None).unwrap().collect();
+        assert_eq!(mps[0].get_author().unwrap(), Some("me".to_string()));
+        assert_eq!(mps.len(), 1);
+        assert_eq!(
+            forge
+                .iter_my_reviewed_proposals(Some(MergeProposalStatus::Merged))
+                .unwrap()
+                .count(),
+            2
+        );
+        assert_eq!(
+            forge
+                .iter_proposals_in_my_projects(Some(MergeProposalStatus::All), &["org", "x/y"])
+                .unwrap()
+                .count(),
+            0
+        );
+        assert_eq!(
+            Python::attach(|py| calls(py, &obj)),
+            vec![
+                (
+                    "iter_my_review_requests".to_string(),
+                    Some("open".to_string())
+                ),
+                (
+                    "iter_my_reviewed_proposals".to_string(),
+                    Some("merged".to_string())
+                ),
+                (
+                    "iter_proposals_in_my_projects".to_string(),
+                    Some("all".to_string())
+                ),
+                ("exclude".to_string(), Some("org,x/y".to_string())),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_proposal_listing_errors() {
+        use crate::error::Error;
+        let forge = Forge::from(Python::attach(|py| fake(py, "BrokenForge")));
+        assert!(matches!(
+            forge.iter_my_review_requests(None),
+            Err(Error::Other(_))
+        ));
+        let forge = Forge::from(Python::attach(|py| fake(py, "OldForge")));
+        assert!(matches!(
+            forge.iter_my_review_requests(None),
+            Err(Error::NotImplemented)
+        ));
+        assert!(matches!(
+            forge.iter_my_reviewed_proposals(None),
+            Err(Error::NotImplemented)
+        ));
+        assert!(matches!(
+            forge.iter_proposals_in_my_projects(None, &[]),
+            Err(Error::NotImplemented)
+        ));
     }
 
     #[test]
