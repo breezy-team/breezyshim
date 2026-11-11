@@ -651,6 +651,22 @@ impl MergeProposal {
         })
     }
 
+    /// Returns the contents of `path` at `revision`, read through the forge
+    /// API rather than from a clone. `revision` may be the head of a proposal
+    /// from a fork.
+    ///
+    /// Returns `Error::NoSuchFile` if the file does not exist at that
+    /// revision, and `Error::NotImplemented` if the forge or the version of
+    /// Breezy does not support this.
+    pub fn get_file_text(&self, path: &str, revision: &RevisionId) -> Result<Vec<u8>, Error> {
+        Python::attach(|py| {
+            self.optional_method(py, "get_file_text")?
+                .call1((path, revision.clone()))?
+                .extract()
+                .map_err(Into::into)
+        })
+    }
+
     /// Posts a review with inline comments, replies to existing threads and
     /// an outcome, and returns its URL if the forge has one.
     ///
@@ -1489,6 +1505,12 @@ class FakeProposal:
             start_revision = None
         return DiffRefs()
 
+    def get_file_text(self, path, revision):
+        if path != "README":
+            from breezy.transport import NoSuchFile
+            raise NoSuchFile(path)
+        return b"contents at " + revision
+
 
 class ReviewableProposal:
     def __init__(self):
@@ -1603,6 +1625,9 @@ class BrokenProposal:
             revision=None,
             url=None,
         )
+
+    def get_file_text(self, path, revision):
+        raise NotImplementedError(self.get_file_text)
 "#;
 
     fn fake(py: Python<'_>, name: &str) -> Py<PyAny> {
@@ -1876,6 +1901,32 @@ class BrokenProposal:
         assert!(matches!(mp.get_diff_refs(), Err(Error::NotImplemented)));
         let mp = MergeProposal::from(Python::attach(|py| fake(py, "BrokenProposal")));
         assert!(matches!(mp.get_diff_refs(), Err(Error::Other(_))));
+    }
+
+    #[test]
+    fn test_get_file_text() {
+        use crate::error::Error;
+        use crate::revisionid::RevisionId;
+        let revision = RevisionId::from(b"rev-1".to_vec());
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "FakeProposal")));
+        assert_eq!(
+            mp.get_file_text("README", &revision).unwrap(),
+            b"contents at rev-1".to_vec()
+        );
+        assert!(matches!(
+            mp.get_file_text("missing", &revision),
+            Err(Error::NoSuchFile(p)) if p == std::path::Path::new("missing")
+        ));
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "BrokenProposal")));
+        assert!(matches!(
+            mp.get_file_text("README", &revision),
+            Err(Error::NotImplemented)
+        ));
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "OldProposal")));
+        assert!(matches!(
+            mp.get_file_text("README", &revision),
+            Err(Error::NotImplemented)
+        ));
     }
 
     fn has_review_types() -> bool {
