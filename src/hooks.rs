@@ -52,10 +52,10 @@ impl HookDict {
     /// # Returns
     ///
     /// `Ok(())` on success, or an error if the operation fails
-    pub fn add(&self, name: &str, func: Hook) -> Result<(), crate::error::Error> {
+    pub fn hook(&self, name: &str, func: Hook) -> Result<(), crate::error::Error> {
         Python::attach(|py| {
             let entrypoint = self.0.bind(py).get_item(name)?;
-            entrypoint.call_method1("add", (func.0,))?;
+            entrypoint.call_method1("hook", (func.0, py.None()))?;
             Ok(())
         })
     }
@@ -106,6 +106,7 @@ mod tests {
     /// A hook registered on the underlying breezy hook point shows up in the
     /// result of `get`, exercising the iteration code path.
     #[test]
+    #[serial_test::serial]
     fn test_get_returns_registered_hook() {
         let hooks = merge_hooks();
 
@@ -138,6 +139,29 @@ mod tests {
                 .unwrap();
         });
         assert_eq!(before, hooks.get("post_merge").unwrap().len());
+    }
+
+    /// `hook` registers a hook on a hook point.
+    #[test]
+    fn test_hook() {
+        crate::init();
+        let hooks = Python::attach(|py| {
+            let hooks = py
+                .import("breezy.hooks")
+                .unwrap()
+                .getattr("Hooks")
+                .unwrap()
+                .call0()
+                .unwrap();
+            hooks
+                .call_method1("add_hook", ("foo", "no docs", (3, 3)))
+                .unwrap();
+            HookDict(hooks.unbind())
+        });
+        let func = Python::attach(|py| py.eval(c"lambda: None", None, None).unwrap().unbind());
+
+        hooks.hook("foo", Hook(func)).unwrap();
+        assert_eq!(1, hooks.get("foo").unwrap().len());
     }
 
     /// `get` on an unknown hook name returns an error rather than panicking.
