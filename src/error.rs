@@ -145,6 +145,7 @@ versioned_exception!(
     ("breezy.transport", "FileExists"),
     ("dromedary.errors", "FileExists")
 );
+versioned_exception!(HeadChanged, ("breezy.forge", "HeadChanged"));
 versioned_exception!(
     InvalidHttpResponse,
     ("breezy.errors", "InvalidHttpResponse"),
@@ -341,6 +342,9 @@ pub enum Error {
     ProjectCreationTimeout(String, chrono::Duration),
     /// A conflict occurred in GitLab.
     GitLabConflict(String),
+    /// The head of a merge proposal is not the expected revision. Holds the
+    /// expected revision and the actual one, if the forge reported it.
+    HeadChanged(crate::RevisionId, Option<crate::RevisionId>),
     /// The source branch is not derived from the target branch.
     SourceNotDerivedFromTarget,
     /// A loop was detected in branch references.
@@ -505,6 +509,10 @@ impl std::fmt::Display for Error {
                 write!(f, "Project creation timeout: {} after {} seconds", p, t)
             }
             Self::GitLabConflict(p) => write!(f, "GitLab conflict: {}", p),
+            Self::HeadChanged(expected, Some(actual)) => {
+                write!(f, "Head changed: expected {}, found {}", expected, actual)
+            }
+            Self::HeadChanged(expected, None) => write!(f, "Head changed: expected {}", expected),
             Self::ConflictsInTree => write!(f, "Conflicts in tree"),
             Self::SourceNotDerivedFromTarget => write!(f, "Source not derived from target"),
             Self::BranchReferenceLoop => write!(f, "Branch reference loop"),
@@ -824,6 +832,11 @@ impl From<PyErr> for Error {
                 )
             } else if err.is_instance_of::<GitLabConflict>(py) {
                 Error::GitLabConflict(value.getattr("reason").unwrap().extract().unwrap())
+            } else if HeadChanged::matches(&err, py) {
+                Error::HeadChanged(
+                    value.getattr("expected").unwrap().extract().unwrap(),
+                    value.getattr("actual").unwrap().extract().unwrap(),
+                )
             } else if err.is_instance_of::<ConflictsInTree>(py) {
                 Error::ConflictsInTree
             } else if err.is_instance_of::<SourceNotDerivedFromTarget>(py) {
@@ -1011,6 +1024,7 @@ impl From<Error> for PyErr {
             Error::ForkingDisabled(p) => ForkingDisabled::new_err((p,)),
             Error::ProjectCreationTimeout(p, t) => ProjectCreationTimeout::new_err((p, t)),
             Error::GitLabConflict(p) => GitLabConflict::new_err((p,)),
+            Error::HeadChanged(expected, actual) => HeadChanged::new_err((expected, actual)),
             Error::ConflictsInTree => ConflictsInTree::new_err(()),
             Error::SourceNotDerivedFromTarget => SourceNotDerivedFromTarget::new_err(()),
             Error::BranchReferenceLoop => BranchReferenceLoop::new_err(()),
@@ -1739,6 +1753,27 @@ fn test_gitlab_conflict() {
     Python::attach(|py| {
         assert!(p.is_instance_of::<GitLabConflict>(py), "{}", p);
     });
+}
+
+#[test]
+fn test_head_changed() {
+    // Older versions of Breezy lack HeadChanged.
+    if Python::attach(|py| versioned_exception(py, HeadChanged::CANDIDATES).is_err()) {
+        return;
+    }
+    let e = Error::HeadChanged(
+        crate::RevisionId::from(b"git-v1:a".to_vec()),
+        Some(crate::RevisionId::from(b"git-v1:b".to_vec())),
+    );
+    let p: PyErr = e.into();
+    Python::attach(|py| {
+        assert!(HeadChanged::matches(&p, py), "{}", p);
+    });
+    assert!(matches!(
+        Error::from(p),
+        Error::HeadChanged(expected, Some(actual))
+            if expected.as_bytes() == b"git-v1:a" && actual.as_bytes() == b"git-v1:b"
+    ));
 }
 
 #[test]
