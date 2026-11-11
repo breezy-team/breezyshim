@@ -209,6 +209,64 @@ impl<'a, 'py> FromPyObject<'a, 'py> for MergeProposalStatus {
     }
 }
 
+/// Whether a merge proposal will be merged automatically.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum AutoMergeStatus {
+    /// Auto-merge can not be enabled.
+    Unavailable,
+    /// Auto-merge can be enabled.
+    Available,
+    /// Auto-merge is enabled.
+    Enabled,
+}
+
+impl<'a, 'py> FromPyObject<'a, 'py> for AutoMergeStatus {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        let value = ob.getattr("value")?.extract::<String>()?;
+        match value.as_str() {
+            "unavailable" => Ok(AutoMergeStatus::Unavailable),
+            "available" => Ok(AutoMergeStatus::Available),
+            "enabled" => Ok(AutoMergeStatus::Enabled),
+            _ => Err(PyValueError::new_err(format!(
+                "Invalid auto-merge status: {}",
+                value
+            ))),
+        }
+    }
+}
+
+/// Whether a merge proposal can be merged by the current user.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct MergeStatus {
+    /// The head revision this status applies to.
+    pub head_revision: RevisionId,
+    /// Whether the current user can merge the proposal now.
+    pub mergeable: bool,
+    /// Whether merging requires overriding branch protection; `mergeable`
+    /// is true in that case.
+    pub as_admin_only: bool,
+    /// Why the proposal can not be merged, when it can not.
+    pub reason: Option<String>,
+    /// Whether auto-merge is enabled, or can be enabled.
+    pub auto_merge: AutoMergeStatus,
+}
+
+impl<'a, 'py> FromPyObject<'a, 'py> for MergeStatus {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Ok(MergeStatus {
+            head_revision: ob.getattr("head_revision")?.extract()?,
+            mergeable: ob.getattr("mergeable")?.extract()?,
+            as_admin_only: ob.getattr("as_admin_only")?.extract()?,
+            reason: ob.getattr("reason")?.extract()?,
+            auto_merge: ob.getattr("auto_merge")?.extract()?,
+        })
+    }
+}
+
 /// A merge proposal (pull request) on a code hosting service.
 pub struct MergeProposal(Py<PyAny>);
 
@@ -414,11 +472,47 @@ impl MergeProposal {
     ///
     /// The `auto` parameter determines whether to use automatic merging.
     pub fn merge(&self, auto: bool) -> Result<(), Error> {
+        self.merge_with(None, auto, None)
+    }
+
+    /// Merges the merge proposal, or enables auto-merge if `auto` is set.
+    ///
+    /// With `expected_revision` set, the forge refuses if the head of the
+    /// proposal is a different revision, which is reported as
+    /// `Error::HeadChanged`. Versions of Breezy that predate
+    /// `expected_revision` reject it with a `TypeError`.
+    pub fn merge_with(
+        &self,
+        commit_message: Option<&str>,
+        auto: bool,
+        expected_revision: Option<&RevisionId>,
+    ) -> Result<(), Error> {
         Python::attach(|py| {
             let kwargs = PyDict::new(py);
+            kwargs.set_item("commit_message", commit_message)?;
             kwargs.set_item("auto", auto)?;
+            if let Some(revision) = expected_revision {
+                kwargs.set_item("expected_revision", revision.clone())?;
+            }
             self.0.call_method(py, "merge", (), Some(&kwargs))?;
             Ok(())
+        })
+    }
+
+    /// Returns whether the current user can merge this proposal.
+    ///
+    /// Returns `Error::NotImplemented` for forges that do not support this
+    /// and with versions of Breezy that predate
+    /// `MergeProposal.get_merge_status`.
+    pub fn get_merge_status(&self) -> Result<MergeStatus, Error> {
+        Python::attach(|py| {
+            let mp = self.0.bind(py);
+            if !mp.hasattr("get_merge_status")? {
+                return Err(Error::NotImplemented);
+            }
+            mp.call_method0("get_merge_status")?
+                .extract()
+                .map_err(Into::into)
         })
     }
 
@@ -1200,7 +1294,10 @@ pub fn get_proposal_by_url(url: &url::Url) -> Result<MergeProposal, Error> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Forge, MergeProposal, ProposalComment, ProposalReview, ReviewVerdict};
+    use super::{
+        AutoMergeStatus, Forge, MergeProposal, MergeStatus, ProposalComment, ProposalReview,
+        ReviewVerdict,
+    };
     use crate::error::Error;
     use crate::revisionid::RevisionId;
     use pyo3::prelude::*;
@@ -1357,6 +1454,26 @@ class OldProposal:
     pass
 
 
+class MergeStatusProposal:
+    def merge(self, commit_message=None, auto=False, expected_revision=None):
+        from breezy.forge import HeadChanged
+
+        if expected_revision not in (None, b"git-v1:aaaa"):
+            raise HeadChanged(expected_revision, b"git-v1:aaaa")
+        self.calls = [(commit_message, auto, expected_revision)]
+
+    def get_merge_status(self):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            head_revision=b"git-v1:aaaa",
+            mergeable=False,
+            as_admin_only=False,
+            reason="ci must pass",
+            auto_merge=SimpleNamespace(value="available"),
+        )
+
+
 class MergeableProposal:
     def __init__(self):
         self.calls = []
@@ -1382,6 +1499,9 @@ class UnsupportedProposal:
 
     def iter_reviews(self):
         raise NotImplementedError(self.iter_reviews)
+
+    def get_merge_status(self):
+        raise NotImplementedError(self.get_merge_status)
 
     def rebase(self, expected_revision=None):
         raise NotImplementedError(self.rebase)
@@ -1799,6 +1919,63 @@ class BrokenProposal:
             "ValueError: ",
             super::determine_title(description).unwrap_err()
         );
+    }
+
+    #[test]
+    fn test_merge_with() {
+        let obj = Python::attach(|py| fake(py, "MergeStatusProposal"));
+        let mp = MergeProposal::from(Python::attach(|py| obj.clone_ref(py)));
+        let head = RevisionId::from(b"git-v1:aaaa".to_vec());
+        mp.merge_with(Some("Merge"), false, Some(&head)).unwrap();
+        let calls: Vec<(Option<String>, bool, Option<RevisionId>)> =
+            Python::attach(|py| obj.getattr(py, "calls").unwrap().extract(py).unwrap());
+        assert_eq!(calls, vec![(Some("Merge".to_string()), false, Some(head))]);
+    }
+
+    #[test]
+    fn test_merge_with_head_changed() {
+        // Older versions of Breezy lack HeadChanged.
+        if Python::attach(|py| {
+            py.import("breezy.forge")?
+                .getattr("HeadChanged")
+                .map(|_| ())
+        })
+        .is_err()
+        {
+            return;
+        }
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "MergeStatusProposal")));
+        let old = RevisionId::from(b"git-v1:bbbb".to_vec());
+        match mp.merge_with(None, true, Some(&old)) {
+            Err(Error::HeadChanged(expected, actual)) => {
+                assert_eq!(expected, old);
+                assert_eq!(actual, Some(RevisionId::from(b"git-v1:aaaa".to_vec())));
+            }
+            other => panic!("unexpected result: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_get_merge_status() {
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "MergeStatusProposal")));
+        assert_eq!(
+            mp.get_merge_status().unwrap(),
+            MergeStatus {
+                head_revision: RevisionId::from(b"git-v1:aaaa".to_vec()),
+                mergeable: false,
+                as_admin_only: false,
+                reason: Some("ci must pass".to_string()),
+                auto_merge: AutoMergeStatus::Available,
+            }
+        );
+    }
+
+    #[test]
+    fn test_get_merge_status_unsupported() {
+        for name in ["OldProposal", "UnsupportedProposal"] {
+            let mp = MergeProposal::from(Python::attach(|py| fake(py, name)));
+            assert!(matches!(mp.get_merge_status(), Err(Error::NotImplemented)));
+        }
     }
 
     #[test]
