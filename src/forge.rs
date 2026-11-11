@@ -392,6 +392,131 @@ impl MergeProposal {
                 .map_err(Into::into)
         })
     }
+
+    /// Posts a review with inline comments, replies to existing threads and
+    /// an outcome, and returns its URL if the forge has one.
+    ///
+    /// `revision` is the head the comments were written against; if the
+    /// proposal's head moved, this fails with `Error::HeadChanged`. Breezy
+    /// refuses reviews that say nothing, unless they approve.
+    ///
+    /// Returns `Error::NotImplemented` with versions of Breezy that predate
+    /// `MergeProposal.post_review`.
+    pub fn post_review(
+        &self,
+        revision: &RevisionId,
+        body: Option<&str>,
+        comments: &[InlineComment],
+        replies: &[ThreadReply],
+        outcome: ReviewOutcome,
+    ) -> Result<Option<url::Url>, Error> {
+        Python::attach(|py| {
+            let mp = self.0.bind(py);
+            if !mp.hasattr("post_review")? {
+                return Err(Error::NotImplemented);
+            }
+            let m = py.import("breezy.forge")?;
+            let diff_side = m.getattr("DiffSide")?;
+            let inline_comment = m.getattr("InlineComment")?;
+            let thread_reply = m.getattr("ThreadReply")?;
+            let comments = comments
+                .iter()
+                .map(|c| {
+                    let kwargs = PyDict::new(py);
+                    kwargs.set_item("old_path", &c.old_path)?;
+                    kwargs.set_item("old_line", c.old_line)?;
+                    kwargs.set_item("new_line", c.new_line)?;
+                    let side = diff_side.call1((c.side.as_str(),))?;
+                    inline_comment.call((&c.path, c.line, side, &c.body), Some(&kwargs))
+                })
+                .collect::<PyResult<Vec<_>>>()?;
+            let replies = replies
+                .iter()
+                .map(|r| thread_reply.call1((&r.thread_id, &r.body)))
+                .collect::<PyResult<Vec<_>>>()?;
+            let kwargs = PyDict::new(py);
+            kwargs.set_item("body", body)?;
+            kwargs.set_item("comments", comments)?;
+            kwargs.set_item("replies", replies)?;
+            kwargs.set_item(
+                "outcome",
+                m.getattr("ReviewOutcome")?.call1((outcome.as_str(),))?,
+            )?;
+            let url = mp.call_method("post_review", (revision.clone(),), Some(&kwargs))?;
+            if url.is_none() {
+                return Ok(None);
+            }
+            Ok(Some(url.extract::<String>()?.parse()?))
+        })
+    }
+}
+
+/// Side of a diff that a line number refers to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiffSide {
+    /// The old version of the file.
+    Old,
+    /// The new version of the file.
+    New,
+}
+
+impl DiffSide {
+    fn as_str(self) -> &'static str {
+        match self {
+            DiffSide::Old => "old",
+            DiffSide::New => "new",
+        }
+    }
+}
+
+/// A comment on a line of a merge proposal's diff.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InlineComment {
+    /// Path of the file, on the side the comment is on.
+    pub path: String,
+    /// Line number on that side.
+    pub line: u32,
+    /// Side of the diff the line is on.
+    pub side: DiffSide,
+    /// Text of the comment.
+    pub body: String,
+    /// Path of the file before the change, if it was renamed.
+    pub old_path: Option<String>,
+    /// Line number in the old file, for forges that need both line numbers
+    /// for unchanged lines (GitLab).
+    pub old_line: Option<u32>,
+    /// Line number in the new file, likewise.
+    pub new_line: Option<u32>,
+}
+
+/// A reply to an existing review thread.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThreadReply {
+    /// Opaque id of the thread, as the forge reports it.
+    pub thread_id: String,
+    /// Text of the reply.
+    pub body: String,
+}
+
+/// What a review asks for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReviewOutcome {
+    /// Comment without approving or requesting changes.
+    Comment,
+    /// Approve the proposal.
+    Approve,
+    /// Request changes to the proposal.
+    RequestChanges,
+}
+
+impl ReviewOutcome {
+    fn as_str(self) -> &'static str {
+        match self {
+            ReviewOutcome::Comment => "comment",
+            ReviewOutcome::Approve => "approve",
+            ReviewOutcome::RequestChanges => "request-changes",
+        }
+    }
 }
 
 #[pyclass]
@@ -951,6 +1076,26 @@ class FakeProposal:
         return "me"
 
 
+class ReviewableProposal:
+    def __init__(self):
+        self.calls = []
+
+    def post_review(self, revision, *, body=None, comments=(), replies=(), outcome=None):
+        from breezy.forge import HeadChanged
+
+        if revision != b"git-v1:aaaa":
+            raise HeadChanged(revision, b"git-v1:aaaa")
+        self.calls.append((
+            revision,
+            body,
+            [(c.path, c.line, c.side.value, c.body, c.old_path, c.old_line, c.new_line)
+             for c in comments],
+            [(r.thread_id, r.body) for r in replies],
+            outcome.value,
+        ))
+        return "https://example.com/review/1" if outcome.value != "comment" else None
+
+
 class OldProposal:
     pass
 
@@ -1085,6 +1230,130 @@ class BrokenProposal:
         let mp = MergeProposal::from(Python::attach(|py| fake(py, "BrokenProposal")));
         assert!(mp.get_source_project().is_err());
         assert!(mp.get_target_project().is_err());
+    }
+
+    fn has_review_types() -> bool {
+        // Older versions of Breezy lack the review types.
+        Python::attach(|py| {
+            py.import("breezy.forge")?
+                .getattr("InlineComment")
+                .map(|_| ())
+        })
+        .is_ok()
+    }
+
+    #[test]
+    fn test_post_review() {
+        use super::{DiffSide, InlineComment, ReviewOutcome, ThreadReply};
+        use crate::revisionid::RevisionId;
+        if !has_review_types() {
+            return;
+        }
+        let obj = Python::attach(|py| fake(py, "ReviewableProposal"));
+        let mp = MergeProposal::from(Python::attach(|py| obj.clone_ref(py)));
+        let head = RevisionId::from(b"git-v1:aaaa".to_vec());
+        let url = mp
+            .post_review(
+                &head,
+                Some("Looks good"),
+                &[InlineComment {
+                    path: "foo".to_string(),
+                    line: 3,
+                    side: DiffSide::Old,
+                    body: "why?".to_string(),
+                    old_path: Some("bar".to_string()),
+                    old_line: Some(3),
+                    new_line: None,
+                }],
+                &[ThreadReply {
+                    thread_id: "t1".to_string(),
+                    body: "done".to_string(),
+                }],
+                ReviewOutcome::Approve,
+            )
+            .unwrap();
+        assert_eq!(url, Some("https://example.com/review/1".parse().unwrap()));
+        assert_eq!(
+            mp.post_review(&head, None, &[], &[], ReviewOutcome::Comment)
+                .unwrap(),
+            None
+        );
+        type Call = (
+            Vec<u8>,
+            Option<String>,
+            Vec<(
+                String,
+                u32,
+                String,
+                String,
+                Option<String>,
+                Option<u32>,
+                Option<u32>,
+            )>,
+            Vec<(String, String)>,
+            String,
+        );
+        let calls: Vec<Call> =
+            Python::attach(|py| obj.getattr(py, "calls").unwrap().extract(py).unwrap());
+        assert_eq!(
+            calls,
+            vec![
+                (
+                    b"git-v1:aaaa".to_vec(),
+                    Some("Looks good".to_string()),
+                    vec![(
+                        "foo".to_string(),
+                        3,
+                        "old".to_string(),
+                        "why?".to_string(),
+                        Some("bar".to_string()),
+                        Some(3),
+                        None
+                    )],
+                    vec![("t1".to_string(), "done".to_string())],
+                    "approve".to_string(),
+                ),
+                (
+                    b"git-v1:aaaa".to_vec(),
+                    None,
+                    vec![],
+                    vec![],
+                    "comment".to_string(),
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_post_review_head_changed() {
+        use super::ReviewOutcome;
+        use crate::error::Error;
+        use crate::revisionid::RevisionId;
+        if !has_review_types() {
+            return;
+        }
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "ReviewableProposal")));
+        let old = RevisionId::from(b"git-v1:bbbb".to_vec());
+        match mp.post_review(&old, None, &[], &[], ReviewOutcome::Approve) {
+            Err(Error::HeadChanged(expected, Some(actual))) => {
+                assert_eq!(expected, old);
+                assert_eq!(actual, RevisionId::from(b"git-v1:aaaa".to_vec()));
+            }
+            r => panic!("unexpected result {:?}", r),
+        }
+    }
+
+    #[test]
+    fn test_post_review_unsupported() {
+        use super::ReviewOutcome;
+        use crate::error::Error;
+        use crate::revisionid::RevisionId;
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "OldProposal")));
+        let head = RevisionId::from(b"git-v1:aaaa".to_vec());
+        assert!(matches!(
+            mp.post_review(&head, None, &[], &[], ReviewOutcome::Approve),
+            Err(Error::NotImplemented)
+        ));
     }
 
     #[test]
