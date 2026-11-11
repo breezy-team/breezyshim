@@ -267,6 +267,69 @@ impl<'a, 'py> FromPyObject<'a, 'py> for MergeStatus {
     }
 }
 
+/// Kind of event in the history of a merge proposal.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum ProposalEventKind {
+    /// New revisions were pushed.
+    Push,
+    /// A comment was posted.
+    Comment,
+    /// A review without a verdict was submitted.
+    Review,
+    /// The proposal was approved.
+    Approval,
+    /// An approval was withdrawn or changes were requested.
+    Unapproval,
+}
+
+impl<'a, 'py> FromPyObject<'a, 'py> for ProposalEventKind {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        let value = ob.getattr("value")?.extract::<String>()?;
+        match value.as_str() {
+            "push" => Ok(ProposalEventKind::Push),
+            "comment" => Ok(ProposalEventKind::Comment),
+            "review" => Ok(ProposalEventKind::Review),
+            "approval" => Ok(ProposalEventKind::Approval),
+            "unapproval" => Ok(ProposalEventKind::Unapproval),
+            _ => Err(PyValueError::new_err(format!(
+                "Invalid proposal event kind: {}",
+                value
+            ))),
+        }
+    }
+}
+
+/// An event in the history of a merge proposal.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct ProposalEvent {
+    /// What happened.
+    pub kind: ProposalEventKind,
+    /// Login name of who did it, if known.
+    pub actor: Option<String>,
+    /// When it happened.
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+    /// Head revision at the time, if known.
+    pub revision: Option<RevisionId>,
+    /// Whether the actor is a bot account.
+    pub actor_is_bot: bool,
+}
+
+impl<'a, 'py> FromPyObject<'a, 'py> for ProposalEvent {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Ok(ProposalEvent {
+            kind: ob.getattr("kind")?.extract()?,
+            actor: ob.getattr("actor")?.extract()?,
+            timestamp: extract_datetime(&ob.getattr("timestamp")?)?,
+            revision: ob.getattr("revision")?.extract()?,
+            actor_is_bot: ob.getattr("actor_is_bot")?.extract()?,
+        })
+    }
+}
+
 /// A merge proposal (pull request) on a code hosting service.
 pub struct MergeProposal(Py<PyAny>);
 
@@ -562,6 +625,21 @@ impl MergeProposal {
     /// `MergeProposal.get_author`.
     pub fn get_author(&self) -> Result<Option<String>, crate::error::Error> {
         Python::attach(|py| Ok(self.optional_method(py, "get_author")?.call0()?.extract()?))
+    }
+
+    /// Returns the events in the history of this proposal, oldest first.
+    ///
+    /// Returns `Error::NotImplemented` with versions of Breezy that predate
+    /// `MergeProposal.iter_events`.
+    pub fn iter_events(&self) -> Result<impl Iterator<Item = ProposalEvent>, Error> {
+        let events: Vec<ProposalEvent> = Python::attach(|py| -> Result<_, Error> {
+            self.optional_method(py, "iter_events")?
+                .call0()?
+                .try_iter()?
+                .map(|event| Ok(event?.extract()?))
+                .collect()
+        })?;
+        Ok(events.into_iter())
     }
 
     /// Returns the name of the project the proposal's source branch lives in, if known.
@@ -1589,6 +1667,41 @@ class UnsupportedProposal:
         raise NotImplementedError(self.rebase)
 
 
+class Kind(enum.Enum):
+    PUSH = "push"
+    APPROVAL = "approval"
+    BOGUS = "bogus"
+
+
+class TimelineProposal:
+    def iter_events(self):
+        yield SimpleNamespace(
+            kind=Kind.PUSH,
+            actor=None,
+            timestamp=datetime.datetime(2026, 1, 1, 10, 0),
+            revision=b"git-v1:aaaa",
+            actor_is_bot=False,
+        )
+        yield SimpleNamespace(
+            kind=Kind.APPROVAL,
+            actor="ci[bot]",
+            timestamp=datetime.datetime(2026, 1, 2, 10, 0, tzinfo=datetime.timezone.utc),
+            revision=None,
+            actor_is_bot=True,
+        )
+
+
+class BogusTimelineProposal:
+    def iter_events(self):
+        yield SimpleNamespace(
+            kind=Kind.BOGUS,
+            actor=None,
+            timestamp=datetime.datetime(2026, 1, 1, 10, 0),
+            revision=None,
+            actor_is_bot=False,
+        )
+
+
 class BrokenProposal:
     url = "not a url"
 
@@ -1606,6 +1719,9 @@ class BrokenProposal:
 
     def remove_label(self, name):
         raise RuntimeError("no such label")
+
+    def iter_events(self):
+        raise RuntimeError("no events")
 
     def get_source_project(self):
         raise RuntimeError("no source project")
@@ -1733,6 +1849,43 @@ class BrokenProposal:
             mp.get_author(),
             Err(crate::error::Error::NotImplemented)
         ));
+    }
+
+    #[test]
+    fn test_iter_events() {
+        use super::{ProposalEvent, ProposalEventKind};
+        use chrono::TimeZone;
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "TimelineProposal")));
+        assert_eq!(
+            mp.iter_events().unwrap().collect::<Vec<_>>(),
+            vec![
+                ProposalEvent {
+                    kind: ProposalEventKind::Push,
+                    actor: None,
+                    timestamp: chrono::Utc.with_ymd_and_hms(2026, 1, 1, 10, 0, 0).unwrap(),
+                    revision: Some(crate::RevisionId::from(b"git-v1:aaaa".to_vec())),
+                    actor_is_bot: false,
+                },
+                ProposalEvent {
+                    kind: ProposalEventKind::Approval,
+                    actor: Some("ci[bot]".to_string()),
+                    timestamp: chrono::Utc.with_ymd_and_hms(2026, 1, 2, 10, 0, 0).unwrap(),
+                    revision: None,
+                    actor_is_bot: true,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn test_iter_events_errors() {
+        use crate::error::Error;
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "OldProposal")));
+        assert!(matches!(mp.iter_events(), Err(Error::NotImplemented)));
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "BrokenProposal")));
+        assert!(matches!(mp.iter_events(), Err(Error::Other(_))));
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "BogusTimelineProposal")));
+        assert!(mp.iter_events().is_err());
     }
 
     #[test]
