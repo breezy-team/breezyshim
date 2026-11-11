@@ -4,7 +4,7 @@ use crate::error::Error;
 use crate::revisionid::RevisionId;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::PyDict;
+use pyo3::types::{PyBytes, PyDict};
 use std::hash::Hash;
 
 /// Represents a code forge (hosting service) like GitHub, GitLab, etc.
@@ -624,6 +624,35 @@ impl MergeProposal {
         Ok(ret.into_iter())
     }
 
+    /// Returns the diff of this proposal as the forge shows it, as a unified
+    /// diff in git format.
+    ///
+    /// Returns `Error::NotImplemented` with versions of Breezy that predate
+    /// `MergeProposal.get_diff`.
+    pub fn get_diff(&self) -> Result<Vec<u8>, Error> {
+        Python::attach(|py| {
+            let diff = self.optional_method(py, "get_diff")?.call0()?;
+            Ok(diff
+                .cast::<PyBytes>()
+                .map_err(PyErr::from)?
+                .as_bytes()
+                .to_vec())
+        })
+    }
+
+    /// Returns the revisions the diff of this proposal is made from.
+    ///
+    /// Returns `Error::NotImplemented` with versions of Breezy that predate
+    /// `MergeProposal.get_diff_refs`.
+    pub fn get_diff_refs(&self) -> Result<DiffRefs, Error> {
+        Python::attach(|py| {
+            self.optional_method(py, "get_diff_refs")?
+                .call0()?
+                .extract()
+                .map_err(Into::into)
+        })
+    }
+
     /// Posts a review with inline comments, replies to existing threads and
     /// an outcome, and returns its URL if the forge has one.
     ///
@@ -714,6 +743,29 @@ impl MergeProposal {
         Python::attach(|py| {
             self.optional_method(py, "remove_label")?.call1((name,))?;
             Ok(())
+        })
+    }
+}
+
+/// The revisions a merge proposal's diff was made from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiffRefs {
+    /// Head of the source branch.
+    pub head_revision: RevisionId,
+    /// Merge base of the source and target branches, if known.
+    pub base_revision: Option<RevisionId>,
+    /// Head of the target branch when the diff was made, if known.
+    pub start_revision: Option<RevisionId>,
+}
+
+impl<'a, 'py> FromPyObject<'a, 'py> for DiffRefs {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Ok(DiffRefs {
+            head_revision: ob.getattr("head_revision")?.extract()?,
+            base_revision: ob.getattr("base_revision")?.extract()?,
+            start_revision: ob.getattr("start_revision")?.extract()?,
         })
     }
 }
@@ -1429,6 +1481,16 @@ class FakeProposal:
             url=None,
         )
 
+    def get_diff(self):
+        return b"diff --git a/foo b/foo\n"
+
+    def get_diff_refs(self):
+        class DiffRefs:
+            head_revision = b"git-v1:aaaa"
+            base_revision = b"git-v1:bbbb"
+            start_revision = None
+        return DiffRefs()
+
 
 class ReviewableProposal:
     def __init__(self):
@@ -1509,6 +1571,12 @@ class UnsupportedProposal:
 
 class BrokenProposal:
     url = "not a url"
+
+    def get_diff(self):
+        raise NotImplementedError(self.get_diff)
+
+    def get_diff_refs(self):
+        raise RuntimeError("no refs")
 
     def get_author(self):
         raise RuntimeError("no author")
@@ -1768,6 +1836,43 @@ class BrokenProposal:
         let mp = MergeProposal::from(Python::attach(|py| fake(py, "BrokenProposal")));
         assert!(matches!(mp.iter_comments(), Err(Error::Other(_))));
         assert!(matches!(mp.iter_reviews(), Err(Error::Other(_))));
+    }
+
+    #[test]
+    fn test_get_diff() {
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "FakeProposal")));
+        assert_eq!(mp.get_diff().unwrap(), b"diff --git a/foo b/foo\n".to_vec());
+    }
+
+    #[test]
+    fn test_get_diff_unsupported() {
+        use crate::error::Error;
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "OldProposal")));
+        assert!(matches!(mp.get_diff(), Err(Error::NotImplemented)));
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "BrokenProposal")));
+        assert!(matches!(mp.get_diff(), Err(Error::NotImplemented)));
+    }
+
+    #[test]
+    fn test_get_diff_refs() {
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "FakeProposal")));
+        assert_eq!(
+            mp.get_diff_refs().unwrap(),
+            super::DiffRefs {
+                head_revision: b"git-v1:aaaa".to_vec().into(),
+                base_revision: Some(b"git-v1:bbbb".to_vec().into()),
+                start_revision: None,
+            }
+        );
+    }
+
+    #[test]
+    fn test_get_diff_refs_errors() {
+        use crate::error::Error;
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "OldProposal")));
+        assert!(matches!(mp.get_diff_refs(), Err(Error::NotImplemented)));
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "BrokenProposal")));
+        assert!(matches!(mp.get_diff_refs(), Err(Error::Other(_))));
     }
 
     fn has_review_types() -> bool {
