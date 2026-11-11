@@ -319,7 +319,9 @@ impl MergeProposal {
     /// The `auto` parameter determines whether to use automatic merging.
     pub fn merge(&self, auto: bool) -> Result<(), Error> {
         Python::attach(|py| {
-            self.0.call_method1(py, "merge", (auto,))?;
+            let kwargs = PyDict::new(py);
+            kwargs.set_item("auto", auto)?;
+            self.0.call_method(py, "merge", (), Some(&kwargs))?;
             Ok(())
         })
     }
@@ -955,6 +957,14 @@ class OldProposal:
     pass
 
 
+class MergeableProposal:
+    def __init__(self):
+        self.calls = []
+
+    def merge(self, commit_message=None, auto=False):
+        self.calls.append((commit_message, auto))
+
+
 class BrokenProposal:
     url = "not a url"
 
@@ -1085,6 +1095,17 @@ class BrokenProposal:
         let mp = MergeProposal::from(Python::attach(|py| fake(py, "BrokenProposal")));
         assert!(mp.get_source_project().is_err());
         assert!(mp.get_target_project().is_err());
+    }
+
+    #[test]
+    fn test_merge() {
+        let obj = Python::attach(|py| fake(py, "MergeableProposal"));
+        let mp = MergeProposal::from(Python::attach(|py| obj.clone_ref(py)));
+        mp.merge(true).unwrap();
+        mp.merge(false).unwrap();
+        let calls: Vec<(Option<String>, bool)> =
+            Python::attach(|py| obj.getattr(py, "calls").unwrap().extract(py).unwrap());
+        assert_eq!(calls, vec![(None, true), (None, false)]);
     }
 
     #[test]
