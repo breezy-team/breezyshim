@@ -293,7 +293,7 @@ pub fn tree_debian_tag_name(
             (
                 tree.to_object(py),
                 branch.to_object(py),
-                subpath,
+                subpath.map(|p| p.to_string_lossy().to_string()),
                 vendor.map(|v| v.to_string()),
             ),
         )?;
@@ -386,6 +386,31 @@ pub(crate) mod tests {
             )])
         );
         assert!(target.path().join("foo_1.0.dsc").exists());
+        std::mem::drop(env);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_release_at_root() {
+        let Some((env, wt)) = setup() else { return };
+        std::fs::create_dir(env.working_dir.join("debian")).unwrap();
+        std::fs::write(
+            env.working_dir.join("debian/changelog"),
+            CHANGELOG.replace("unstable", "UNRELEASED"),
+        )
+        .unwrap();
+        wt.add(&[Path::new("debian"), Path::new("debian/changelog")])
+            .unwrap();
+        wt.build_commit()
+            .message("Initial commit")
+            .commit()
+            .unwrap();
+
+        assert_eq!(release::release(&wt, Path::new("")).unwrap(), "1.0");
+        assert_eq!(
+            tree_debian_tag_name(&wt, &wt.branch(), Some(Path::new("")), None).unwrap(),
+            "1.0"
+        );
         std::mem::drop(env);
     }
 }
