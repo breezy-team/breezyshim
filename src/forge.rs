@@ -472,6 +472,42 @@ impl MergeProposal {
             Ok(Some(url.extract::<String>()?.parse()?))
         })
     }
+
+    /// Look up a method that older versions of Breezy may not have.
+    fn optional_method<'py>(
+        &self,
+        py: Python<'py>,
+        name: &str,
+    ) -> Result<Bound<'py, PyAny>, crate::error::Error> {
+        let mp = self.0.bind(py);
+        if !mp.hasattr(name)? {
+            return Err(crate::error::Error::NotImplemented);
+        }
+        Ok(mp.getattr(name)?)
+    }
+
+    /// Returns the names of the labels attached to this proposal.
+    pub fn get_labels(&self) -> Result<Vec<String>, crate::error::Error> {
+        Python::attach(|py| Ok(self.optional_method(py, "get_labels")?.call0()?.extract()?))
+    }
+
+    /// Attaches a label to this proposal, creating the label if it does not exist yet.
+    pub fn add_label(&self, name: &str) -> Result<(), crate::error::Error> {
+        Python::attach(|py| {
+            self.optional_method(py, "add_label")?.call1((name,))?;
+            Ok(())
+        })
+    }
+
+    /// Removes a label from this proposal.
+    ///
+    /// Whether removing a label that is not attached is an error depends on the forge.
+    pub fn remove_label(&self, name: &str) -> Result<(), crate::error::Error> {
+        Python::attach(|py| {
+            self.optional_method(py, "remove_label")?.call1((name,))?;
+            Ok(())
+        })
+    }
 }
 
 /// Side of a diff that a line number refers to.
@@ -1091,6 +1127,18 @@ class BrokenForge:
 
 
 class FakeProposal:
+    def __init__(self):
+        self.labels = ["bug"]
+
+    def get_labels(self):
+        return list(self.labels)
+
+    def add_label(self, name):
+        self.labels.append(name)
+
+    def remove_label(self, name):
+        self.labels.remove(name)
+
     def get_source_project(self):
         return "me/one"
 
@@ -1154,6 +1202,12 @@ class BrokenProposal:
 
     def get_author(self):
         raise RuntimeError("no author")
+
+    def get_labels(self):
+        raise NotImplementedError(self.get_labels)
+
+    def remove_label(self, name):
+        raise RuntimeError("no such label")
 
     def get_source_project(self):
         raise RuntimeError("no source project")
@@ -1272,6 +1326,31 @@ class BrokenProposal:
     fn test_get_author_error() {
         let mp = MergeProposal::from(Python::attach(|py| fake(py, "BrokenProposal")));
         assert!(mp.get_author().is_err());
+    }
+
+    #[test]
+    fn test_labels() {
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "FakeProposal")));
+        assert_eq!(mp.get_labels().unwrap(), vec!["bug".to_string()]);
+        mp.add_label("new label").unwrap();
+        assert_eq!(
+            mp.get_labels().unwrap(),
+            vec!["bug".to_string(), "new label".to_string()]
+        );
+        mp.remove_label("bug").unwrap();
+        assert_eq!(mp.get_labels().unwrap(), vec!["new label".to_string()]);
+    }
+
+    #[test]
+    fn test_labels_unsupported() {
+        use crate::error::Error;
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "OldProposal")));
+        assert!(matches!(mp.get_labels(), Err(Error::NotImplemented)));
+        assert!(matches!(mp.add_label("x"), Err(Error::NotImplemented)));
+        assert!(matches!(mp.remove_label("x"), Err(Error::NotImplemented)));
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "BrokenProposal")));
+        assert!(matches!(mp.get_labels(), Err(Error::NotImplemented)));
+        assert!(matches!(mp.remove_label("x"), Err(Error::Other(_))));
     }
 
     #[test]
