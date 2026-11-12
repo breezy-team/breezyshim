@@ -27,7 +27,7 @@ impl<'a, 'py> FromPyObject<'a, 'py> for TreeChange {
 }
 
 /// Represents a conflict that occurs during a tree transformation.
-pub struct Conflict(Py<PyAny>);
+pub struct Conflict(pub(crate) Py<PyAny>);
 
 impl Clone for Conflict {
     fn clone(&self) -> Self {
