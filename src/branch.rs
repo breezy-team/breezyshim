@@ -382,18 +382,24 @@ pub trait Branch {
     fn set_stacked_on_url(&self, url: &str) -> Result<(), Error>;
     /// Copy revisions from another branch into this branch.
     ///
+    /// A large `depth` on a shallow branch fetches the history that is missing.
+    ///
     /// # Parameters
     ///
     /// * `from_branch` - The branch to fetch revisions from.
     /// * `stop_revision` - The last revision to fetch, or None to fetch all.
+    /// * `depth` - How many revisions deep to fetch (1 is only the tip), or None for all.
     ///
     /// # Returns
     ///
-    /// `Ok(())` on success, or an error if the fetch failed.
+    /// `Ok(())` on success, or the error from Breezy: Breezy before 3.4 does
+    /// not take `depth`, and formats that can not fetch with a depth raise
+    /// `UnsupportedOperation`.
     fn fetch(
         &self,
         from_branch: &dyn Branch,
         stop_revision: Option<&RevisionId>,
+        depth: Option<u32>,
     ) -> Result<(), Error>;
     /// Update this branch to match the master branch.
     ///
@@ -871,11 +877,15 @@ impl<T: PyBranch> Branch for T {
         &self,
         from_branch: &dyn Branch,
         stop_revision: Option<&RevisionId>,
+        depth: Option<u32>,
     ) -> Result<(), Error> {
         Python::attach(|py| {
             let kwargs = PyDict::new(py);
             if let Some(rev) = stop_revision {
                 kwargs.set_item("stop_revision", rev.clone())?;
+            }
+            if let Some(depth) = depth {
+                kwargs.set_item("depth", depth)?;
             }
 
             // Try to downcast to concrete PyBranch types
@@ -1168,7 +1178,10 @@ mod tests {
             .collect();
         let other = crate::controldir::create_standalone_workingtree(dst.path(), "2a").unwrap();
 
-        other.branch().fetch(&wt.branch(), Some(&revs[0])).unwrap();
+        other
+            .branch()
+            .fetch(&wt.branch(), Some(&revs[0]), None)
+            .unwrap();
 
         let repo = other.branch().repository();
         assert!(repo.has_revision(&revs[0]).unwrap());
