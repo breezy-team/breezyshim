@@ -556,6 +556,15 @@ fn extract_headers(headers_obj: &Bound<PyAny>) -> std::collections::HashMap<Stri
     headers
 }
 
+// dromedary's PathError has the bare detail in `reason`; breezy 3.3 only has `extra`
+fn path_error_reason(value: &Bound<PyAny>) -> Option<String> {
+    if value.hasattr("reason").unwrap() {
+        value.getattr("reason").unwrap().extract().unwrap()
+    } else {
+        value.getattr("extra").unwrap().extract().unwrap()
+    }
+}
+
 fn get_exception_msg(value: &Bound<PyAny>) -> String {
     value
         .getattr("msg")
@@ -587,12 +596,12 @@ impl From<PyErr> for Error {
             } else if PermissionDenied::matches(&err, py) {
                 Error::PermissionDenied(
                     value.getattr("path").unwrap().extract().unwrap(),
-                    value.getattr("extra").unwrap().extract().unwrap(),
+                    path_error_reason(value),
                 )
             } else if UnsupportedProtocol::matches(&err, py) {
                 Error::UnsupportedProtocol(
                     value.getattr("path").unwrap().extract().unwrap(),
-                    value.getattr("extra").unwrap().extract().unwrap(),
+                    path_error_reason(value),
                 )
             } else if UnusableRedirect::matches(&err, py) {
                 Error::UnusableRedirect(
@@ -603,7 +612,7 @@ impl From<PyErr> for Error {
             } else if err.is_instance_of::<InvalidURL>(py) {
                 Error::InvalidURL(
                     value.getattr("path").unwrap().extract().unwrap(),
-                    value.getattr("extra").unwrap().extract().unwrap(),
+                    path_error_reason(value),
                 )
             } else if err.is_instance_of::<pyo3::exceptions::PyConnectionError>(py) {
                 Error::ConnectionError(err.to_string())
@@ -708,7 +717,7 @@ impl From<PyErr> for Error {
                     std::path::PathBuf::from(
                         value.getattr("path").unwrap().extract::<String>().unwrap(),
                     ),
-                    value.getattr("extra").unwrap().extract().unwrap(),
+                    path_error_reason(value),
                 )
             } else if err.is_instance_of::<LockContention>(py) {
                 Error::LockContention(
@@ -1136,14 +1145,36 @@ fn test_error_unsupportedprotocol_from_python() {
             .call_method1("get_transport", ("nosuch://x/y",))
             .unwrap_err();
         assert!(UnsupportedProtocol::matches(&err, py), "{}", err);
+        // Only newer dromedary sets `reason`
+        let has_reason = err.value(py).hasattr("reason").unwrap();
 
         let error: Error = err.into();
         match error {
             Error::UnsupportedProtocol(url, extra) => {
                 assert_eq!(url, "nosuch://x/y");
-                assert_eq!(extra.as_deref(), Some(""));
+                assert_eq!(extra.as_deref(), if has_reason { None } else { Some("") });
             }
             _ => panic!("Expected UnsupportedProtocol, got {:?}", error),
+        }
+    });
+}
+
+#[test]
+fn test_error_permissiondenied_from_python() {
+    Python::attach(|py| {
+        let err = PermissionDenied::new_err(("foo", "bar"));
+        let expected = if err.value(py).hasattr("reason").unwrap() {
+            Some("bar")
+        } else {
+            Some(": bar")
+        };
+
+        match Error::from(err) {
+            Error::PermissionDenied(path, reason) => {
+                assert_eq!(path, std::path::PathBuf::from("foo"));
+                assert_eq!(reason.as_deref(), expected);
+            }
+            e => panic!("Expected PermissionDenied, got {:?}", e),
         }
     });
 }
