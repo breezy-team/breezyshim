@@ -36,8 +36,16 @@ impl HookDict {
     /// `Ok(())` on success, or an error if the operation fails
     pub fn clear(&self, name: &str) -> Result<(), crate::error::Error> {
         Python::attach(|py| {
-            let entrypoint = self.0.bind(py).get_item(name)?;
-            entrypoint.call_method0("clear")?;
+            let hooks = self.0.bind(py);
+            let entrypoint = hooks.get_item(name)?;
+            // A HookPoint has no clear(), so put an empty one in its place.
+            let empty = entrypoint.get_type().call1((
+                entrypoint.getattr("name")?,
+                entrypoint.getattr("__doc__")?,
+                entrypoint.getattr("introduced")?,
+                entrypoint.getattr("deprecated")?,
+            ))?;
+            hooks.set_item(name, empty)?;
             Ok(())
         })
     }
@@ -55,7 +63,7 @@ impl HookDict {
     pub fn add(&self, name: &str, func: Hook) -> Result<(), crate::error::Error> {
         Python::attach(|py| {
             let entrypoint = self.0.bind(py).get_item(name)?;
-            entrypoint.call_method1("add", (func.0,))?;
+            entrypoint.call_method1("hook", (func.0, py.None()))?;
             Ok(())
         })
     }
@@ -138,6 +146,30 @@ mod tests {
                 .unwrap();
         });
         assert_eq!(before, hooks.get("post_merge").unwrap().len());
+    }
+
+    /// `clear` empties a hook point and `add` registers a hook on it again.
+    #[test]
+    fn test_clear_and_add() {
+        let hooks = merge_hooks();
+        let saved = hooks.get("pre_merge").unwrap();
+        let func = Python::attach(|py| {
+            py.eval(c"lambda merger: None", None, None)
+                .unwrap()
+                .unbind()
+        });
+
+        hooks.add("pre_merge", Hook(func)).unwrap();
+        assert_eq!(saved.len() + 1, hooks.get("pre_merge").unwrap().len());
+
+        hooks.clear("pre_merge").unwrap();
+        assert_eq!(0, hooks.get("pre_merge").unwrap().len());
+
+        let count = saved.len();
+        for hook in saved {
+            hooks.add("pre_merge", hook).unwrap();
+        }
+        assert_eq!(count, hooks.get("pre_merge").unwrap().len());
     }
 
     /// `get` on an unknown hook name returns an error rather than panicking.
