@@ -365,7 +365,7 @@ pub enum Error {
     /// No compatible inter-repository implementation was found.
     NoCompatibleInter,
     /// The resource is read-only.
-    ReadOnly,
+    ReadOnly(String),
     /// An object that needs to be locked is not locked.
     ObjectNotLocked(String),
 }
@@ -518,7 +518,7 @@ impl std::fmt::Display for Error {
             Self::BranchReferenceLoop => write!(f, "Branch reference loop"),
             Self::NoRoundtrippingSupport => write!(f, "No roundtripping support"),
             Self::NoCompatibleInter => write!(f, "No compatible inter"),
-            Self::ReadOnly => write!(f, "Read-only"),
+            Self::ReadOnly(obj) => write!(f, "Read-only: {}", obj),
             Self::ObjectNotLocked(msg) => write!(f, "Object not locked: {}", msg),
             Self::RedirectRequested {
                 source,
@@ -855,7 +855,7 @@ impl From<PyErr> for Error {
             {
                 Error::ConnectionError(err.to_string())
             } else if err.is_instance_of::<ReadOnlyError>(py) {
-                Error::ReadOnly
+                Error::ReadOnly(value.getattr("obj").unwrap().str().unwrap().to_string())
             } else if RedirectRequested::matches(&err, py) {
                 let url = |attr| {
                     value
@@ -1028,7 +1028,7 @@ impl From<Error> for PyErr {
             Error::ConflictsInTree => ConflictsInTree::new_err(()),
             Error::SourceNotDerivedFromTarget => SourceNotDerivedFromTarget::new_err(()),
             Error::BranchReferenceLoop => BranchReferenceLoop::new_err(()),
-            Error::ReadOnly => Python::attach(|py| ReadOnlyError::new_err((py.None(),))),
+            Error::ReadOnly(obj) => ReadOnlyError::new_err((obj,)),
             Error::ObjectNotLocked(msg) => ObjectNotLocked::new_err((msg,)),
             Error::RedirectRequested {
                 source,
@@ -1524,6 +1524,19 @@ fn test_error_lock_contention() {
     // Verify that p is an instance of LockContention
     Python::attach(|py| {
         assert!(p.is_instance_of::<LockContention>(py), "{}", p);
+    });
+}
+
+#[test]
+fn test_error_readonly() {
+    let e = Error::from(ReadOnlyError::new_err((42,)));
+    assert_eq!(e.to_string(), "Read-only: 42");
+    let p: PyErr = e.into();
+    Python::attach(|py| {
+        assert_eq!(
+            p.value(py).str().unwrap().to_string(),
+            "A write attempt was made in a read only transaction on 42"
+        );
     });
 }
 
