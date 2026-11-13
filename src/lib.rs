@@ -201,7 +201,38 @@ impl std::error::Error for BreezyInitError {}
 static INIT_BREEZY: std::sync::OnceLock<std::result::Result<(), BreezyInitError>> =
     std::sync::OnceLock::new();
 
+/// Pre-initialize Python like `python3`, so a C or POSIX locale uses UTF-8 for file names.
+fn preinitialize_python() -> std::result::Result<(), BreezyInitError> {
+    // SAFETY: Python is not initialized yet, and Python fills in the config.
+    unsafe {
+        if pyo3::ffi::Py_IsInitialized() != 0 {
+            return Ok(());
+        }
+        let mut config = std::mem::MaybeUninit::<pyo3::ffi::PyPreConfig>::uninit();
+        pyo3::ffi::PyPreConfig_InitPythonConfig(config.as_mut_ptr());
+        let mut config = config.assume_init();
+        // Leave the environment of the process and its children alone.
+        config.coerce_c_locale = 0;
+        let status = pyo3::ffi::Py_PreInitialize(&config);
+        if pyo3::ffi::PyStatus_Exception(status) != 0 {
+            let reason = if status.err_msg.is_null() {
+                format!("exit code {}", status.exitcode)
+            } else {
+                std::ffi::CStr::from_ptr(status.err_msg)
+                    .to_string_lossy()
+                    .into_owned()
+            };
+            return Err(BreezyInitError::Other(format!(
+                "Failed to pre-initialize Python: {}",
+                reason
+            )));
+        }
+    }
+    Ok(())
+}
+
 fn do_init() -> std::result::Result<(), BreezyInitError> {
+    preinitialize_python()?;
     pyo3::Python::initialize();
     let (major, minor, micro) = pyo3::Python::attach(|py| match py.import("breezy") {
         Ok(breezy) => {
