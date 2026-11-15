@@ -4,7 +4,7 @@ use crate::error::Error;
 use crate::revisionid::RevisionId;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyDict};
+use pyo3::types::PyDict;
 use std::hash::Hash;
 
 /// Represents a code forge (hosting service) like GitHub, GitLab, etc.
@@ -631,12 +631,10 @@ impl MergeProposal {
     /// `MergeProposal.get_diff`.
     pub fn get_diff(&self) -> Result<Vec<u8>, Error> {
         Python::attach(|py| {
-            let diff = self.optional_method(py, "get_diff")?.call0()?;
-            Ok(diff
-                .cast::<PyBytes>()
-                .map_err(PyErr::from)?
-                .as_bytes()
-                .to_vec())
+            self.optional_method(py, "get_diff")?
+                .call0()?
+                .extract::<Vec<u8>>()
+                .map_err(Into::into)
         })
     }
 
@@ -1573,7 +1571,7 @@ class BrokenProposal:
     url = "not a url"
 
     def get_diff(self):
-        raise NotImplementedError(self.get_diff)
+        raise RuntimeError("no diff")
 
     def get_diff_refs(self):
         raise RuntimeError("no refs")
@@ -1849,8 +1847,13 @@ class BrokenProposal:
         use crate::error::Error;
         let mp = MergeProposal::from(Python::attach(|py| fake(py, "OldProposal")));
         assert!(matches!(mp.get_diff(), Err(Error::NotImplemented)));
+    }
+
+    #[test]
+    fn test_get_diff_error() {
+        use crate::error::Error;
         let mp = MergeProposal::from(Python::attach(|py| fake(py, "BrokenProposal")));
-        assert!(matches!(mp.get_diff(), Err(Error::NotImplemented)));
+        assert!(matches!(mp.get_diff(), Err(Error::Other(_))));
     }
 
     #[test]
