@@ -368,6 +368,19 @@ pub enum Error {
     ReadOnly,
     /// An object that needs to be locked is not locked.
     ObjectNotLocked(String),
+    /// A string, such as a file name, can not be encoded in the given encoding.
+    UnicodeEncodeError {
+        /// The encoding, e.g. the file system encoding of the locale.
+        encoding: String,
+        /// The string that could not be encoded, with any surrogate as `?`.
+        object: String,
+        /// Start of the characters that could not be encoded, counted in characters, not bytes.
+        start: usize,
+        /// End of the characters that could not be encoded, counted in characters, not bytes.
+        end: usize,
+        /// Why they could not be encoded.
+        reason: String,
+    },
 }
 
 impl From<url::ParseError> for Error {
@@ -520,6 +533,12 @@ impl std::fmt::Display for Error {
             Self::NoCompatibleInter => write!(f, "No compatible inter"),
             Self::ReadOnly => write!(f, "Read-only"),
             Self::ObjectNotLocked(msg) => write!(f, "Object not locked: {}", msg),
+            Self::UnicodeEncodeError {
+                encoding,
+                object,
+                reason,
+                ..
+            } => write!(f, "Cannot encode {:?} as {}: {}", object, encoding, reason),
             Self::RedirectRequested {
                 source,
                 target,
@@ -897,6 +916,24 @@ impl From<PyErr> for Error {
                 Error::BranchReferenceLoop
             } else if ObjectNotLocked::matches(&err, py) {
                 Error::ObjectNotLocked(err.to_string())
+            } else if err.is_instance_of::<pyo3::exceptions::PyUnicodeEncodeError>(py) {
+                Error::UnicodeEncodeError {
+                    encoding: value.getattr("encoding").unwrap().extract().unwrap(),
+                    // A file name can hold surrogates for bytes the locale cannot decode
+                    object: String::from_utf8(
+                        value
+                            .getattr("object")
+                            .unwrap()
+                            .call_method1("encode", ("utf-8", "replace"))
+                            .unwrap()
+                            .extract()
+                            .unwrap(),
+                    )
+                    .unwrap(),
+                    start: value.getattr("start").unwrap().extract().unwrap(),
+                    end: value.getattr("end").unwrap().extract().unwrap(),
+                    reason: value.getattr("reason").unwrap().extract().unwrap(),
+                }
             } else {
                 if std::env::var("BRZ_ERROR").is_ok() {
                     // Print backtrace
@@ -1030,6 +1067,15 @@ impl From<Error> for PyErr {
             Error::BranchReferenceLoop => BranchReferenceLoop::new_err(()),
             Error::ReadOnly => Python::attach(|py| ReadOnlyError::new_err((py.None(),))),
             Error::ObjectNotLocked(msg) => ObjectNotLocked::new_err((msg,)),
+            Error::UnicodeEncodeError {
+                encoding,
+                object,
+                start,
+                end,
+                reason,
+            } => pyo3::exceptions::PyUnicodeEncodeError::new_err((
+                encoding, object, start, end, reason,
+            )),
             Error::RedirectRequested {
                 source,
                 target,
@@ -1873,5 +1919,35 @@ fn test_redirect_requested() {
     // Verify that p is an instance of RedirectRequested
     Python::attach(|py| {
         assert!(RedirectRequested::matches(&p, py), "{}", p);
+    });
+}
+
+#[test]
+fn test_error_unicode_encode_error() {
+    Python::attach(|py| {
+        // As os.fsencode() fails on a non-ASCII file name under the C locale
+        let err = pyo3::types::PyString::new(py, "tests/\u{a9}_test.txt")
+            .call_method1("encode", ("ascii",))
+            .unwrap_err();
+        let error = Error::from(err);
+        assert_eq!(
+            error.to_string(),
+            "Cannot encode \"tests/\u{a9}_test.txt\" as ascii: ordinal not in range(128)"
+        );
+        let p: PyErr = error.into();
+        assert!(p.is_instance_of::<pyo3::exceptions::PyUnicodeEncodeError>(py));
+        assert_eq!(
+            p.value(py).str().unwrap().to_string(),
+            "'ascii' codec can't encode character '\\xa9' in position 6: ordinal not in range(128)"
+        );
+
+        // An undecodable byte in a file name comes back as a surrogate
+        let err = py
+            .eval(c"'tests/\\udcff'.encode('utf-8')", None, None)
+            .unwrap_err();
+        assert_eq!(
+            Error::from(err).to_string(),
+            "Cannot encode \"tests/?\" as utf-8: surrogates not allowed"
+        );
     });
 }
