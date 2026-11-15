@@ -151,13 +151,23 @@ impl From<Py<PyAny>> for TreeTransform {
     }
 }
 
+impl Drop for TreeTransform {
+    fn drop(&mut self) {
+        // A transform handed to Python is left for Python to finalize.
+        if Python::attach(|py| self.0.is_none(py)) {
+            return;
+        }
+        self.finalize().unwrap();
+    }
+}
+
 impl<'py> IntoPyObject<'py> for TreeTransform {
     type Target = PyAny;
     type Output = Bound<'py, Self::Target>;
     type Error = std::convert::Infallible;
 
-    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        Ok(self.0.into_bound(py))
+    fn into_pyobject(mut self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(std::mem::replace(&mut self.0, py.None()).into_bound(py))
     }
 }
 
@@ -310,5 +320,44 @@ impl<'a, 'py> FromPyObject<'a, 'py> for RawConflict {
                 tuple.get_item(0)?.extract::<String>()?
             ))),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::controldir::{create_standalone_workingtree, ControlDirFormat};
+    use crate::tree::Tree;
+    use crate::workingtree::WorkingTree;
+    use pyo3::prelude::*;
+    use serial_test::serial;
+
+    #[test]
+    #[serial]
+    fn test_drop_finalizes() {
+        let env = crate::testing::TestEnv::new();
+        let tree = create_standalone_workingtree(
+            &env.working_dir.join("tree"),
+            &ControlDirFormat::default(),
+        )
+        .unwrap();
+        let tt = tree.preview_transform().unwrap();
+        assert!(tree.is_locked());
+        std::mem::drop(tt);
+        assert!(!tree.is_locked());
+
+        // Dropping a transform that was already finalized is fine too.
+        let tt = tree.preview_transform().unwrap();
+        tt.finalize().unwrap();
+        std::mem::drop(tt);
+        assert!(!tree.is_locked());
+
+        // A transform handed to Python is left for Python to finalize.
+        let tt = tree.preview_transform().unwrap();
+        Python::attach(|py| {
+            let tt = tt.into_pyobject(py).unwrap();
+            assert!(tree.is_locked());
+            tt.call_method0("finalize").unwrap();
+        });
+        assert!(!tree.is_locked());
     }
 }
