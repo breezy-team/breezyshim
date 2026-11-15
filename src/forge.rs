@@ -467,13 +467,7 @@ impl MergeProposal {
     /// Returns `Error::NotImplemented` with versions of Breezy that predate
     /// `MergeProposal.get_author`.
     pub fn get_author(&self) -> Result<Option<String>, crate::error::Error> {
-        Python::attach(|py| {
-            let mp = self.0.bind(py);
-            if !mp.hasattr("get_author")? {
-                return Err(crate::error::Error::NotImplemented);
-            }
-            mp.call_method0("get_author")?.extract().map_err(Into::into)
-        })
+        Python::attach(|py| Ok(self.optional_method(py, "get_author")?.call0()?.extract()?))
     }
 
     /// Returns the name of the project the proposal's source branch lives in, if known.
