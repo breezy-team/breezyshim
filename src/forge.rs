@@ -1456,9 +1456,9 @@ class OldProposal:
 
 class MergeStatusProposal:
     def merge(self, commit_message=None, auto=False, expected_revision=None):
-        from breezy.forge import HeadChanged
-
         if expected_revision not in (None, b"git-v1:aaaa"):
+            from breezy.forge import HeadChanged
+
             raise HeadChanged(expected_revision, b"git-v1:aaaa")
         self.calls = [(commit_message, auto, expected_revision)]
 
@@ -1974,7 +1974,10 @@ class BrokenProposal:
     fn test_get_merge_status_unsupported() {
         for name in ["OldProposal", "UnsupportedProposal"] {
             let mp = MergeProposal::from(Python::attach(|py| fake(py, name)));
-            assert!(matches!(mp.get_merge_status(), Err(Error::NotImplemented)));
+            assert!(
+                matches!(mp.get_merge_status(), Err(Error::NotImplemented)),
+                "{name}"
+            );
         }
     }
 
