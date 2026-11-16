@@ -106,8 +106,9 @@ pub use transport::{get_transport, Transport};
 pub use tree::{RevisionTree, Tree, WorkingTree};
 /// URL utility functions
 pub use urlutils::{
-    join_segment_parameters, split_segment_parameters, try_join_segment_parameters,
-    try_split_segment_parameters,
+    join_segment_parameters, join_segment_parameters_encoded, split_segment_parameters,
+    split_segment_parameters_decoded, try_join_segment_parameters, try_split_segment_parameters,
+    try_split_segment_parameters_decoded,
 };
 /// Workspace functions
 pub use workspace::reset_tree;
