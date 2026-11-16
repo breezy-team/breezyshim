@@ -169,6 +169,18 @@ impl Merger {
         })
     }
 
+    /// Set whether the merge runs the merge hooks; `Error::NotImplemented` if Breezy lacks it.
+    pub fn set_run_hooks(&mut self, run_hooks: bool) -> Result<(), crate::error::Error> {
+        Python::attach(|py| {
+            let merger = self.0.bind(py);
+            if !merger.hasattr("run_hooks")? {
+                return Err(crate::error::Error::NotImplemented);
+            }
+            merger.setattr("run_hooks", run_hooks)?;
+            Ok(())
+        })
+    }
+
     /// Create a submerger to execute the merge.
     ///
     /// # Returns
@@ -319,5 +331,63 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(vec!["Text conflict in a".to_string()], conflicts);
         std::mem::drop(env);
+    }
+
+    #[test]
+    #[serial]
+    fn test_set_run_hooks() {
+        let _env = crate::testing::TestEnv::new();
+        let tree = create_standalone_workingtree(
+            std::path::Path::new("tree"),
+            &ControlDirFormat::default(),
+        )
+        .unwrap();
+        let revid = tree
+            .build_commit()
+            .message("empty")
+            .allow_pointless(true)
+            .commit()
+            .unwrap();
+        let _lock = tree.lock_write().unwrap();
+        let Ok(mut merger) =
+            Merger::from_revision_ids(&tree, &tree.branch(), &revid, &tree.branch())
+        else {
+            panic!("merger");
+        };
+        merger.set_merge_type(MergeType::Merge3);
+        let hooks = Python::attach(|py| {
+            let hooks = py
+                .import("breezy.merge")
+                .unwrap()
+                .getattr("Merger")
+                .unwrap()
+                .getattr("hooks")
+                .unwrap();
+            let failing = py.eval(c"lambda merger: 1 / 0", None, None).unwrap();
+            hooks
+                .call_method1(
+                    "install_named_hook",
+                    ("merge_file_content", failing, "breezyshim test hook"),
+                )
+                .unwrap();
+            hooks.unbind()
+        });
+        let result = merger
+            .set_run_hooks(false)
+            .and_then(|()| merger.make_merger()?.make_preview_transform());
+        Python::attach(|py| {
+            hooks
+                .bind(py)
+                .get_item("merge_file_content")
+                .unwrap()
+                .call_method1("uninstall", ("breezyshim test hook",))
+                .unwrap();
+        });
+        match result {
+            Ok(tt) => tt.finalize().unwrap(),
+            // Older versions of Breezy lack Merger.run_hooks.
+            Err(crate::error::Error::NotImplemented) => {}
+            Err(e) => panic!("{e}"),
+        }
     }
 }
