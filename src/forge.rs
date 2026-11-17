@@ -268,7 +268,7 @@ impl<'a, 'py> FromPyObject<'a, 'py> for MergeStatus {
 }
 
 /// Kind of event in the history of a merge proposal.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum ProposalEventKind {
     /// New revisions were pushed.
     Push,
@@ -280,6 +280,8 @@ pub enum ProposalEventKind {
     Approval,
     /// An approval was withdrawn or changes were requested.
     Unapproval,
+    /// A kind that breezy knows about but this wrapper does not yet.
+    Unknown(String),
 }
 
 impl<'a, 'py> FromPyObject<'a, 'py> for ProposalEventKind {
@@ -287,17 +289,14 @@ impl<'a, 'py> FromPyObject<'a, 'py> for ProposalEventKind {
 
     fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         let value = ob.getattr("value")?.extract::<String>()?;
-        match value.as_str() {
-            "push" => Ok(ProposalEventKind::Push),
-            "comment" => Ok(ProposalEventKind::Comment),
-            "review" => Ok(ProposalEventKind::Review),
-            "approval" => Ok(ProposalEventKind::Approval),
-            "unapproval" => Ok(ProposalEventKind::Unapproval),
-            _ => Err(PyValueError::new_err(format!(
-                "Invalid proposal event kind: {}",
-                value
-            ))),
-        }
+        Ok(match value.as_str() {
+            "push" => ProposalEventKind::Push,
+            "comment" => ProposalEventKind::Comment,
+            "review" => ProposalEventKind::Review,
+            "approval" => ProposalEventKind::Approval,
+            "unapproval" => ProposalEventKind::Unapproval,
+            _ => ProposalEventKind::Unknown(value),
+        })
     }
 }
 
@@ -1663,6 +1662,9 @@ class UnsupportedProposal:
     def get_merge_status(self):
         raise NotImplementedError(self.get_merge_status)
 
+    def iter_events(self):
+        raise NotImplementedError(self.iter_events)
+
     def rebase(self, expected_revision=None):
         raise NotImplementedError(self.rebase)
 
@@ -1670,7 +1672,7 @@ class UnsupportedProposal:
 class Kind(enum.Enum):
     PUSH = "push"
     APPROVAL = "approval"
-    BOGUS = "bogus"
+    FUTURE = "future"
 
 
 class TimelineProposal:
@@ -1689,14 +1691,10 @@ class TimelineProposal:
             revision=None,
             actor_is_bot=True,
         )
-
-
-class BogusTimelineProposal:
-    def iter_events(self):
         yield SimpleNamespace(
-            kind=Kind.BOGUS,
+            kind=Kind.FUTURE,
             actor=None,
-            timestamp=datetime.datetime(2026, 1, 1, 10, 0),
+            timestamp=datetime.datetime(2026, 1, 3, 10, 0, tzinfo=datetime.timezone.utc),
             revision=None,
             actor_is_bot=False,
         )
@@ -1873,6 +1871,13 @@ class BrokenProposal:
                     revision: None,
                     actor_is_bot: true,
                 },
+                ProposalEvent {
+                    kind: ProposalEventKind::Unknown("future".to_string()),
+                    actor: None,
+                    timestamp: chrono::Utc.with_ymd_and_hms(2026, 1, 3, 10, 0, 0).unwrap(),
+                    revision: None,
+                    actor_is_bot: false,
+                },
             ]
         );
     }
@@ -1880,12 +1885,12 @@ class BrokenProposal:
     #[test]
     fn test_iter_events_errors() {
         use crate::error::Error;
-        let mp = MergeProposal::from(Python::attach(|py| fake(py, "OldProposal")));
-        assert!(matches!(mp.iter_events(), Err(Error::NotImplemented)));
+        for name in ["OldProposal", "UnsupportedProposal"] {
+            let mp = MergeProposal::from(Python::attach(|py| fake(py, name)));
+            assert!(matches!(mp.iter_events(), Err(Error::NotImplemented)));
+        }
         let mp = MergeProposal::from(Python::attach(|py| fake(py, "BrokenProposal")));
         assert!(matches!(mp.iter_events(), Err(Error::Other(_))));
-        let mp = MergeProposal::from(Python::attach(|py| fake(py, "BogusTimelineProposal")));
-        assert!(mp.iter_events().is_err());
     }
 
     #[test]
