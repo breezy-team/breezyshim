@@ -836,6 +836,56 @@ impl MergeProposal {
             Ok(())
         })
     }
+
+    /// Returns whether this proposal is marked as a draft or work in progress.
+    ///
+    /// Returns `Error::NotImplemented` both for forges whose proposal objects
+    /// do not define `is_work_in_progress` and for those that define it but
+    /// raise `NotImplementedError` at call time.
+    pub fn is_work_in_progress(&self) -> Result<bool, crate::error::Error> {
+        Python::attach(|py| {
+            Ok(self
+                .optional_method(py, "is_work_in_progress")?
+                .call0()?
+                .extract()?)
+        })
+    }
+
+    /// Returns when this proposal was created, or `None` if the forge does
+    /// not record it.
+    ///
+    /// Returns `Error::NotImplemented` both for forges whose proposal objects
+    /// do not define `get_created_at` and for those that define it but raise
+    /// `NotImplementedError` at call time.
+    pub fn get_created_at(
+        &self,
+    ) -> Result<Option<chrono::DateTime<chrono::Utc>>, crate::error::Error> {
+        Python::attach(|py| {
+            let created_at = self.optional_method(py, "get_created_at")?.call0()?;
+            if created_at.is_none() {
+                return Ok(None);
+            }
+            Ok(Some(extract_datetime(&created_at)?))
+        })
+    }
+
+    /// Returns when this proposal was last updated, or `None` if the forge
+    /// does not record it.
+    ///
+    /// Returns `Error::NotImplemented` both for forges whose proposal objects
+    /// do not define `get_updated_at` and for those that define it but raise
+    /// `NotImplementedError` at call time.
+    pub fn get_updated_at(
+        &self,
+    ) -> Result<Option<chrono::DateTime<chrono::Utc>>, crate::error::Error> {
+        Python::attach(|py| {
+            let updated_at = self.optional_method(py, "get_updated_at")?.call0()?;
+            if updated_at.is_none() {
+                return Ok(None);
+            }
+            Ok(Some(extract_datetime(&updated_at)?))
+        })
+    }
 }
 
 /// The revisions a merge proposal's diff was made from.
@@ -1588,6 +1638,28 @@ class FakeProposal:
             raise NoSuchFile(path)
         return b"contents at " + revision
 
+    def is_work_in_progress(self):
+        return True
+
+    def get_created_at(self):
+        return datetime.datetime(2026, 1, 1, 10, 0, 0)
+
+    def get_updated_at(self):
+        return datetime.datetime(2026, 1, 2, 11, 30, 0, tzinfo=datetime.timezone.utc)
+
+    def get_merged_at(self):
+        return datetime.datetime(2026, 1, 3, 12, 0, 0, tzinfo=datetime.timezone.utc)
+
+
+class NaiveMergedProposal:
+    def get_merged_at(self):
+        return datetime.datetime(2026, 1, 3, 12, 0, 0)
+
+
+class UnmergedProposal:
+    def get_merged_at(self):
+        return None
+
 
 class ReviewableProposal:
     def __init__(self):
@@ -1711,6 +1783,12 @@ class BrokenProposal:
 
     def get_author(self):
         raise RuntimeError("no author")
+
+    def is_work_in_progress(self):
+        raise NotImplementedError(self.is_work_in_progress)
+
+    def get_created_at(self):
+        return "yesterday"
 
     def get_labels(self):
         raise NotImplementedError(self.get_labels)
@@ -1922,6 +2000,56 @@ class BrokenProposal:
         let mp = MergeProposal::from(Python::attach(|py| fake(py, "BrokenProposal")));
         assert!(matches!(mp.get_labels(), Err(Error::NotImplemented)));
         assert!(matches!(mp.remove_label("x"), Err(Error::Other(_))));
+    }
+
+    #[test]
+    fn test_get_merged_at() {
+        use chrono::TimeZone;
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "FakeProposal")));
+        assert_eq!(
+            mp.get_merged_at().unwrap(),
+            Some(chrono::Utc.with_ymd_and_hms(2026, 1, 3, 12, 0, 0).unwrap())
+        );
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "NaiveMergedProposal")));
+        assert_eq!(
+            mp.get_merged_at().unwrap(),
+            Some(chrono::Utc.with_ymd_and_hms(2026, 1, 3, 12, 0, 0).unwrap())
+        );
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "UnmergedProposal")));
+        assert_eq!(mp.get_merged_at().unwrap(), None);
+    }
+
+    #[test]
+    fn test_metadata() {
+        use chrono::TimeZone;
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "FakeProposal")));
+        assert!(mp.is_work_in_progress().unwrap());
+        assert_eq!(
+            mp.get_created_at().unwrap(),
+            Some(chrono::Utc.with_ymd_and_hms(2026, 1, 1, 10, 0, 0).unwrap())
+        );
+        assert_eq!(
+            mp.get_updated_at().unwrap(),
+            Some(chrono::Utc.with_ymd_and_hms(2026, 1, 2, 11, 30, 0).unwrap())
+        );
+    }
+
+    #[test]
+    fn test_metadata_unsupported() {
+        use crate::error::Error;
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "OldProposal")));
+        assert!(matches!(
+            mp.is_work_in_progress(),
+            Err(Error::NotImplemented)
+        ));
+        assert!(matches!(mp.get_created_at(), Err(Error::NotImplemented)));
+        assert!(matches!(mp.get_updated_at(), Err(Error::NotImplemented)));
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "BrokenProposal")));
+        assert!(matches!(
+            mp.is_work_in_progress(),
+            Err(Error::NotImplemented)
+        ));
+        assert!(matches!(mp.get_created_at(), Err(Error::Other(_))));
     }
 
     #[test]
