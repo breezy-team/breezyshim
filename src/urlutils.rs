@@ -74,6 +74,58 @@ pub fn split_segment_parameters(
     try_split_segment_parameters(url).unwrap()
 }
 
+/// Join segment parameters to a URL, encoding the values.
+///
+/// A value may hold `/` or `,`; [`split_segment_parameters_decoded`] gives it
+/// back unchanged.
+///
+/// # Panics
+///
+/// If Breezy rejects the parameters (for example a key containing `=`).
+pub fn join_segment_parameters_encoded(
+    url: &url::Url,
+    parameters: std::collections::HashMap<String, String>,
+) -> url::Url {
+    pyo3::Python::attach(|py| -> Result<url::Url, crate::error::Error> {
+        let urlutils = py.import("breezy.urlutils")?;
+        let joined = urlutils
+            .call_method1(
+                "join_segment_parameters_encoded",
+                (url.to_string(), parameters),
+            )?
+            .extract::<String>()?;
+        Ok(url::Url::parse(joined.as_str())?)
+    })
+    .unwrap()
+}
+
+/// Split segment parameters from a URL, decoding the values.
+///
+/// The reverse of [`join_segment_parameters_encoded`]. Returns an error if a
+/// segment parameter is malformed (for example `,foo`).
+pub fn try_split_segment_parameters_decoded(
+    url: &url::Url,
+) -> Result<(url::Url, std::collections::HashMap<String, String>), crate::error::Error> {
+    pyo3::Python::attach(|py| {
+        let urlutils = py.import("breezy.urlutils")?;
+        let (base, parameters) = urlutils
+            .call_method1("split_segment_parameters_decoded", (url.to_string(),))?
+            .extract::<(String, std::collections::HashMap<String, String>)>()?;
+        Ok((url::Url::parse(base.as_str())?, parameters))
+    })
+}
+
+/// Split segment parameters from a URL, decoding the values.
+///
+/// # Panics
+///
+/// If a segment parameter is malformed; see [`try_split_segment_parameters_decoded`].
+pub fn split_segment_parameters_decoded(
+    url: &url::Url,
+) -> (url::Url, std::collections::HashMap<String, String>) {
+    try_split_segment_parameters_decoded(url).unwrap()
+}
+
 fn char_is_safe(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '~'
 }
@@ -203,5 +255,15 @@ mod tests {
         let url = url::Url::parse("file:///tmp/repo").unwrap();
         let params = std::collections::HashMap::from([("branch".to_string(), "a,b".to_string())]);
         assert!(try_join_segment_parameters(&url, params).is_err());
+    }
+
+    #[test]
+    fn test_segment_parameters_encoded_roundtrip() {
+        let url = url::Url::parse("file:///tmp/repo").unwrap();
+        let params =
+            std::collections::HashMap::from([("branch".to_string(), "debian/a,b".to_string())]);
+        let joined = join_segment_parameters_encoded(&url, params.clone());
+        assert_eq!(joined.as_str(), "file:///tmp/repo,branch=debian%2Fa%2Cb");
+        assert_eq!(split_segment_parameters_decoded(&joined), (url, params));
     }
 }
