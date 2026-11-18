@@ -838,6 +838,10 @@ impl MergeProposal {
     }
 
     /// Returns whether this proposal is marked as a draft or work in progress.
+    ///
+    /// Returns `Error::NotImplemented` both for forges whose proposal objects
+    /// do not define `is_work_in_progress` and for those that define it but
+    /// raise `NotImplementedError` at call time.
     pub fn is_work_in_progress(&self) -> Result<bool, crate::error::Error> {
         Python::attach(|py| {
             Ok(self
@@ -847,21 +851,39 @@ impl MergeProposal {
         })
     }
 
-    /// Returns when this proposal was created.
-    pub fn get_created_at(&self) -> Result<chrono::DateTime<chrono::Utc>, crate::error::Error> {
+    /// Returns when this proposal was created, or `None` if the forge does
+    /// not record it.
+    ///
+    /// Returns `Error::NotImplemented` both for forges whose proposal objects
+    /// do not define `get_created_at` and for those that define it but raise
+    /// `NotImplementedError` at call time.
+    pub fn get_created_at(
+        &self,
+    ) -> Result<Option<chrono::DateTime<chrono::Utc>>, crate::error::Error> {
         Python::attach(|py| {
-            Ok(extract_datetime(
-                &self.optional_method(py, "get_created_at")?.call0()?,
-            )?)
+            let created_at = self.optional_method(py, "get_created_at")?.call0()?;
+            if created_at.is_none() {
+                return Ok(None);
+            }
+            Ok(Some(extract_datetime(&created_at)?))
         })
     }
 
-    /// Returns when this proposal was last updated.
-    pub fn get_updated_at(&self) -> Result<chrono::DateTime<chrono::Utc>, crate::error::Error> {
+    /// Returns when this proposal was last updated, or `None` if the forge
+    /// does not record it.
+    ///
+    /// Returns `Error::NotImplemented` both for forges whose proposal objects
+    /// do not define `get_updated_at` and for those that define it but raise
+    /// `NotImplementedError` at call time.
+    pub fn get_updated_at(
+        &self,
+    ) -> Result<Option<chrono::DateTime<chrono::Utc>>, crate::error::Error> {
         Python::attach(|py| {
-            Ok(extract_datetime(
-                &self.optional_method(py, "get_updated_at")?.call0()?,
-            )?)
+            let updated_at = self.optional_method(py, "get_updated_at")?.call0()?;
+            if updated_at.is_none() {
+                return Ok(None);
+            }
+            Ok(Some(extract_datetime(&updated_at)?))
         })
     }
 }
@@ -1625,6 +1647,19 @@ class FakeProposal:
     def get_updated_at(self):
         return datetime.datetime(2026, 1, 2, 11, 30, 0, tzinfo=datetime.timezone.utc)
 
+    def get_merged_at(self):
+        return datetime.datetime(2026, 1, 3, 12, 0, 0, tzinfo=datetime.timezone.utc)
+
+
+class NaiveMergedProposal:
+    def get_merged_at(self):
+        return datetime.datetime(2026, 1, 3, 12, 0, 0)
+
+
+class UnmergedProposal:
+    def get_merged_at(self):
+        return None
+
 
 class ReviewableProposal:
     def __init__(self):
@@ -1968,17 +2003,34 @@ class BrokenProposal:
     }
 
     #[test]
+    fn test_get_merged_at() {
+        use chrono::TimeZone;
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "FakeProposal")));
+        assert_eq!(
+            mp.get_merged_at().unwrap(),
+            Some(chrono::Utc.with_ymd_and_hms(2026, 1, 3, 12, 0, 0).unwrap())
+        );
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "NaiveMergedProposal")));
+        assert_eq!(
+            mp.get_merged_at().unwrap(),
+            Some(chrono::Utc.with_ymd_and_hms(2026, 1, 3, 12, 0, 0).unwrap())
+        );
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "UnmergedProposal")));
+        assert_eq!(mp.get_merged_at().unwrap(), None);
+    }
+
+    #[test]
     fn test_metadata() {
         use chrono::TimeZone;
         let mp = MergeProposal::from(Python::attach(|py| fake(py, "FakeProposal")));
         assert!(mp.is_work_in_progress().unwrap());
         assert_eq!(
             mp.get_created_at().unwrap(),
-            chrono::Utc.with_ymd_and_hms(2026, 1, 1, 10, 0, 0).unwrap()
+            Some(chrono::Utc.with_ymd_and_hms(2026, 1, 1, 10, 0, 0).unwrap())
         );
         assert_eq!(
             mp.get_updated_at().unwrap(),
-            chrono::Utc.with_ymd_and_hms(2026, 1, 2, 11, 30, 0).unwrap()
+            Some(chrono::Utc.with_ymd_and_hms(2026, 1, 2, 11, 30, 0).unwrap())
         );
     }
 
