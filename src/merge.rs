@@ -318,6 +318,5 @@ mod tests {
             .map(|c| c.describe().unwrap())
             .collect::<Vec<_>>();
         assert_eq!(vec!["Text conflict in a".to_string()], conflicts);
-        std::mem::drop(env);
     }
 }
