@@ -99,7 +99,8 @@ impl<'a, 'py> pyo3::FromPyObject<'a, 'py> for FileId {
 /// A byte vector containing the generated revision identifier.
 pub fn gen_revision_id(username: &str, timestamp: Option<u64>) -> Vec<u8> {
     Python::attach(|py| {
-        let m = py.import("breezy.bzr.generate_ids").unwrap();
+        let m = crate::import_first(py, &["breezy.bzr.generate_ids", "bzrformats.generate_ids"])
+            .unwrap();
         let gen_revision_id = m.getattr("gen_revision_id").unwrap();
         gen_revision_id
             .call1((username, timestamp))
@@ -128,7 +129,8 @@ fn test_gen_revision_id() {
 /// A byte vector containing the generated file identifier.
 pub fn gen_file_id(name: &str) -> Vec<u8> {
     Python::attach(|py| {
-        let m = py.import("breezy.bzr.generate_ids").unwrap();
+        let m = crate::import_first(py, &["breezy.bzr.generate_ids", "bzrformats.generate_ids"])
+            .unwrap();
         let gen_file_id = m.getattr("gen_file_id").unwrap();
         gen_file_id.call1((name,)).unwrap().extract().unwrap()
     })
