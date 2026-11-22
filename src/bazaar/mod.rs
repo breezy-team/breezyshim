@@ -98,13 +98,23 @@ impl<'a, 'py> pyo3::FromPyObject<'a, 'py> for FileId {
 ///
 /// A byte vector containing the generated revision identifier.
 pub fn gen_revision_id(username: &str, timestamp: Option<u64>) -> Vec<u8> {
-    bazaar::gen_ids::gen_revision_id(username, timestamp)
+    Python::attach(|py| {
+        let m = py.import("breezy.bzr.generate_ids").unwrap();
+        let gen_revision_id = m.getattr("gen_revision_id").unwrap();
+        gen_revision_id
+            .call1((username, timestamp))
+            .unwrap()
+            .extract()
+            .unwrap()
+    })
 }
 
 #[test]
 fn test_gen_revision_id() {
     crate::init();
     gen_revision_id("user", None);
+    let revid = gen_revision_id("user", Some(1234567890));
+    assert!(revid.starts_with(b"user-20090213233130-"));
 }
 
 /// Generate a Bazaar file identifier from a name.
@@ -117,7 +127,11 @@ fn test_gen_revision_id() {
 ///
 /// A byte vector containing the generated file identifier.
 pub fn gen_file_id(name: &str) -> Vec<u8> {
-    bazaar::gen_ids::gen_file_id(name)
+    Python::attach(|py| {
+        let m = py.import("breezy.bzr.generate_ids").unwrap();
+        let gen_file_id = m.getattr("gen_file_id").unwrap();
+        gen_file_id.call1((name,)).unwrap().extract().unwrap()
+    })
 }
 
 #[test]
