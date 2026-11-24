@@ -329,6 +329,55 @@ impl<'a, 'py> FromPyObject<'a, 'py> for ProposalEvent {
     }
 }
 
+/// Combined state of the CI for a revision.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CIState {
+    /// CI is still running or waiting to run.
+    Pending,
+    /// CI passed.
+    Success,
+    /// CI failed.
+    Failure,
+}
+
+impl<'a, 'py> FromPyObject<'a, 'py> for CIState {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        let value = ob.getattr("value")?.extract::<String>()?;
+        match value.as_str() {
+            "pending" => Ok(CIState::Pending),
+            "success" => Ok(CIState::Success),
+            "failure" => Ok(CIState::Failure),
+            _ => Err(PyValueError::new_err(format!("Invalid CI state: {value}"))),
+        }
+    }
+}
+
+/// A CI job or check that failed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CIFailure {
+    /// Name of the job or check.
+    pub name: String,
+    /// Web URL with details, if any.
+    pub url: Option<String>,
+    /// Log of the job as the forge provides it, which may include terminal
+    /// escape sequences; for checks without a log, their description.
+    pub log: String,
+}
+
+impl<'a, 'py> FromPyObject<'a, 'py> for CIFailure {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Ok(CIFailure {
+            name: ob.getattr("name")?.extract()?,
+            url: ob.getattr("url")?.extract()?,
+            log: ob.getattr("log")?.extract()?,
+        })
+    }
+}
+
 /// A merge proposal (pull request) on a code hosting service.
 pub struct MergeProposal(Py<PyAny>);
 
@@ -741,6 +790,54 @@ impl MergeProposal {
                 .call1((path, revision.clone()))?
                 .extract()
                 .map_err(Into::into)
+        })
+    }
+
+    /// Returns the combined state of the CI for the head of the proposal, or
+    /// `None` if there is no CI for it.
+    pub fn get_ci_state(&self) -> Result<Option<CIState>, Error> {
+        Python::attach(|py| {
+            Ok(self
+                .optional_method(py, "get_ci_state")?
+                .call0()?
+                .extract()?)
+        })
+    }
+
+    /// Returns a lazy iterator over the CI jobs and checks that failed for
+    /// `revision`, or for the head of the proposal if `None`.
+    ///
+    /// Logs are fetched as the iterator advances.
+    pub fn iter_ci_failures(
+        &self,
+        revision: Option<&RevisionId>,
+    ) -> Result<impl Iterator<Item = Result<CIFailure, Error>>, Error> {
+        let iter = Python::attach(|py| -> Result<Py<PyAny>, Error> {
+            Ok(self
+                .optional_method(py, "iter_ci_failures")?
+                .call1((revision.cloned(),))?
+                .try_iter()?
+                .into_any()
+                .unbind())
+        })?;
+        Ok(std::iter::from_fn(move || {
+            Python::attach(|py| match iter.call_method0(py, "__next__") {
+                Ok(failure) => Some(failure.extract(py).map_err(Into::into)),
+                Err(e) if e.is_instance_of::<pyo3::exceptions::PyStopIteration>(py) => None,
+                Err(e) => Some(Err(e.into())),
+            })
+        }))
+    }
+
+    /// Starts CI that waits for approval by a maintainer, as forges require
+    /// for some contributions from forks, for `revision` or the head of the
+    /// proposal if `None`. Returns the names of what was started.
+    pub fn approve_ci(&self, revision: Option<&RevisionId>) -> Result<Vec<String>, Error> {
+        Python::attach(|py| {
+            Ok(self
+                .optional_method(py, "approve_ci")?
+                .call1((revision.cloned(),))?
+                .extract()?)
         })
     }
 
@@ -1567,6 +1664,7 @@ mod tests {
     use pyo3::prelude::*;
 
     const FAKES: &std::ffi::CStr = cr#"
+import dataclasses
 import datetime
 import enum
 from types import SimpleNamespace
@@ -1748,6 +1846,49 @@ class NaiveMergedProposal:
 class UnmergedProposal:
     def get_merged_at(self):
         return None
+
+
+class CIState(enum.Enum):
+    PENDING = "pending"
+    SUCCESS = "success"
+    FAILURE = "failure"
+
+
+@dataclasses.dataclass(frozen=True)
+class CIFailure:
+    name: str
+    url: object
+    log: str
+
+
+class CIProposal:
+    def __init__(self, state=CIState.FAILURE):
+        self.state = state
+        self.calls = []
+
+    def get_ci_state(self):
+        return self.state
+
+    def iter_ci_failures(self, revision=None):
+        self.calls.append(("iter_ci_failures", revision))
+        yield CIFailure("test", "https://ci.example.com/1", "boom")
+        yield CIFailure("lint", None, "")
+        raise RuntimeError("log is gone")
+
+    def approve_ci(self, revision=None):
+        self.calls.append(("approve_ci", revision))
+        return ["CI"]
+
+
+class BrokenCIProposal:
+    def get_ci_state(self):
+        return "red"
+
+    def iter_ci_failures(self, revision=None):
+        raise NotImplementedError(self.iter_ci_failures)
+
+    def approve_ci(self, revision=None):
+        raise RuntimeError("forbidden")
 
 
 class ReviewableProposal:
@@ -2247,6 +2388,60 @@ class BrokenProposal:
     }
 
     #[test]
+    fn test_get_ci_state() {
+        use super::CIState;
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "CIProposal")));
+        assert_eq!(mp.get_ci_state().unwrap(), Some(CIState::Failure));
+        let mp = MergeProposal::from(Python::attach(|py| {
+            let obj = fake(py, "CIProposal");
+            obj.setattr(py, "state", py.None()).unwrap();
+            obj
+        }));
+        assert_eq!(mp.get_ci_state().unwrap(), None);
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "BrokenCIProposal")));
+        assert!(mp.get_ci_state().is_err());
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "OldProposal")));
+        assert!(matches!(
+            mp.get_ci_state(),
+            Err(crate::error::Error::NotImplemented)
+        ));
+    }
+
+    #[test]
+    fn test_iter_ci_failures() {
+        use super::CIFailure;
+        use crate::revisionid::RevisionId;
+        let obj = Python::attach(|py| fake(py, "CIProposal"));
+        let mp = MergeProposal::from(Python::attach(|py| obj.clone_ref(py)));
+        let revision = RevisionId::from(b"rev-1".to_vec());
+        let mut failures = mp.iter_ci_failures(Some(&revision)).unwrap();
+        assert_eq!(
+            failures.next().unwrap().unwrap(),
+            CIFailure {
+                name: "test".to_string(),
+                url: Some("https://ci.example.com/1".to_string()),
+                log: "boom".to_string(),
+            }
+        );
+        assert_eq!(
+            failures.next().unwrap().unwrap(),
+            CIFailure {
+                name: "lint".to_string(),
+                url: None,
+                log: String::new(),
+            }
+        );
+        assert!(failures.next().unwrap().is_err());
+        assert!(failures.next().is_none());
+        let calls: Vec<(String, Option<Vec<u8>>)> =
+            Python::attach(|py| obj.getattr(py, "calls").unwrap().extract(py).unwrap());
+        assert_eq!(
+            calls,
+            vec![("iter_ci_failures".to_string(), Some(b"rev-1".to_vec()))]
+        );
+    }
+
+    #[test]
     fn test_iter_reviews() {
         use chrono::TimeZone;
         let mp = MergeProposal::from(Python::attach(|py| fake(py, "FakeProposal")));
@@ -2370,6 +2565,38 @@ class BrokenProposal:
         assert!(matches!(
             mp.get_file_text("README", &revision),
             Err(Error::NotImplemented)
+        ));
+    }
+
+    #[test]
+    fn test_iter_ci_failures_unsupported() {
+        use crate::error::Error;
+        for name in ["OldProposal", "BrokenCIProposal"] {
+            let mp = MergeProposal::from(Python::attach(|py| fake(py, name)));
+            assert!(matches!(
+                mp.iter_ci_failures(None).map(|_| ()),
+                Err(Error::NotImplemented)
+            ));
+        }
+    }
+
+    #[test]
+    fn test_approve_ci() {
+        let obj = Python::attach(|py| fake(py, "CIProposal"));
+        let mp = MergeProposal::from(Python::attach(|py| obj.clone_ref(py)));
+        assert_eq!(mp.approve_ci(None).unwrap(), vec!["CI".to_string()]);
+        let calls: Vec<(String, Option<Vec<u8>>)> =
+            Python::attach(|py| obj.getattr(py, "calls").unwrap().extract(py).unwrap());
+        assert_eq!(calls, vec![("approve_ci".to_string(), None)]);
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "BrokenCIProposal")));
+        assert!(matches!(
+            mp.approve_ci(None),
+            Err(crate::error::Error::Other(_))
+        ));
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "OldProposal")));
+        assert!(matches!(
+            mp.approve_ci(None),
+            Err(crate::error::Error::NotImplemented)
         ));
     }
 
