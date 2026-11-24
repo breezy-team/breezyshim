@@ -1911,12 +1911,6 @@ class FakeProposal:
             start_revision = None
         return DiffRefs()
 
-    def get_file_text(self, path, revision):
-        if path != "README":
-            from breezy.transport import NoSuchFile
-            raise NoSuchFile(path)
-        return b"contents at " + revision
-
     def iter_review_threads(self):
         yield SimpleNamespace(
             id="RT_1",
@@ -1952,6 +1946,12 @@ class FakeProposal:
 
     def set_review_thread_resolved(self, thread_id, resolved=True):
         self.calls.append(("set_review_thread_resolved", thread_id, resolved))
+
+    def get_file_text(self, path, revision):
+        if path != "README":
+            from breezy.transport import NoSuchFile
+            raise NoSuchFile(path)
+        return b"contents at " + revision
 
     def is_work_in_progress(self):
         return True
