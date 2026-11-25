@@ -141,6 +141,85 @@ impl<'a, 'py> FromPyObject<'a, 'py> for ProposalReview {
     }
 }
 
+/// The side of a diff a line number refers to.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum DiffSide {
+    /// The old version of the file.
+    Old,
+    /// The new version of the file.
+    New,
+}
+
+impl DiffSide {
+    fn as_str(self) -> &'static str {
+        match self {
+            DiffSide::Old => "old",
+            DiffSide::New => "new",
+        }
+    }
+}
+
+impl<'a, 'py> FromPyObject<'a, 'py> for DiffSide {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        let value: String = ob.getattr("value")?.extract()?;
+        match value.as_str() {
+            "old" => Ok(DiffSide::Old),
+            "new" => Ok(DiffSide::New),
+            _ => Err(PyValueError::new_err(format!("unknown diff side: {value}"))),
+        }
+    }
+}
+
+/// A discussion on a line of the diff of a merge proposal.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct ReviewThread {
+    /// Opaque identifier, for [`MergeProposal::set_review_thread_resolved`].
+    pub id: String,
+    /// Path of the file the thread is on.
+    pub path: String,
+    /// The side of the diff `line` refers to.
+    pub side: DiffSide,
+    /// Line number in the diff against `revision`, if known.
+    pub line: Option<u32>,
+    /// The head revision `line` refers to.
+    pub revision: Option<RevisionId>,
+    /// Whether the thread refers to an older version of the diff.
+    pub outdated: bool,
+    /// Whether the thread has been resolved.
+    pub resolved: bool,
+    /// Whether the current user may (un)resolve the thread.
+    pub resolvable: bool,
+    /// Web URL of the thread, if any.
+    pub url: Option<String>,
+    /// The comments in the thread, oldest first.
+    pub comments: Vec<ProposalComment>,
+}
+
+impl<'a, 'py> FromPyObject<'a, 'py> for ReviewThread {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Ok(ReviewThread {
+            id: ob.getattr("id")?.extract()?,
+            path: ob.getattr("path")?.extract()?,
+            side: ob.getattr("side")?.extract()?,
+            line: ob.getattr("line")?.extract()?,
+            revision: ob.getattr("revision")?.extract()?,
+            outdated: ob.getattr("outdated")?.extract()?,
+            resolved: ob.getattr("resolved")?.extract()?,
+            resolvable: ob.getattr("resolvable")?.extract()?,
+            url: ob.getattr("url")?.extract()?,
+            comments: ob
+                .getattr("comments")?
+                .try_iter()?
+                .map(|c| c?.extract())
+                .collect::<PyResult<_>>()?,
+        })
+    }
+}
+
 /// Extract a Python datetime, treating naive ones as UTC.
 fn extract_datetime(ob: &Bound<'_, PyAny>) -> PyResult<chrono::DateTime<chrono::Utc>> {
     if let Ok(dt) = ob.extract::<chrono::DateTime<chrono::FixedOffset>>() {
@@ -735,6 +814,30 @@ impl MergeProposal {
         Ok(ret.into_iter())
     }
 
+    /// Returns the discussions on lines of the diff.
+    ///
+    /// Eagerly drains the underlying Python iterator; the first per-item
+    /// error short-circuits and is returned.
+    pub fn iter_review_threads(&self) -> Result<impl Iterator<Item = ReviewThread>, Error> {
+        let ret: Vec<ReviewThread> = Python::attach(|py| -> Result<_, Error> {
+            self.optional_method(py, "iter_review_threads")?
+                .call0()?
+                .try_iter()?
+                .map(|t| Ok(t?.extract()?))
+                .collect()
+        })?;
+        Ok(ret.into_iter())
+    }
+
+    /// Marks a review thread as resolved or unresolved.
+    pub fn set_review_thread_resolved(&self, thread_id: &str, resolved: bool) -> Result<(), Error> {
+        Python::attach(|py| {
+            self.optional_method(py, "set_review_thread_resolved")?
+                .call1((thread_id, resolved))?;
+            Ok(())
+        })
+    }
+
     /// Returns the submitted reviews of the proposal.
     ///
     /// Eagerly drains the underlying Python iterator; the first per-item
@@ -1008,23 +1111,6 @@ impl<'a, 'py> FromPyObject<'a, 'py> for DiffRefs {
     }
 }
 
-/// Side of a diff that a line number refers to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DiffSide {
-    /// The old version of the file.
-    Old,
-    /// The new version of the file.
-    New,
-}
-
-impl DiffSide {
-    fn as_str(self) -> &'static str {
-        match self {
-            DiffSide::Old => "old",
-            DiffSide::New => "new",
-        }
-    }
-}
 
 /// A comment on a line of a merge proposal's diff.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1656,8 +1742,8 @@ pub fn get_proposal_by_url(url: &url::Url) -> Result<MergeProposal, Error> {
 #[cfg(test)]
 mod tests {
     use super::{
-        AutoMergeStatus, Forge, MergeProposal, MergeStatus, ProposalComment, ProposalReview,
-        ReviewVerdict,
+        AutoMergeStatus, DiffSide, Forge, MergeProposal, MergeStatus, ProposalComment,
+        ProposalReview, ReviewThread, ReviewVerdict,
     };
     use crate::error::Error;
     use crate::revisionid::RevisionId;
@@ -1668,6 +1754,11 @@ import dataclasses
 import datetime
 import enum
 from types import SimpleNamespace
+
+
+class Side(enum.Enum):
+    OLD = "old"
+    NEW = "new"
 
 
 class Verdict(enum.Enum):
@@ -1731,6 +1822,7 @@ class BrokenForge:
 
 class FakeProposal:
     def __init__(self):
+        self.calls = []
         self.labels = ["bug"]
 
     def get_labels(self):
@@ -1818,6 +1910,42 @@ class FakeProposal:
             base_revision = b"git-v1:bbbb"
             start_revision = None
         return DiffRefs()
+
+    def iter_review_threads(self):
+        yield SimpleNamespace(
+            id="RT_1",
+            path="README",
+            side=Side.NEW,
+            line=3,
+            revision=b"git-v1:abc",
+            outdated=False,
+            resolved=False,
+            resolvable=True,
+            url="https://example.com/t1",
+            comments=(
+                SimpleNamespace(
+                    author="alice",
+                    body="Typo",
+                    created_at=datetime.datetime(2024, 1, 2),
+                    url=None,
+                ),
+            ),
+        )
+        yield SimpleNamespace(
+            id="RT_2",
+            path="setup.py",
+            side=Side.OLD,
+            line=None,
+            revision=None,
+            outdated=True,
+            resolved=True,
+            resolvable=False,
+            url=None,
+            comments=(),
+        )
+
+    def set_review_thread_resolved(self, thread_id, resolved=True):
+        self.calls.append(("set_review_thread_resolved", thread_id, resolved))
 
     def get_file_text(self, path, revision):
         if path != "README":
@@ -1962,6 +2090,12 @@ class UnsupportedProposal:
     def iter_comments(self):
         raise NotImplementedError(self.iter_comments)
 
+    def iter_review_threads(self):
+        raise NotImplementedError(self.iter_review_threads)
+
+    def set_review_thread_resolved(self, thread_id, resolved=True):
+        raise NotImplementedError(self.set_review_thread_resolved)
+
     def iter_reviews(self):
         raise NotImplementedError(self.iter_reviews)
 
@@ -2041,6 +2175,23 @@ class BrokenProposal:
 
     def iter_comments(self):
         yield SimpleNamespace(author="x", body="y", created_at="not a date", url=None)
+
+    def iter_review_threads(self):
+        yield SimpleNamespace(
+            id="RT_1",
+            path="README",
+            side=SimpleNamespace(value="middle"),
+            line=3,
+            revision=None,
+            outdated=False,
+            resolved=False,
+            resolvable=True,
+            url=None,
+            comments=(),
+        )
+
+    def set_review_thread_resolved(self, thread_id, resolved=True):
+        raise RuntimeError("no such thread")
 
     def iter_reviews(self):
         yield SimpleNamespace(
@@ -2597,6 +2748,96 @@ class BrokenProposal:
         assert!(matches!(
             mp.approve_ci(None),
             Err(crate::error::Error::NotImplemented)
+        ));
+    }
+
+    #[test]
+    fn test_iter_review_threads() {
+        use chrono::TimeZone;
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "FakeProposal")));
+        assert_eq!(
+            mp.iter_review_threads().unwrap().collect::<Vec<_>>(),
+            vec![
+                ReviewThread {
+                    id: "RT_1".to_string(),
+                    path: "README".to_string(),
+                    side: DiffSide::New,
+                    line: Some(3),
+                    revision: Some(RevisionId::from(b"git-v1:abc".to_vec())),
+                    outdated: false,
+                    resolved: false,
+                    resolvable: true,
+                    url: Some("https://example.com/t1".to_string()),
+                    comments: vec![ProposalComment {
+                        author: Some("alice".to_string()),
+                        body: "Typo".to_string(),
+                        created_at: chrono::Utc.with_ymd_and_hms(2024, 1, 2, 0, 0, 0).unwrap(),
+                        url: None,
+                    }],
+                },
+                ReviewThread {
+                    id: "RT_2".to_string(),
+                    path: "setup.py".to_string(),
+                    side: DiffSide::Old,
+                    line: None,
+                    revision: None,
+                    outdated: true,
+                    resolved: true,
+                    resolvable: false,
+                    url: None,
+                    comments: vec![],
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn test_set_review_thread_resolved() {
+        let obj = Python::attach(|py| fake(py, "FakeProposal"));
+        let mp = MergeProposal::from(Python::attach(|py| obj.clone_ref(py)));
+        mp.set_review_thread_resolved("RT_1", true).unwrap();
+        mp.set_review_thread_resolved("RT_2", false).unwrap();
+        let calls: Vec<(String, String, bool)> =
+            Python::attach(|py| obj.getattr(py, "calls").unwrap().extract(py).unwrap());
+        assert_eq!(
+            calls,
+            vec![
+                (
+                    "set_review_thread_resolved".to_string(),
+                    "RT_1".to_string(),
+                    true
+                ),
+                (
+                    "set_review_thread_resolved".to_string(),
+                    "RT_2".to_string(),
+                    false
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_review_threads_unsupported() {
+        for name in ["OldProposal", "UnsupportedProposal"] {
+            let mp = MergeProposal::from(Python::attach(|py| fake(py, name)));
+            assert!(matches!(
+                mp.iter_review_threads(),
+                Err(Error::NotImplemented)
+            ));
+            assert!(matches!(
+                mp.set_review_thread_resolved("RT_1", true),
+                Err(Error::NotImplemented)
+            ));
+        }
+    }
+
+    #[test]
+    fn test_review_threads_invalid() {
+        let mp = MergeProposal::from(Python::attach(|py| fake(py, "BrokenProposal")));
+        assert!(matches!(mp.iter_review_threads(), Err(Error::Other(_))));
+        assert!(matches!(
+            mp.set_review_thread_resolved("RT_1", true),
+            Err(Error::Other(_))
         ));
     }
 
